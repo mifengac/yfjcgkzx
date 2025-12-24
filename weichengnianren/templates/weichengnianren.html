@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>未成年人模块</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .filter-row {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 12px;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 200px;
+            position: relative;
+        }
+        .filter-group label {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 4px;
+        }
+        .filter-group select,
+        .filter-group input {
+            padding: 6px 8px;
+            font-size: 13px;
+        }
+        .results-table-container {
+            overflow: auto;
+            max-height: 70vh;
+        }
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: #fff;
+        }
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f6f8fb;
+            border-bottom: 2px solid #e3e7ef;
+            padding: 8px 10px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        tbody td {
+            border-bottom: 1px solid #eef2f7;
+            padding: 6px 10px;
+            font-size: 12px;
+            vertical-align: top;
+        }
+        tbody tr:hover {
+            background: #fafcff;
+        }
+        .module-button {
+            padding: 6px 10px;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .module-button:hover {
+            background: #125ea3;
+        }
+        .download-menu {
+            position: relative;
+            display: inline-block;
+            margin-top: 6px;
+        }
+        .download-menu-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 110%;
+            background-color: #fff;
+            min-width: 120px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 10;
+            border-radius: 4px;
+            padding: 4px 0;
+        }
+        .download-menu-content button {
+            width: 100%;
+            padding: 6px 10px;
+            border: none;
+            background: transparent;
+            text-align: left;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .download-menu-content button:hover {
+            background: #f5f5f5;
+        }
+        .pagination {
+            margin-top: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+        .pagination a {
+            margin: 0 4px;
+            text-decoration: none;
+            color: #1976d2;
+        }
+        .pagination a.disabled {
+            color: #ccc;
+            pointer-events: none;
+        }
+        .multi-select-box {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 13px;
+            background-color: #fff;
+            cursor: pointer;
+            min-height: 30px;
+            display: flex;
+            align-items: center;
+        }
+        .multi-select-box span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .multi-select-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 2px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 20;
+            padding: 4px 8px;
+            min-width: 160px;
+        }
+        .multi-select-menu label {
+            display: block;
+            font-size: 13px;
+            margin: 4px 0;
+        }
+    </style>
+</head>
+<body>
+<header class="header">
+    <div style="max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;padding:0 20px;">
+        <div>
+            <h1>未成年人模块</h1>
+            <p>展示涉及未成年人的警情与案件数据</p>
+        </div>
+        <div>
+            <a class="module-button" href="{{ url_for('main') }}" style="background:#546e7a;">返回主页</a>
+        </div>
+    </div>
+</header>
+
+<main class="container">
+    <section class="card">
+        <form id="filter-form" class="filter-form" method="get">
+            <input type="hidden" name="page" value="{{ page }}">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>数据类型</label>
+                    <div class="multi-select-box" onclick="toggleDataTypeMenu(event)">
+                        <span id="data-type-display">全部</span>
+                    </div>
+                    <div id="data-type-menu" class="multi-select-menu" onclick="event.stopPropagation();">
+                        {% set selected = data_types_selected or [] %}
+                        {% for val in ['警情+案件', '仅警情', '仅案件'] %}
+                        <label>
+                            <input type="checkbox" name="data_types" value="{{ val }}"
+                                   {% if val in selected %}checked{% endif %}
+                                   onchange="updateDataTypeDisplay()">
+                            {{ val }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>报警时间范围</label>
+                    <div style="display:flex;gap:4px;">
+                        <input type="datetime-local" name="start_bjsj" value="{{ start_bjsj }}">
+                        <input type="datetime-local" name="end_bjsj" value="{{ end_bjsj }}">
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>立案日期范围</label>
+                    <div style="display:flex;gap:4px;">
+                        <input type="datetime-local" name="start_larq" value="{{ start_larq }}">
+                        <input type="datetime-local" name="end_larq" value="{{ end_larq }}">
+                    </div>
+                </div>
+                <div class="filter-group" style="margin-left:auto; max-width:120px;">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="module-button" style="width:100%;">查询</button>
+                    <div class="download-menu">
+                        <button class="module-button" type="button" style="width:100%;" onclick="toggleDownloadMenu()">下载</button>
+                        <div id="download-menu-content" class="download-menu-content">
+                            <button type="button" onclick="downloadData('csv')">CSV</button>
+                            <button type="button" onclick="downloadData('excel')">Excel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="results-table-container">
+                <table>
+                    <thead>
+                    <tr>
+                        {% for col in columns %}
+                        <th>{{ col.label }}</th>
+                        {% endfor %}
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            {% for col in columns %}
+                                {% set key = col.key %}
+                                <td>
+                                    {% if key == '法律文书JSON列表' %}
+                                        {% set ws_list = row.get('法律文书JSON列表_解析') or [] %}
+                                        {% for item in ws_list %}
+                                            {% if item.name is defined %}
+                                                {% set name_val = item.name %}
+                                                {% set url_val = item.url %}
+                                            {% else %}
+                                                {% set name_val = item['name'] %}
+                                                {% set url_val = item['url'] %}
+                                            {% endif %}
+                                            {% if name_val and url_val %}
+                                                <a href="{{ url_val }}" target="_blank">{{ name_val }}</a><br>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        {{ row[key] or '' }}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                    {% if rows|length == 0 %}
+                        <tr><td colspan="{{ columns|length }}" style="text-align:center;color:#666;">暂无数据</td></tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination">
+                <div>
+                    共 {{ total }} 条记录，当前第 {{ page }} 页
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <label>每页条数</label>
+                    <select name="page_size" onchange="changePageSize(this.value)">
+                        {% for val,label in [('20','20'),('50','50'),('100','100'),('all','全部')] %}
+                        <option value="{{ val }}" {% if page_size == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if page_size != 'all' %}
+                        {% set prev_page = page - 1 if page > 1 else 1 %}
+                        {% set next_page = page + 1 if page < total_pages else total_pages %}
+                        <a href="javascript:void(0);" class="{% if page <= 1 %}disabled{% endif %}" onclick="gotoPage({{ prev_page }})">上一页</a>
+                        <a href="javascript:void(0);" class="{% if page >= total_pages %}disabled{% endif %}" onclick="gotoPage({{ next_page }})">下一页</a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </section>
+</main>
+
+<script>
+    function toggleDownloadMenu() {
+        const menu = document.getElementById('download-menu-content');
+        menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function toggleDataTypeMenu(event) {
+        event.stopPropagation();
+        const menu = document.getElementById('data-type-menu');
+        menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function updateDataTypeDisplay() {
+        const checkboxes = document.querySelectorAll('#data-type-menu input[type="checkbox"]');
+        const selected = [];
+        checkboxes.forEach(cb => {
+            if (cb.checked) {
+                selected.push(cb.value);
+            }
+        });
+        const span = document.getElementById('data-type-display');
+        span.textContent = selected.length ? selected.join('、') : '全部';
+    }
+
+    function buildQueryString(extra) {
+        const form = document.getElementById('filter-form');
+        const formData = new FormData(form);
+        // 下载时不携带分页参数
+        formData.delete('page');
+        const params = new URLSearchParams(formData);
+        if (extra) {
+            Object.keys(extra).forEach(k => params.set(k, extra[k]));
+        }
+        return params.toString();
+    }
+
+    function downloadData(format) {
+        const qs = buildQueryString({format: format});
+        const url = "{{ url_for('weichengnianren.download') }}?" + qs;
+        window.location.href = url;
+    }
+
+    function gotoPage(page) {
+        const form = document.getElementById('filter-form');
+        const pageInput = form.querySelector('input[name="page"]');
+        pageInput.value = page;
+        form.submit();
+    }
+
+    function changePageSize(val) {
+        const form = document.getElementById('filter-form');
+        const pageInput = form.querySelector('input[name="page"]');
+        pageInput.value = 1;
+        form.submit();
+    }
+
+    // 点击页面其他区域时收起下载菜单
+    document.addEventListener('click', function (e) {
+        const downloadMenu = document.getElementById('download-menu-content');
+        const downloadTrigger = e.target.closest('.download-menu');
+        if (!downloadTrigger && downloadMenu && downloadMenu.style.display === 'block') {
+            downloadMenu.style.display = 'none';
+        }
+        const dataMenu = document.getElementById('data-type-menu');
+        const dataTrigger = e.target.closest('.filter-group');
+        if (!dataTrigger && dataMenu && dataMenu.style.display === 'block') {
+            dataMenu.style.display = 'none';
+        }
+    });
+
+    // 初始化数据类型显示文本
+    updateDataTypeDisplay();
+</script>
+</body>
+</html>

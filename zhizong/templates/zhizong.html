@@ -1,0 +1,106 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>治综平台数据统计</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* 顶部按钮 */
+        .module-button { padding: 10px 14px; background:#1976d2; color:#fff; border:none; border-radius:6px; cursor:pointer; transition: background .2s; font-size:14px; }
+        .module-button:hover, .module-button:focus { background:#125ea3; }
+
+        /* 表格美化 */
+        .results-table-container { overflow: auto; max-height: 72vh; }
+        .results-table { width:100%; border-collapse: separate; border-spacing: 0; background:#fff; }
+        .results-table thead th { position: sticky; top:0; z-index: 2; background:#f6f8fb; color:#2c3e50; font-weight:600; padding:10px 12px; border-bottom:2px solid #e3e7ef; }
+        .results-table tbody td { padding:10px 12px; border-bottom:1px solid #eef2f7; }
+        .results-table tbody tr:hover { background:#fafcff; }
+        /* 固定首列，方便横向滚动查看 */
+        .results-table thead th:first-child { left:0; position: sticky; z-index:3; }
+        .results-table tbody td:first-child { left:0; position: sticky; background:#fff; z-index:1; }
+        /* 数值列右对齐（除第1列外） */
+        .results-table thead th:nth-child(n+2),
+        .results-table tbody td:nth-child(n+2) { text-align: right; }
+
+        /* 链接样式：任务名与数量徽章 */
+        .task-link { color:#1976d2; text-decoration: none; font-weight:600; }
+        .task-link:hover { text-decoration: underline; }
+        .count-link { display:inline-block; min-width:38px; padding:4px 10px; border-radius: 999px; background:#e3f2fd; color:#1565c0; text-decoration:none; font-weight:700; box-shadow: inset 0 0 0 1px #bbdefb; }
+        .count-link:hover { background:#d7ebfb; }
+        .empty-tip { margin-top: 1rem; color:#666; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>治综平台数据统计</h1>
+        <p>以下为当前激活任务的地区汇总，可点击查看明细。</p>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <div style="display:flex; justify-content: space-between; align-items:center;">
+                <h3>治综任务统计</h3>
+                <div>
+                    <a class="module-button" href="{{ url_for('main') }}" style="background:#546e7a;">返回主页</a>
+                    <button class="module-button" onclick="location.href='{{ url_for('zhizong.download_home_summary') }}'">下载统计（Excel）</button>
+                </div>
+            </div>
+            {% if summary_rows %}
+            <div class="results-table-container">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>任务名</th>
+                            <th>云城</th>
+                            <th>云安</th>
+                            <th>罗定</th>
+                            <th>新兴</th>
+                            <th>郁南</th>
+                            <th>市局</th>
+                            <th>总计</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in summary_rows %}
+                        <tr>
+                            <td>
+                                <a class="task-link" href="{{ url_for('zhizong.task_rows_page', task_id=row['task_id']) }}" target="_blank">{{ row['任务名'] }}</a>
+                            </td>
+                            <td>
+                                <a class="count-link" href="{{ url_for('zhizong.task_rows_page', task_id=row['task_id']) }}?dwdm={{ region_codes['云城'] }}" target="_blank">{{ row['云城'] }}</a>
+                            </td>
+                            <td>
+                                <a class="count-link" href="{{ url_for('zhizong.task_rows_page', task_id=row['task_id']) }}?dwdm={{ region_codes['云安'] }}" target="_blank">{{ row['云安'] }}</a>
+                            </td>
+                            <td>
+                                <a class="count-link" href="{{ url_for('zhizong.task_rows_page', task_id=row['task_id']) }}?dwdm={{ region_codes['罗定'] }}" target="_blank">{{ row['罗定'] }}</a>
+                            </td>
+                            <td>
+                                <a class="count-link" href="{{ url_for('zhizong.task_rows_page', task_id=row['task_id']) }}?dwdm={{ region_codes['新兴'] }}" target="_blank">{{ row['新兴'] }}</a>
+                            </td>
+                            <td>
+                                <a class="count-link" href="{{ url_for('zhizong.task_rows_page', task_id=row['task_id']) }}?dwdm={{ region_codes['郁南'] }}" target="_blank">{{ row['郁南'] }}</a>
+                            </td>
+                            <td>
+                                <a class="count-link" href="{{ url_for('zhizong.task_rows_page', task_id=row['task_id']) }}?dwdm={{ region_codes['市局'] }}" target="_blank">{{ row['市局'] }}</a>
+                            </td>
+                            <td>
+                                <a class="count-link" href="{{ url_for('zhizong.task_rows_page', task_id=row['task_id']) }}" target="_blank">{{ row['总计'] }}</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="empty-tip">当前没有可用任务，请联系管理员在任务元数据表中启用记录。</p>
+            {% endif %}
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>© 2025 治综平台数据统计</p>
+    </footer>
+</body>
+</html>

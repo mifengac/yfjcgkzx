@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>后台管理 - 批量导入</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .box { max-width: 720px; margin: 6vh auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+    .row { display:flex; gap:12px; align-items:center; }
+    .row a.btn, button.btn { background:#1976d2; color:#fff; padding:10px 16px; border:none; border-radius:4px; text-decoration:none; cursor:pointer; }
+    .row a.btn:hover, button.btn:hover { background:#125ea3; }
+    .hint { color:#666; margin-top:8px; }
+    .msg { color:#e65100; margin-top:8px; }
+  </style>
+  <!-- 简体中文注释：后台页面，提供下载模板与上传Excel功能 -->
+</head>
+<body>
+  <div class="box">
+    <h2>后台管理 - 用户与权限批量导入</h2>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="msg">{{ messages[0] }}</div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="row" style="margin-bottom: 16px;">
+      <a class="btn" href="{{ url_for('houtai.download_template') }}">下载Excel导入模板</a>
+      <a class="btn" href="{{ url_for('main') }}">返回主菜单</a>
+      <a class="btn" href="{{ url_for('logout') }}">退出登录</a>
+    </div>
+
+    <form action="{{ url_for('houtai.upload_import') }}" method="post" enctype="multipart/form-data">
+      <label for="file">选择Excel文件（xlsx/xlsm）：</label>
+      <input type="file" id="file" name="file" accept=".xlsx,.xlsm" required>
+      <button type="submit" class="btn" style="margin-top:12px;">上传并导入</button>
+    </form>
+
+    <p class="hint">Excel需包含三列：username、password、module；支持的module值为：巡防、治综、警情、后台。</p>
+  </div>
+</body>
+</html>

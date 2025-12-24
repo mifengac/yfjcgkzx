@@ -1,0 +1,345 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ task['task_name'] }} - 治综情况</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- 页面内样式用于增强交互体验 -->
+    <style>
+        .detail-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .download-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .download-button {
+            padding: 8px 16px;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .download-button:hover,
+        .download-button:focus {
+            background: #125ea3;
+        }
+
+        .data-table,
+        .region-detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.5rem;
+        }
+
+        .data-table th,
+        .data-table td,
+        .region-detail-table th,
+        .region-detail-table td {
+            border: 1px solid #e0e0e0;
+            padding: 10px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .region-detail-table th {
+            background: #eef3fb;
+            font-weight: 600;
+            position: relative;
+        }
+
+        .col-resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 6px;
+            height: 100%;
+            cursor: col-resize;
+            user-select: none;
+        }
+
+        .message {
+            margin-top: 1rem;
+            color: #666;
+        }
+
+        .link-cell {
+            color: #1976d2;
+            cursor: pointer;
+        }
+
+        .link-cell:hover {
+            text-decoration: underline;
+        }
+
+        .region-detail {
+            margin-top: 2rem;
+            display: none;
+        }
+
+        .region-detail-table-wrap {
+            margin-top: 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow-x: auto;
+            background: #fff;
+            padding: 8px;
+        }
+
+        .region-detail-table {
+            min-width: max-content;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>治综情况 - {{ task['task_name'] }}</h1>
+        {% if task.get('description') %}
+        <p>{{ task['description'] }}</p>
+        {% else %}
+        <p>本页面展示该任务的地区统计情况，可点击地区查看明细。</p>
+        {% endif %}
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <div class="detail-header">
+                <div>
+                    <h3>{{ task['task_name'] }}</h3>
+                    <p>数据表：{{ task['table_name'] }}</p>
+                    <p>地区字段：{{ task['region_field'] }}</p>
+                </div>
+                <div class="download-group">
+                    <button class="download-button" data-summary-export="csv">导出汇总 CSV</button>
+                    <button class="download-button" data-summary-export="excel">导出汇总 Excel</button>
+                </div>
+            </div>
+
+            {% if summary_rows %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>地区</th>
+                        <th>数量</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in summary_rows %}
+                    <tr>
+                        <td class="link-cell" data-dwdm="{{ row.get('dwdm') or '' }}" data-region="{{ row.get('地区') or '' }}">
+                            {{ row.get('地区') or '-' }}
+                        </td>
+                        <td>{{ row.get('数量') or 0 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="message">暂无统计数据，请确认任务配置是否正确。</p>
+            {% endif %}
+
+            <p class="message">提示：点击“地区”列可查看详细数据，详情表支持拖拽列宽与横向滚动。</p>
+
+            <div class="region-detail" id="regionDetail">
+                <div class="detail-header">
+                    <h4 id="regionTitle">地区详情</h4>
+                    <div class="download-group">
+                        <button class="download-button" data-detail-export="csv">导出详情 CSV</button>
+                        <button class="download-button" data-detail-export="excel">导出详情 Excel</button>
+                    </div>
+                </div>
+                <p class="message" id="regionMessage">请先点击上方地区名称加载数据。</p>
+                <div class="region-detail-table-wrap">
+                    <div id="regionTableWrap"></div>
+                </div>
+            </div>
+
+            <a class="back-link" href="{{ url_for('zhizong.index') }}">返回任务列表</a>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>© 2025 治综平台数据统计</p>
+    </footer>
+
+    <script>
+        // ----------- 汇总导出操作 -----------
+        const summaryDownloadBase = "{{ url_for('zhizong.download_task_summary', task_id=task['id']) }}";
+        document.querySelectorAll('[data-summary-export]').forEach(button => {
+            button.addEventListener('click', () => {
+                const format = button.dataset.summaryExport;
+                const url = new URL(summaryDownloadBase, window.location.origin);
+                url.searchParams.set('format', format);
+                window.location.href = url.toString();
+            });
+        });
+
+        // ----------- 地区详情交互 -----------
+        const detailSection = document.getElementById('regionDetail');
+        const regionTitle = document.getElementById('regionTitle');
+        const regionMessage = document.getElementById('regionMessage');
+        const regionTableWrap = document.getElementById('regionTableWrap');
+        const detailUrl = "{{ url_for('zhizong.region_detail', task_id=task['id']) }}";
+        const detailDownloadBase = "{{ url_for('zhizong.download_task_detail', task_id=task['id']) }}";
+
+        let latestDwdm = '';
+
+        /**
+         * 设置详情区提示文本。
+         */
+        function setRegionMessage(text) {
+            regionMessage.textContent = text;
+            regionMessage.style.display = text ? 'block' : 'none';
+        }
+
+        /**
+         * 生成详情表格并附加列宽拖拽功能。
+         */
+        function renderDetailTable(rows) {
+            regionTableWrap.innerHTML = '';
+            if (!rows.length) {
+                setRegionMessage('未查询到匹配的数据，请确认基础 SQL 是否正确。');
+                return;
+            }
+
+            const headers = Object.keys(rows[0]);
+            const table = document.createElement('table');
+            table.className = 'region-detail-table';
+
+            const thead = document.createElement('thead');
+            const headRow = document.createElement('tr');
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                headRow.appendChild(th);
+            });
+            thead.appendChild(headRow);
+            table.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    const value = row[header];
+                    td.textContent = value === null || value === undefined ? '' : value;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+
+            regionTableWrap.appendChild(table);
+            setRegionMessage(`共加载 ${rows.length} 条记录，可拖拽表头右侧调整列宽。`);
+            initResizableColumns(table);
+        }
+
+        /**
+         * 为表头添加拖拽调整列宽的能力。
+         */
+        function initResizableColumns(table) {
+            const headerCells = table.querySelectorAll('th');
+            headerCells.forEach((th, index) => {
+                const resizer = document.createElement('div');
+                resizer.className = 'col-resizer';
+                th.appendChild(resizer);
+
+                const initialWidth = Math.max(th.offsetWidth, 120);
+                th.style.width = initialWidth + 'px';
+                table.querySelectorAll(`tbody tr td:nth-child(${index + 1})`).forEach(td => {
+                    td.style.width = initialWidth + 'px';
+                });
+
+                let startX = 0;
+                let startWidth = initialWidth;
+
+                const handleMouseMove = (event) => {
+                    const delta = event.pageX - startX;
+                    const newWidth = Math.max(startWidth + delta, 80);
+                    th.style.width = newWidth + 'px';
+                    table.querySelectorAll(`tbody tr td:nth-child(${index + 1})`).forEach(td => {
+                        td.style.width = newWidth + 'px';
+                    });
+                };
+
+                const stopResize = () => {
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', stopResize);
+                };
+
+                resizer.addEventListener('mousedown', (event) => {
+                    event.preventDefault();
+                    startX = event.pageX;
+                    startWidth = th.offsetWidth;
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', stopResize);
+                });
+            });
+        }
+
+        /**
+         * 异步请求详情数据。
+         */
+        async function fetchRegionDetail(dwdm) {
+            const url = new URL(detailUrl, window.location.origin);
+            url.searchParams.set('dwdm', dwdm);
+            const response = await fetch(url.toString());
+            const payload = await response.json();
+
+            if (!response.ok || !payload.success) {
+                throw new Error(payload.message || '详情查询失败');
+            }
+            return payload.data || [];
+        }
+
+        document.querySelectorAll('.link-cell').forEach(cell => {
+            cell.addEventListener('click', async () => {
+                const dwdm = cell.dataset.dwdm;
+                const regionName = cell.dataset.region || cell.textContent.trim();
+                if (!dwdm) {
+                    alert('缺少地区编码，无法查询详情。');
+                    return;
+                }
+
+                detailSection.style.display = 'block';
+                regionTitle.textContent = `${regionName} - 详情数据`;
+                setRegionMessage('数据加载中，请稍候...');
+                regionTableWrap.innerHTML = '';
+
+                try {
+                    const rows = await fetchRegionDetail(dwdm);
+                    latestDwdm = dwdm;
+                    renderDetailTable(rows);
+                } catch (error) {
+                    console.error(error);
+                    setRegionMessage(error.message || '查询失败，请稍后重试。');
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-detail-export]').forEach(button => {
+            button.addEventListener('click', () => {
+                if (!latestDwdm) {
+                    alert('请先选择地区，再导出详情数据。');
+                    return;
+                }
+                const format = button.dataset.detailExport;
+                const url = new URL(detailDownloadBase, window.location.origin);
+                url.searchParams.set('format', format);
+                url.searchParams.set('dwdm', latestDwdm);
+                window.location.href = url.toString();
+            });
+        });
+    </script>
+</body>
+</html>

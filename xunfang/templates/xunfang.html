@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>巡防统计</title>
+    
+    <!-- 本地CSS资源 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <!-- 兼容性meta标签 -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    
+    <style>
+        /* 内联样式确保基础功能 */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+        
+        .date-range-container {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        
+        .date-inputs {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .date-inputs > div {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .date-inputs label {
+            min-width: 80px;
+            white-space: nowrap;
+        }
+        
+        .date-inputs input {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            min-width: 140px;
+        }
+        
+        .calculate-btn {
+            padding: 8px 15px;
+            background: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            height: fit-content;
+            margin-left: 10px;
+        }
+        
+        .calculate-btn:hover {
+            background: #1565c0;
+        }
+        
+        .result-container {
+            margin-top: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f2f2f2;
+        }
+        
+        .status-message {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #1976d2;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .tab-btn {
+            padding: 10px 20px;
+            background: #e0e0e0;
+            border: 1px solid #ccc;
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        
+        .tab-btn.active {
+            background: #1976d2;
+            color: white;
+        }
+        
+        .tab-content {
+            padding-top: 20px;
+        }
+        
+        textarea {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        @media (max-width: 768px) {
+            .date-inputs {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .date-inputs > div {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            
+            .calculate-btn {
+                margin-left: 0;
+                margin-top: 10px;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        系统加载中...
+    </div>
+    
+    <header class="header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1>巡防统计</h1>
+                <p>智慧警务 · 精准管控 · 高效协同</p>
+            </div>
+            <button onclick="window.location.href='/'"><div class="btn-back" style="background: #757575; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px;">
+                返回主页
+            </button></div>
+        </div>
+    </header>
+    
+    <main class="container">
+        <section class="card">
+            <!-- Tab 选择 -->
+            <div style="margin-bottom: 20px;">
+                <button class="tab-btn active" onclick="switchTab('xunfang-tab')" id="xunfang-tab-btn">巡防统计</button>
+                <button class="tab-btn" onclick="switchTab('request-data-tab')" id="request-data-tab-btn">请求数据</button>
+            </div>
+            
+            <!-- 巡防统计页面 -->
+            <div id="xunfang-tab" class="tab-content">
+                <h3>巡防统计计算</h3>
+                
+                <div class="date-range-container">
+                    <div class="date-inputs">
+                        <div>
+                            <label for="startTime">开始时间:</label>
+                            <input type="datetime-local" id="startTime" name="startTime" value="">
+                        </div>
+                        <div>
+                            <label for="endTime">结束时间:</label>
+                            <input type="datetime-local" id="endTime" name="endTime" value="">
+                        </div>
+                        <button class="calculate-btn" onclick="calculateXunfang()">计算</button>
+                        <button class="calculate-btn" onclick="exportOnlineRate()" style="background: #4CAF50;">导出在线在岗</button>
+                        <button class="calculate-btn" onclick="exportQuadrantChart()" style="background: #FF9800;">导出象限图</button>
+                        <button class="calculate-btn" onclick="exportPoliceForce()" style="background: #9C27B0;">导出警力表</button>
+                    </div>
+                </div>
+                
+                <div id="statusMessage" class="status-message" style="display: none;"></div>
+                
+                <div id="progressContainer" style="display: none;">
+                    <p>正在计算...</p>
+                    <div class="progress-bar">
+                        <div class="progress-bar-fill" id="progressBar"></div>
+                    </div>
+                    <p id="progressText">0%</p>
+                </div>
+                
+                <div class="result-container" id="resultContainer" style="display: none;">
+                    <h4>计算结果</h4>
+                    <div id="resultTable"></div>
+                </div>
+            </div>
+            
+            <!-- 请求数据页面 -->
+            <div id="request-data-tab" class="tab-content" style="display: none;">
+                <h3>请求数据</h3>
+                
+                <div class="date-range-container">
+                    <div class="date-inputs">
+                        <div>
+                            <label for="requestMethod">请求方法:</label>
+                            <select id="requestMethod" name="requestMethod" onchange="toggleRequestFields()">
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                            </select>
+                        </div>
+                        
+                        <div id="urlContainer">
+                            <label for="requestUrl">请求链接:</label>
+                            <input type="text" id="requestUrl" name="requestUrl" placeholder="请输入请求链接">
+                        </div>
+                        
+                        <div id="postDataContainer" style="display: none;">
+                            <label for="requestParams">请求参数:</label>
+                            <textarea id="requestParams" name="requestParams" placeholder="请输入请求参数(JSON格式)" rows="4" cols="50"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="date-inputs" style="align-items: center;">
+                        <div>
+                            <label for="exportFormat">导出格式:</label>
+                            <select id="exportFormat" name="exportFormat">
+                                <option value="csv">CSV</option>
+                                <option value="xlsx">XLSX</option>
+                            </select>
+                        </div>
+                        
+                        <button class="calculate-btn" onclick="requestData()">请求</button>
+                    </div>
+                </div>
+                
+                <div id="requestStatusMessage" class="status-message" style="display: none;"></div>
+                
+                <div id="requestProgressContainer" style="display: none;">
+                    <p>正在请求数据...</p>
+                    <div class="progress-bar">
+                        <div class="progress-bar-fill" id="requestProgressBar"></div>
+                    </div>
+                    <p id="requestProgressText">0%</p>
+                </div>
+                
+                <div class="result-container" id="requestResultContainer" style="display: none;">
+                    <h4>请求结果</h4>
+                    <div id="requestResultTable"></div>
+                    <button class="calculate-btn" onclick="downloadResultV2()" style="background: #1976d2; margin-top: 15px;">下载结果</button>
+                </div>
+            </div>
+        </section>
+    </main>
+    
+    <footer class="footer">
+        <p>© 2025 市公安局基础管控中心 | 版本号: v1.0.0</p>
+    </footer>
+    
+    <!-- 本地JavaScript资源 -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <!-- 内联JavaScript确保基础功能 -->
+    <script>
+        // 设置默认日期为昨天，添加时分秒
+        window.onload = function() {
+            document.getElementById('loading').style.display = 'none';
+
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            // 设置默认时间为开始时间00:00:00，结束时间23:59:59
+            const yesterdayStart = new Date(yesterday);
+            yesterdayStart.setHours(0, 0, 0, 0);
+            const yesterdayEnd = new Date(yesterday);
+            yesterdayEnd.setHours(23, 59, 59, 999);
+
+            // 转换为datetime-local格式 (YYYY-MM-DDTHH:MM)
+            const startTimeStr = yesterdayStart.toISOString().slice(0, 16);
+            const endTimeStr = yesterdayEnd.toISOString().slice(0, 16);
+
+            document.getElementById('startTime').value = startTimeStr;
+            document.getElementById('endTime').value = endTimeStr;
+        };
+
+        // 时间格式化函数：将datetime-local格式转换为'YYYY-MM-DD HH:MM:SS'格式
+        function formatDateTime(dateTimeStr) {
+            if (!dateTimeStr) return '';
+            const date = new Date(dateTimeStr);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
+        
+        function calculateXunfang() {
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+
+            if (!startTime || !endTime) {
+                showMessage('请填写完整的日期范围', 'error');
+                return;
+            }
+
+            // 转换datetime-local格式为后端需要的格式
+            const formattedStartTime = formatDateTime(startTime);
+            const formattedEndTime = formatDateTime(endTime);
+
+            // 验证日期格式和逻辑
+            if (new Date(startTime) > new Date(endTime)) {
+                showMessage('开始时间不能晚于结束时间', 'error');
+                return;
+            }
+
+            // 发起计算请求
+            performCalculation(formattedStartTime, formattedEndTime);
+        }
+        
+        function exportOnlineRate() {
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+
+            if (!startTime || !endTime) {
+                showMessage('请填写完整的日期范围', 'error');
+                return;
+            }
+
+            // 转换datetime-local格式为后端需要的格式
+            const formattedStartTime = formatDateTime(startTime);
+            const formattedEndTime = formatDateTime(endTime);
+
+            // 验证日期格式和逻辑
+            if (new Date(startTime) > new Date(endTime)) {
+                showMessage('开始时间不能晚于结束时间', 'error');
+                return;
+            }
+
+            // 发起导出请求
+            performExportOnlineRate(formattedStartTime, formattedEndTime);
+         }
+         
+         function exportQuadrantChart() {
+             const startTime = document.getElementById('startTime').value;
+             const endTime = document.getElementById('endTime').value;
+
+             if (!startTime || !endTime) {
+                 showMessage('请填写完整的日期范围', 'error');
+                 return;
+             }
+
+             // 转换datetime-local格式为后端需要的格式
+             const formattedStartTime = formatDateTime(startTime);
+             const formattedEndTime = formatDateTime(endTime);
+
+             // 验证日期格式和逻辑
+             if (new Date(startTime) > new Date(endTime)) {
+                 showMessage('开始时间不能晚于结束时间', 'error');
+                 return;
+             }
+
+             // 发起导出请求
+             performExportQuadrantChart(formattedStartTime, formattedEndTime);
+         }
+
+         function exportPoliceForce() {
+             const startTime = document.getElementById('startTime').value;
+             const endTime = document.getElementById('endTime').value;
+
+             if (!startTime || !endTime) {
+                 showMessage('请填写完整的日期范围', 'error');
+                 return;
+             }
+
+             // 转换datetime-local格式为后端需要的格式
+             const formattedStartTime = formatDateTime(startTime);
+             const formattedEndTime = formatDateTime(endTime);
+
+             // 验证日期格式和逻辑
+             if (new Date(startTime) > new Date(endTime)) {
+                 showMessage('开始时间不能晚于结束时间', 'error');
+                 return;
+             }
+
+             // 发起导出请求
+             performExportPoliceForce(formattedStartTime, formattedEndTime);
+         }
+
+         function performExportPoliceForce(startTime, endTime) {
+             // 显示进度条
+             document.getElementById('progressContainer').style.display = 'block';
+             document.getElementById('resultContainer').style.display = 'none';
+             showMessage('正在导出警力表...', 'success');
+
+             // 向后端发起请求
+             fetch('/xunfang/export_police_force', {
+                 method: 'POST',
+                 headers: {
+                     'Content-Type': 'application/json',
+                 },
+                 body: JSON.stringify({
+                     startTime: startTime,
+                     endTime: endTime
+                 })
+             })
+             .then(response => {
+                 if (response.ok) {
+                     // 如果响应是文件，直接下载
+                     return response.blob();
+                 } else {
+                     // 如果是错误响应，解析JSON
+                     return response.json().then(data => {
+                         throw new Error(data.message || '导出失败');
+                     });
+                 }
+             })
+             .then(blob => {
+                 updateProgress(100);
+
+                 // 创建下载链接
+                 const url = window.URL.createObjectURL(blob);
+                 const a = document.createElement('a');
+                 a.style.display = 'none';
+                 a.href = url;
+                 a.download = `${startTime}至${endTime}巡防警力表.xlsx`;
+
+                 document.body.appendChild(a);
+                 a.click();
+
+                 // 清理
+                 window.URL.revokeObjectURL(url);
+                 document.body.removeChild(a);
+
+                 showMessage(`警力表导出完成！`, 'success');
+             })
+             .catch(error => {
+                 console.error('Error:', error);
+                 showMessage(`导出过程中出现错误: ${error.message}`, 'error');
+             });
+         }
+
+         function performExportQuadrantChart(startTime, endTime) {
+             // 显示进度条
+             document.getElementById('progressContainer').style.display = 'block';
+             document.getElementById('resultContainer').style.display = 'none';
+             showMessage('正在生成象限图和原始数据Excel...', 'success');
+
+             // 向后端发起请求
+             fetch('/xunfang/export_quadrant_chart', {
+                 method: 'POST',
+                 headers: {
+                     'Content-Type': 'application/json',
+                 },
+                 body: JSON.stringify({
+                     startTime: startTime,
+                     endTime: endTime
+                 })
+             })
+             .then(response => {
+                 if (response.ok) {
+                     // 如果响应是文件，直接下载
+                     return response.blob();
+                 } else {
+                     // 如果是错误响应，解析JSON
+                     return response.json().then(data => {
+                         throw new Error(data.message || '导出失败');
+                     });
+                 }
+             })
+             .then(blob => {
+                 updateProgress(100);
+
+                 // 创建下载链接
+                 const url = window.URL.createObjectURL(blob);
+                 const a = document.createElement('a');
+                 a.style.display = 'none';
+                 a.href = url;
+                 a.download = `${startTime}至${endTime}派出所巡防警情象限图.zip`;
+
+                 document.body.appendChild(a);
+                 a.click();
+
+                 // 清理
+                 window.URL.revokeObjectURL(url);
+                 document.body.removeChild(a);
+
+                 showMessage(`象限图导出完成！ZIP文件包含PNG图片和Excel原始数据`, 'success');
+             })
+             .catch(error => {
+                 console.error('Error:', error);
+                 showMessage(`导出过程中出现错误: ${error.message}`, 'error');
+             });
+         }
+         
+         function performExportOnlineRate(startTime, endTime) {
+            // 显示进度条
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('resultContainer').style.display = 'none';
+            showMessage('正在导出在线在岗数据...', 'success');
+            
+            // 向后端发起请求
+            fetch('/xunfang/export_online_rate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    startTime: startTime,
+                    endTime: endTime
+                })
+            })
+            .then(response => {
+                if (response.ok) {
+                    // 如果响应是文件，直接下载
+                    return response.blob();
+                } else {
+                    // 如果是错误响应，解析JSON
+                    return response.json().then(data => {
+                        throw new Error(data.message || '导出失败');
+                    });
+                }
+            })
+            .then(blob => {
+                updateProgress(100);
+                
+                // 创建下载链接
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `${startTime}至${endTime}全市在岗在线率.xlsx`;
+                
+                document.body.appendChild(a);
+                a.click();
+                
+                // 清理
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showMessage(`导出完成！文件已下载`, 'success');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage(`导出过程中出现错误: ${error.message}`, 'error');
+            });
+        }
+        
+        function performCalculation(startTime, endTime) {
+            // 显示进度条
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('resultContainer').style.display = 'none';
+            showMessage('开始计算...', 'success');
+            
+            // 计算日期范围内的天数
+            const start = new Date(startTime);
+            const end = new Date(endTime);
+            const diffTime = Math.abs(end - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // 包含结束日期
+            
+            // 向后端发起请求
+            fetch('/xunfang/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    startTime: startTime,
+                    endTime: endTime
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateProgress(100);
+                    showMessage(`计算完成！成功处理 ${data.success_count} 条记录`, 'success');
+                    
+                    // 显示结果（如果有的话）
+                    if (data.results && data.results.length > 0) {
+                        displayResults(data.results);
+                    } else {
+                        document.getElementById('resultTable').innerHTML = '<p>没有找到相关数据</p>';
+                        document.getElementById('resultContainer').style.display = 'block';
+                    }
+                } else {
+                    showMessage(`计算失败: ${data.message}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage(`计算过程中出现错误: ${error}`, 'error');
+            });
+        }
+        
+        function updateProgress(percent) {
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressText').textContent = percent + '%';
+        }
+        
+        function showMessage(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = `status-message ${type}`;
+            statusDiv.style.display = 'block';
+        }
+        
+        function displayResults(results) {
+            // 简单的结果表格显示
+            let tableHtml = '<table><thead><tr>';
+            
+            // 根据结果生成表头
+            if (results.length > 0) {
+                const headers = Object.keys(results[0]);
+                headers.forEach(header => {
+                    tableHtml += `<th>${header}</th>`;
+                });
+                tableHtml += '</tr></thead><tbody>';
+                
+                // 生成表格行
+                results.forEach(row => {
+                    tableHtml += '<tr>';
+                    headers.forEach(header => {
+                        tableHtml += `<td>${row[header] || ''}</td>`;
+                    });
+                    tableHtml += '</tr>';
+                });
+                
+                tableHtml += '</tbody></table>';
+            }
+            
+            document.getElementById('resultTable').innerHTML = tableHtml;
+            document.getElementById('resultContainer').style.display = 'block';
+        }
+        
+        // 简单的错误处理
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('错误: ' + msg + ' at ' + url + ':' + lineNo);
+            return false;
+        };
+        
+        // TAB切换功能
+        function switchTab(tabId) {
+            // 隐藏所有tab内容
+            document.getElementById('xunfang-tab').style.display = 'none';
+            document.getElementById('request-data-tab').style.display = 'none';
+            
+            // 移除所有tab按钮的active类
+            document.getElementById('xunfang-tab-btn').classList.remove('active');
+            document.getElementById('request-data-tab-btn').classList.remove('active');
+            
+            // 显示选中的tab内容并添加active类
+            document.getElementById(tabId).style.display = 'block';
+            document.getElementById(tabId + '-btn').classList.add('active');
+        }
+        
+        // 切换请求字段显示
+        function toggleRequestFields() {
+            const method = document.getElementById('requestMethod').value;
+            const postDataContainer = document.getElementById('postDataContainer');
+            
+            if (method === 'POST') {
+                postDataContainer.style.display = 'block';
+            } else {
+                postDataContainer.style.display = 'none';
+            }
+        }
+        
+        // 请求数据功能
+        function requestData() {
+            const method = document.getElementById('requestMethod').value;
+            const url = document.getElementById('requestUrl').value;
+            const params = document.getElementById('requestParams').value;
+            const exportFormat = document.getElementById('exportFormat').value;
+
+            if (!url) {
+                showRequestMessage('请输入请求链接', 'error');
+                return;
+            }
+
+            if (method === 'POST' && !params) {
+                showRequestMessage('请填写请求参数', 'error');
+                return;
+            }
+
+            // 初始化参数类型变量
+            let paramType = '';
+
+            // 对于POST请求，验证参数格式
+            if (method === 'POST') {
+                if (!params) {
+                    showRequestMessage('请填写请求参数', 'error');
+                    return;
+                }
+
+                // 尝试验证参数格式（支持JSON或表单数据格式）
+                try {
+                    // 尝试解析为JSON
+                    JSON.parse(params);
+                    paramType = 'json';
+                    showRequestMessage('检测到JSON格式参数，将使用JSON格式发送请求', 'success');
+                } catch (e) {
+                    // 不是JSON格式，检查是否为表单数据格式
+                    if (params.includes('=') && params.includes('&')) {
+                        paramType = 'form';
+                        showRequestMessage('检测到表单数据格式参数，将使用表单格式发送请求', 'success');
+                    } else {
+                        showRequestMessage('请求参数格式错误，请输入有效的JSON或表单数据格式', 'error');
+                        return;
+                    }
+                }
+            }
+
+            // 对于GET请求，检查URL是否包含参数，如果有则显示提示
+            if (method === 'GET') {
+                const urlObj = new URL(url, window.location.origin);
+                if (urlObj.search) {
+                    showRequestMessage('检测到URL中包含查询参数，将自动解析并发送请求', 'success');
+                }
+            }
+
+            // 显示进度条
+            document.getElementById('requestProgressContainer').style.display = 'block';
+            document.getElementById('requestResultContainer').style.display = 'none';
+            showRequestMessage('正在请求数据...', 'success');
+
+            // 准备请求数据 - 确保params始终是对象格式
+            let processedParams = {};
+
+            if (method === 'POST') {
+                if (paramType === 'json') {
+                    // JSON格式，直接解析为对象
+                    processedParams = JSON.parse(params);
+                } else {
+                    // 表单数据格式，转换为对象
+                    const formData = new URLSearchParams(params);
+                    processedParams = {};
+                    for (const [key, value] of formData.entries()) {
+                        processedParams[key] = value;
+                    }
+                }
+            }
+
+            const requestData = {
+                method: method,
+                url: url,
+                exportFormat: exportFormat,
+                params: processedParams  // 始终发送对象格式，不发送paramType
+            };
+            
+            // 向后端发起请求
+            fetch('/xunfang/request_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateRequestProgress(100);
+                    showRequestMessage(`请求成功！共获取 ${data.count} 条记录`, 'success');
+                    
+                    // 保存数据用于下载
+                    window.requestResultData = data.data;
+                    window.requestExportFormat = exportFormat;
+                    window.requestUrl = url;
+                    
+                    // 显示结果
+                    if (data.data && data.data.length > 0) {
+                        displayRequestResults(data.data);
+                    } else {
+                        document.getElementById('requestResultTable').innerHTML = '<p>没有获取到数据</p>';
+                        document.getElementById('requestResultContainer').style.display = 'block';
+                    }
+                } else {
+                    showRequestMessage(`请求失败: ${data.message}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showRequestMessage(`请求过程中出现错误: ${error}`, 'error');
+            });
+        }
+        
+        function updateRequestProgress(percent) {
+            document.getElementById('requestProgressBar').style.width = percent + '%';
+            document.getElementById('requestProgressText').textContent = percent + '%';
+        }
+        
+        function showRequestMessage(message, type) {
+            const statusDiv = document.getElementById('requestStatusMessage');
+            statusDiv.textContent = message;
+            statusDiv.className = `status-message ${type}`;
+            statusDiv.style.display = 'block';
+        }
+        
+        function displayRequestResults(results) {
+            // 简单的结果表格显示
+            let tableHtml = '<table><thead><tr>';
+            
+            // 根据结果生成表头（获取所有字段）
+            if (results.length > 0) {
+                // 获取所有字段名
+                const allKeys = new Set();
+                results.forEach(item => {
+                    // 递归获取所有键
+                    function getAllKeys(obj, prefix = '') {
+                        for (const key in obj) {
+                            if (obj.hasOwnProperty(key)) {
+                                const fullKey = prefix ? `${prefix}.${key}` : key;
+                                if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                                    getAllKeys(obj[key], fullKey);
+                                } else {
+                                    allKeys.add(fullKey);
+                                }
+                            }
+                        }
+                    }
+                    getAllKeys(item);
+                });
+                
+                const headers = Array.from(allKeys);
+                
+                headers.forEach(header => {
+                    tableHtml += `<th>${header}</th>`;
+                });
+                tableHtml += '</tr></thead><tbody>';
+                
+                // 生成表格行
+                results.forEach(row => {
+                    tableHtml += '<tr>';
+                    headers.forEach(header => {
+                        // 处理嵌套字段
+                        const value = getNestedValue(row, header);
+                        tableHtml += `<td>${value || ''}</td>`;
+                    });
+                    tableHtml += '</tr>';
+                });
+                
+                tableHtml += '</tbody></table>';
+            }
+            
+            document.getElementById('requestResultTable').innerHTML = tableHtml;
+            document.getElementById('requestResultContainer').style.display = 'block';
+        }
+        
+        // 辅助函数：获取嵌套对象的值
+        function getNestedValue(obj, path) {
+            return path.split('.').reduce((current, key) => {
+                return current && current[key] !== undefined ? current[key] : '';
+            }, obj);
+        }
+        
+        // 下载结果（V2）：只传查询条件，由后端重新请求并导出，避免大 body
+        function downloadResultV2() {
+            if (!window.requestResultData) {
+                showRequestMessage('没有可下载的数据', 'error');
+                return;
+            }
+
+            // 从页面重新获取请求参数
+            const method = document.getElementById('requestMethod').value || 'GET';
+            const url = document.getElementById('requestUrl').value || '';
+            const paramsText = document.getElementById('requestParams').value || '';
+            const exportFormat = document.getElementById('exportFormat').value || 'xlsx';
+
+            if (!url) {
+                showRequestMessage('请求链接不能为空', 'error');
+                return;
+            }
+
+            // 生成文件名
+            const pathname = new URL(url, window.location.origin).pathname;
+            const filenamePart = pathname.split('/').pop() || 'data';
+            const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            const filename = `${filenamePart}_${dateStr}`;
+
+            // 仅传递必要的请求参数，由后端重新请求数据
+            const requestData = {
+                method: method,
+                url: url,
+                params: paramsText,
+                exportFormat: exportFormat,
+                filename: filename
+            };
+
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/xunfang/download_result_v2';
+            form.style.display = 'none';
+
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'data';
+            input.value = JSON.stringify(requestData);
+            form.appendChild(input);
+
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>市局基础管控中心</title>
+    <!-- 引入全局样式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <style>
+        /* 简易加载状态 */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        /* 自适应布局，保证移动端展示 */
+        @media (max-width: 768px) {
+            .stats {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+
+            .header h1 {
+                font-size: 2rem !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats {
+                grid-template-columns: 1fr !important;
+            }
+        }
+
+        /* 模块入口按钮的栅格布局 */
+        .module-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .module-button {
+            padding: 10px;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .module-button:hover,
+        .module-button:focus {
+            background: #125ea3;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        系统加载中...
+    </div>
+
+    <header class="header">
+        <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+            <div>
+                <h1>市局基础管控中心</h1>
+                <p>智慧警务 · 精准管控 · 高效协同</p>
+            </div>
+            <div>
+                <a href="{{ url_for('logout') }}" style="background:#e53935; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">退出登录</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h3>功能模块</h3>
+            {% if modules %}
+            <!-- 根据访问控制生成模块按钮 -->
+            <div class="module-grid">
+                {% for module in modules %}
+                <button class="module-button" onclick="location.href='{{ module.url }}'">
+                    {{ module.label }}
+                </button>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p>当前 IP（{{ client_ip }}）未配置显示任何模块，请联系管理员。</p>
+            {% endif %}
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>© 2025 市公安局基础管控中心 | 版本号 v1.0.0</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        // 页面加载完成后隐藏 loading
+        window.onload = function() {
+            document.getElementById('loading').style.display = 'none';
+        };
+    </script>
+</body>
+</html>

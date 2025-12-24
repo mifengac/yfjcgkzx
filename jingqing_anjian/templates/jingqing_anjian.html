@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>警情案件管理</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <style>
+        .filter-container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: end;
+            width: 100%; /* 设置为整个页面宽度 */
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .filter-group label {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .filter-group select,
+        .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            display: none;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 18px;
+        }
+        
+        .filter-group input[type="datetime-local"] {
+            padding: 7px 12px;
+        }
+        
+        .btn-search {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            width: 80px;
+            margin-left: 10px; /* 适当右移，避免挡住结束时间控件 */
+        }
+        
+        .btn-search:hover {
+            background: #1565c0;
+        }
+        
+        .btn-export {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .btn-export:hover {
+            background: #43a047;
+        }
+        
+        .time-range {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        /* 查询结果表格样式 */
+        .results-table-container {
+            overflow-x: auto;
+            width: 100%;
+        }
+        
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            table-layout: auto; /* 允许表格根据内容自动调整列宽 */
+            min-width: 100%; /* 确保表格至少占满容器宽度 */
+        }
+        
+        .results-table th,
+        .results-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            white-space: nowrap; /* 防止内容换行 */
+            font-size: 14px; /* 调整字体大小以适应更多列 */
+        }
+        
+        .results-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+            position: sticky; /* 固定表头 */
+            top: 0;
+        }
+        
+        .results-table tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .results-table tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+
+        /* 合计行样式 */
+        .results-table .total-row {
+            background-color: #e8f5e8 !important;
+            font-weight: bold;
+            border-top: 2px solid #4caf50;
+        }
+
+        .results-table .total-row td {
+            color: #2e7d32;
+            font-weight: bold;
+        }
+
+        .results-table .total-row td:first-child {
+            background-color: #4caf50;
+            color: white;
+            text-align: center;
+        }
+        
+        /* Tab导航样式 */
+        .tab-nav {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        
+        .tab-button {
+            padding: 12px 24px;
+            background: #f5f5f5;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            color: #666;
+            transition: all 0.3s ease;
+        }
+        
+        .tab-button:hover {
+            background: #e9e9e9;
+        }
+        
+        .tab-button.active {
+            background: white;
+            border-bottom-color: #1976d2;
+            color: #1976d2;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* 为小屏幕设备优化显示 */
+        @media (max-width: 768px) {
+            .results-table th,
+            .results-table td {
+                padding: 8px 10px;
+                font-size: 12px;
+            }
+            
+            .tab-nav {
+                flex-direction: column;
+            }
+            
+            .tab-button {
+                width: 100%;
+                text-align: center;
+            }
+        }
+        
+        .status-message {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .status-message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status-message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* 字段选择图标和下拉框样式 */
+        .field-selector-wrapper {
+            display: inline-block;
+            position: relative;
+            margin-right: 10px;
+        }
+
+        .field-selector-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 6px;
+        }
+
+        .field-selector-dropdown {
+            position: absolute;
+            top: 32px;
+            right: 0;
+            min-width: 220px;
+            max-height: 260px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+            padding: 10px;
+            border-radius: 4px;
+            z-index: 10000;
+        }
+
+        .field-selector-dropdown h4 {
+            margin: 0 0 8px 0;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .field-selector-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+            font-size: 12px;
+        }
+
+        .field-selector-item input {
+            margin-right: 6px;
+        }
+
+        .field-selector-actions {
+            margin-top: 8px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .field-selector-actions button {
+            padding: 3px 8px;
+            font-size: 12px;
+            border-radius: 3px;
+            border: 1px solid #ccc;
+            background: #f5f5f5;
+            cursor: pointer;
+        }
+
+        .field-selector-actions button:hover {
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        加载中...
+    </div>
+    
+    <header class="header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1>警情案件管理</h1>
+                <p>案件查询与统计分析</p>
+            </div>
+            <button onclick="window.location.href='/'"><div class="btn-back" style="background: #757575; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px;">
+                返回主页
+            </button></div>
+        </div>
+    </header>
+    
+    <main class="container" style="max-width: 100%; padding: 0 10px;">
+        <!-- Tab导航 -->
+        <section class="card">
+            <div class="tab-nav">
+                <button class="tab-button active" onclick="switchTab('stats')">案件查询与统计分析</button>
+                <button class="tab-button" onclick="switchTab('details')">警情案件详情</button>
+                <button class="tab-button" onclick="switchTab('person')">人员详情</button>
+                <button class="tab-button" onclick="switchTab('overview')">警情案件总览</button>
+            </div>
+        </section>
+        
+        <!-- 案件查询与统计分析 -->
+        <section id="stats-tab" class="tab-content active">
+            <!-- 查询条件区域 -->
+            <div class="card">
+                <h3>查询条件 - 统计分析</h3>
+                <div class="filter-container">
+                    <!-- 单选下拉框 -->
+                    <div class="filter-group">
+                        <label for="caseType">案件类型</label>
+                        <select id="caseType">
+                            <option value="">全部类型</option>
+                            <!-- 选项将通过JavaScript动态填充 -->
+                        </select>
+                    </div>
+                    
+                    <!-- 时间范围控件 -->
+                    <div class="filter-group">
+                        <label>时间范围</label>
+                        <div class="time-range">
+                            <div>
+                                <label for="startTime" style="font-size: 12px; font-weight: normal;">开始时间</label>
+                                <input type="datetime-local" id="startTime" step="1">
+                            </div>
+                            <div>
+                                <label for="endTime" style="font-size: 12px; font-weight: normal;">结束时间</label>
+                                <input type="datetime-local" id="endTime" step="1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 查询按钮 -->
+                    <div class="filter-group">
+                        <label style="visibility: hidden;">查询</label>
+                        <div>
+                            <button class="btn-search" onclick="searchCases()">查询统计</button>
+                            <button class="btn-export" onclick="exportJingqingYanpan()" style="margin-left: 10px;">导出警情研判</button>
+                        </div>
+                    </div>
+                    
+                    <!-- 同步数据按钮 -->
+                    <div class="filter-group">
+                        <label style="visibility: hidden;">同步</label>
+                        <button class="btn-export" onclick="syncData()" style="background: #FF9800;">同步数据</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 状态消息显示区域 -->
+            <div id="statusMessage" class="status-message" style="display: none;"></div>
+            <!-- 导出研判进度显示区域 -->
+            <div id="exportStatus" class="status-message" style="display: none; margin-top: 10px; max-height: 150px; overflow-y: auto; white-space: pre-line;"></div>
+            
+            <!-- 查询结果区域 -->
+            <div class="card">
+                <h3>查询结果 - 统计分析</h3>
+                <div id="searchResults">
+                    <p style="text-align: center; color: #666; padding: 40px;">
+                        请输入查询条件并点击"查询统计"按钮
+                    </p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 警情案件详情 -->
+        <section id="details-tab" class="tab-content">
+            <!-- 查询条件区域 -->
+            <div class="card">
+                <h3>查询条件 - 案件详情</h3>
+                <div class="filter-container">
+                    <!-- 单选下拉框 -->
+                    <div class="filter-group">
+                        <label for="caseTypeDetails">案件类型</label>
+                        <select id="caseTypeDetails">
+                            <option value="">全部类型</option>
+                            <!-- 选项将通过JavaScript动态填充 -->
+                        </select>
+                    </div>
+                    
+                    <!-- 时间范围控件 -->
+                    <div class="filter-group">
+                        <label>时间范围</label>
+                        <div class="time-range">
+                            <div>
+                                <label for="startTimeDetails" style="font-size: 12px; font-weight: normal;">开始时间</label>
+                                <input type="datetime-local" id="startTimeDetails" step="1">
+                            </div>
+                            <div>
+                                <label for="endTimeDetails" style="font-size: 12px; font-weight: normal;">结束时间</label>
+                                <input type="datetime-local" id="endTimeDetails" step="1">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 查询按钮 -->
+                    <div class="filter-group">
+                        <label style="visibility: hidden;">查询</label>
+                        <button class="btn-search" onclick="searchCaseDetails()" style="background: #4caf50;">查询详情</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 查询结果区域 -->
+            <div class="card">
+                <h3>查询结果 - 案件详情</h3>
+                <div id="detailsResults">
+                    <p style="text-align: center; color: #666; padding: 40px;">
+                        请输入查询条件并点击"查询详情"按钮
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 人员详情 -->
+        <section id="person-tab" class="tab-content">
+            <!-- 查询条件区域 -->
+            <div class="card">
+                <h3>查询条件 - 人员详情</h3>
+                <div class="filter-container">
+                    <!-- 单选下拉框 -->
+                    <div class="filter-group">
+                        <label for="caseTypePerson">案件类型</label>
+                        <select id="caseTypePerson">
+                            <option value="">全部类型</option>
+                        </select>
+                    </div>
+
+                    <!-- 时间范围控件 -->
+                    <div class="filter-group">
+                        <label>时间范围</label>
+                        <div class="time-range">
+                            <div>
+                                <label for="startTimePerson" style="font-size: 12px; font-weight: normal;">开始时间</label>
+                                <input type="datetime-local" id="startTimePerson" step="1">
+                            </div>
+                            <div>
+                                <label for="endTimePerson" style="font-size: 12px; font-weight: normal;">结束时间</label>
+                                <input type="datetime-local" id="endTimePerson" step="1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 查询按钮 -->
+                    <div class="filter-group">
+                        <label style="visibility: hidden;">查询</label>
+                        <button class="btn-search" onclick="searchCasePerson()" style="background: #009688;">查询人员</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 查询结果区域 -->
+            <div class="card">
+                <h3>查询结果 - 人员详情</h3>
+                <div id="personResults">
+                    <p style="text-align: center; color: #666; padding: 40px;">
+                        请输入查询条件并点击"查询人员"按钮
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 警情案件总览 -->
+        <section id="overview-tab" class="tab-content">
+            <div class="card">
+                <iframe
+                    id="jqajzl-frame"
+                    data-src="/jingqing_anjian/jqajzl"
+                    style="width: 100%; min-height: 780px; border: none;"
+                    title="警情案件总览"
+                ></iframe>
+            </div>
+        </section>
+    </main>
+    
+    <footer class="footer">
+        <p>© 2025 市公安局基础管控中心 | 版本号: v1.0.0</p>
+    </footer>
+    
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <script>
+        // 页面加载完成后的初始化
+        window.onload = function() {
+            document.getElementById('loading').style.display = 'none';
+            
+            // 设置默认时间范围为最近7天
+            const now = new Date();
+            const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            
+            document.getElementById('endTime').value = formatDateForInput(now);
+            document.getElementById('startTime').value = formatDateForInput(sevenDaysAgo);
+            document.getElementById('endTimeDetails').value = formatDateForInput(now);
+            document.getElementById('startTimeDetails').value = formatDateForInput(sevenDaysAgo);
+            const endTimePerson = document.getElementById('endTimePerson');
+            const startTimePerson = document.getElementById('startTimePerson');
+            if (endTimePerson && startTimePerson) {
+                endTimePerson.value = formatDateForInput(now);
+                startTimePerson.value = formatDateForInput(sevenDaysAgo);
+            }
+            
+            // 显示默认tab
+            switchTab('stats');
+        };
+        
+        // Tab切换功能
+        function switchTab(tabName) {
+            // 隐藏所有tab内容
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // 移除所有tab按钮的激活状态
+            const tabButtons = document.querySelectorAll('.tab-button');
+            tabButtons.forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // 显示选中的tab内容
+            document.getElementById(tabName + '-tab').classList.add('active');
+            
+            // 激活选中的tab按钮
+            const labelMap = { stats: '统计分析', details: '案件详情', person: '人员详情', overview: '警情案件总览' };
+            const activeButton = Array.from(tabButtons).find(button => 
+                button.textContent.includes(labelMap[tabName] || '')
+            );
+            if (activeButton) {
+                activeButton.classList.add('active');
+            }
+
+            if (tabName === 'overview') {
+                const iframe = document.getElementById('jqajzl-frame');
+                if (iframe && !iframe.getAttribute('src')) {
+                    iframe.setAttribute('src', iframe.getAttribute('data-src'));
+                }
+            }
+        }
+        
+        function formatDateForInput(date) {
+            return date.toISOString().slice(0, 19);
+        }
+        
+        function syncData() {
+            // 显示加载提示
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.textContent = '正在同步数据，请稍候...';
+            statusDiv.className = 'status-message success';
+            statusDiv.style.display = 'block';
+            
+            // 发送同步请求
+            fetch('/jingqing_anjian/sync_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    statusDiv.textContent = `数据同步完成！共刷新了 ${data.refreshed_views.length} 个物化视图`;
+                    statusDiv.className = 'status-message success';
+                } else {
+                    statusDiv.textContent = `数据同步失败: ${data.message}`;
+                    statusDiv.className = 'status-message error';
+                }
+            })
+            .catch(error => {
+                statusDiv.textContent = `数据同步过程中出现错误: ${error}`;
+                statusDiv.className = 'status-message error';
+            });
+        }
+
+        function exportJingqingYanpan() {
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+            const exportStatus = document.getElementById('exportStatus');
+
+            if (!startTime || !endTime) {
+                alert('请先选择开始时间和结束时间');
+                return;
+            }
+
+            if (new Date(startTime) > new Date(endTime)) {
+                alert('开始时间不能晚于结束时间');
+                return;
+            }
+
+            const loading = document.getElementById('loading');
+            if (loading) {
+                loading.style.display = 'block';
+            }
+            if (exportStatus) {
+                exportStatus.style.display = 'block';
+                exportStatus.className = 'status-message success';
+                exportStatus.textContent = '';
+                const addLine = (text) => {
+                    exportStatus.textContent += (exportStatus.textContent ? '\n' : '') + text;
+                    exportStatus.scrollTop = exportStatus.scrollHeight;
+                };
+                addLine('开始生成警情研判报告...');
+                addLine('正在从数据库读取警情数据...');
+                addLine('正在进行统计分析...');
+                addLine('正在调用LLM对每条警情进行一句话概括...');
+                addLine('正在生成Word研判报告...');
+            }
+
+            const params = new URLSearchParams();
+            params.append('start_time', startTime);
+            params.append('end_time', endTime);
+
+            fetch(`/jingqing_anjian/export_yanpan_report?${params.toString()}`, {
+                method: 'GET',
+                credentials: 'same-origin'
+            }).then(response => {
+                const contentType = response.headers.get('Content-Type') || '';
+                if (contentType.includes('application/json')) {
+                    return response.json().then(data => {
+                        if (loading) loading.style.display = 'none';
+                        if (exportStatus) {
+                            exportStatus.className = 'status-message error';
+                        }
+                        alert(data && data.message ? data.message : '导出失败，请稍后重试');
+                        throw new Error(data && data.message ? data.message : '导出失败');
+                    });
+                }
+                if (!response.ok) {
+                    if (loading) loading.style.display = 'none';
+                    if (exportStatus) {
+                        exportStatus.className = 'status-message error';
+                    }
+                    alert('导出失败，请稍后重试');
+                    throw new Error('导出失败');
+                }
+                return response.blob().then(blob => {
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    let filename = '警情研判报告.docx';
+                    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+                    if (match && match[1]) {
+                        try {
+                            filename = decodeURIComponent(match[1]);
+                        } catch (e) {
+                            filename = match[1];
+                        }
+                    }
+
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    if (loading) loading.style.display = 'none';
+                    if (exportStatus) {
+                        const addLine = (text) => {
+                            exportStatus.textContent += (exportStatus.textContent ? '\n' : '') + text;
+                            exportStatus.scrollTop = exportStatus.scrollHeight;
+                        };
+                        addLine('报告已生成，正在下载到浏览器...');
+                    }
+                });
+            }).catch(err => {
+                console.error('导出警情研判报告失败', err);
+                if (loading) loading.style.display = 'none';
+                const exportStatus = document.getElementById('exportStatus');
+                if (exportStatus) {
+                    exportStatus.className = 'status-message error';
+                    exportStatus.textContent = '导出失败，请稍后重试。';
+                }
+            });
+        }
+
+        // ---------------------------
+        // 案件统计字段选择与展示（覆盖 main.js 中的同名方法）
+        // ---------------------------
+
+        // 默认显示字段（与原 displayFields 保持一致）
+        const DEFAULT_CASE_STATS_FIELDS = [
+            "地区",
+            "原始警情",
+            "同比原始警情",
+            "环比原始警情",
+            "确认警情",
+            "同比确认警情",
+            "环比确认警情",
+            "行政案件",
+            "同比行政案件",
+            "环比行政案件",
+            "刑事案件",
+            "同比刑事案件",
+            "环比刑事案件",
+            "拘留人员",
+            "同比拘留人员",
+            "环比拘留人员",
+            "刑事拘留人员",
+            "同比刑事拘留人员",
+            "环比刑事拘留人员",
+            "未成年人案件",
+            "同比未成年案件",
+            "环比未成年案件"
+        ];
+
+        // 重新实现展示案件统计结果的函数，支持字段选择
+        function displaySearchResults(data, caseType, startTime, endTime) {
+            const resultsContainer = document.getElementById('searchResults');
+
+            // 构建查询条件说明
+            let queryInfo = `查询条件：`;
+            if (caseType) {
+                const select = document.getElementById('caseType');
+                const typeText = select.options[select.selectedIndex].text;
+                queryInfo += ` 案件类型: ${typeText}`;
+            }
+            if (startTime) queryInfo += ` 开始时间: ${formatDateTime(startTime)}`;
+            if (endTime) queryInfo += ` 结束时间: ${formatDateTime(endTime)}`;
+
+            // 保存查询参数用于导出文件名
+            window.currentQueryParams = {
+                caseType: caseType,
+                caseTypeText: caseType ? document.getElementById('caseType').options[document.getElementById('caseType').selectedIndex].text : '全部类型',
+                startTime: startTime,
+                endTime: endTime
+            };
+
+            // 保存原始数据和全部字段
+            const allFields = (data && data.length > 0) ? Object.keys(data[0]) : [];
+            window.caseStatsAllFields = allFields;
+            if (!window.caseStatsSelectedFields || !Array.isArray(window.caseStatsSelectedFields) || window.caseStatsSelectedFields.length === 0) {
+                // 首次使用时，默认显示原来配置的字段；如果接口返回没有这些字段，则退回到 allFields
+                const defaultFields = DEFAULT_CASE_STATS_FIELDS.filter(f => allFields.includes(f));
+                window.caseStatsSelectedFields = defaultFields.length > 0 ? defaultFields : allFields.slice();
+            } else {
+                // 已有选择时，过滤掉已不存在的字段
+                window.caseStatsSelectedFields = window.caseStatsSelectedFields.filter(f => allFields.includes(f));
+                if (window.caseStatsSelectedFields.length === 0) {
+                    window.caseStatsSelectedFields = allFields.slice();
+                }
+            }
+            window.caseStatsRawData = data || [];
+
+            if (!data || data.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div style="background: #f0f8ff; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+                        <strong>${queryInfo}</strong>
+                    </div>
+                    <p style="text-align: center; color: #666; padding: 40px;">
+                        未找到相关记录
+                    </p>
+                `;
+                return;
+            }
+
+            // 渲染表头区域（包含字段选择图标和导出按钮）
+            const selectedFields = window.caseStatsSelectedFields;
+            let tableHtml = `
+                <div style="background: #f0f8ff; padding: 15px; border-radius: 4px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>${queryInfo}</strong>
+                    </div>
+                    <div style="display: flex; align-items: center;">
+                        <div class="field-selector-wrapper">
+                            <div class="field-selector-icon" onclick="toggleFieldSelector()"
+                                 title="选择要显示的字段">☰</div>
+                            <div id="fieldSelectorDropdown" class="field-selector-dropdown" style="display: none;">
+                                <h4>选择要显示的字段：</h4>
+            `;
+
+            allFields.forEach(field => {
+                const checked = selectedFields.includes(field) ? 'checked' : '';
+                tableHtml += `
+                    <div class="field-selector-item">
+                        <input type="checkbox" data-field="${field}" ${checked} onchange="onCaseFieldToggle(this)">
+                        <span>${field}</span>
+                    </div>
+                `;
+            });
+
+            tableHtml += `
+                                <div class="field-selector-actions">
+                                    <button type="button" onclick="selectAllCaseFields()">全选</button>
+                                    <button type="button" onclick="invertCaseFields()">反选</button>
+                                    <button type="button" onclick="applyCaseFieldSelection()">确定</button>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn-export" onclick="exportToCSV()">导出CSV</button>
+                    </div>
+                </div>
+                <div class="results-table-container">
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+            `;
+
+            const finalFields = selectedFields.filter(f => allFields.includes(f));
+            finalFields.forEach(field => {
+                tableHtml += `<th>${field}</th>`;
+            });
+
+            tableHtml += `
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            // 数据行
+            data.forEach(item => {
+                tableHtml += `<tr>`;
+                finalFields.forEach(field => {
+                    const value = item[field];
+                    const displayValue = (value === null || value === undefined || value === '') ? '0' : value;
+                    tableHtml += `<td>${displayValue}</td>`;
+                });
+                tableHtml += `</tr>`;
+            });
+
+            // 合计行
+            const totals = typeof calculateTotals === 'function' ? calculateTotals(data, finalFields) : null;
+            if (totals) {
+                tableHtml += `<tr class="total-row">`;
+                finalFields.forEach((field, idx) => {
+                    if (idx === 0) {
+                        tableHtml += `<td>合计</td>`;
+                    } else {
+                        const val = totals[field];
+                        tableHtml += `<td>${(val === null || val === undefined || isNaN(val)) ? '' : val}</td>`;
+                    }
+                });
+                tableHtml += `</tr>`;
+            }
+
+            tableHtml += `
+                        </tbody>
+                    </table>
+                    <p style="text-align: center; color: #4caf50; padding: 10px;">
+                        查询成功！找到 ${data.length} 条相关记录
+                    </p>
+                </div>
+            `;
+
+            resultsContainer.innerHTML = tableHtml;
+        }
+
+        // 显示/隐藏字段选择下拉框
+        function toggleFieldSelector() {
+            const dropdown = document.getElementById('fieldSelectorDropdown');
+            if (!dropdown) return;
+            dropdown.style.display = dropdown.style.display === 'none' || dropdown.style.display === '' ? 'block' : 'none';
+        }
+
+        // 勾选/取消勾选单个字段
+        function onCaseFieldToggle(checkbox) {
+            const field = checkbox.getAttribute('data-field');
+            if (!field || !window.caseStatsAllFields) return;
+            if (!window.caseStatsSelectedFields) {
+                window.caseStatsSelectedFields = [];
+            }
+            if (checkbox.checked) {
+                if (!window.caseStatsSelectedFields.includes(field)) {
+                    window.caseStatsSelectedFields.push(field);
+                }
+            } else {
+                window.caseStatsSelectedFields = window.caseStatsSelectedFields.filter(f => f !== field);
+            }
+        }
+
+        // 全选所有字段
+        function selectAllCaseFields() {
+            const allFields = window.caseStatsAllFields || [];
+            window.caseStatsSelectedFields = allFields.slice();
+            const dropdown = document.getElementById('fieldSelectorDropdown');
+            if (!dropdown) return;
+            dropdown.querySelectorAll('input[type="checkbox"][data-field]').forEach(cb => {
+                cb.checked = true;
+            });
+        }
+
+        // 反选字段
+        function invertCaseFields() {
+            const allFields = window.caseStatsAllFields || [];
+            const dropdown = document.getElementById('fieldSelectorDropdown');
+            if (!dropdown) return;
+            const selected = new Set(window.caseStatsSelectedFields || []);
+            const newSelected = [];
+            dropdown.querySelectorAll('input[type="checkbox"][data-field]').forEach(cb => {
+                const field = cb.getAttribute('data-field');
+                if (!field) return;
+                const nowChecked = !cb.checked;
+                cb.checked = nowChecked;
+                if (nowChecked) {
+                    newSelected.push(field);
+                }
+            });
+            window.caseStatsSelectedFields = newSelected.length > 0 ? newSelected : allFields.slice();
+        }
+
+        // 确认字段选择并刷新表格
+        function applyCaseFieldSelection() {
+            const dropdown = document.getElementById('fieldSelectorDropdown');
+            if (dropdown) dropdown.style.display = 'none';
+            if (window.caseStatsRawData) {
+                // 重新渲染结果区域，保持原来的查询条件
+                const params = window.currentQueryParams || {};
+                displaySearchResults(window.caseStatsRawData, params.caseType, params.startTime, params.endTime);
+            }
+        }
+
+        // 覆盖导出函数，使用当前选择的字段导出 CSV
+        function exportToCSV() {
+            const data = window.caseStatsRawData || [];
+            const selectedFields = window.caseStatsSelectedFields || [];
+            if (!data.length || !selectedFields.length) {
+                alert('没有可导出的数据');
+                return;
+            }
+
+            // 构建 CSV 内容
+            let csvContent = '';
+            csvContent += selectedFields.join(',') + '\n';
+
+            data.forEach(item => {
+                const row = selectedFields.map(field => {
+                    const value = item[field];
+                    const text = (value === null || value === undefined || value === '') ? '0' : String(value).replace(/"/g, '""');
+                    return `"${text}"`;
+                }).join(',');
+                csvContent += row + '\n';
+            });
+
+            // 文件名使用原有逻辑（案件类型 + 时间范围）
+            const params = window.currentQueryParams || {};
+            const fileCaseType = params.caseTypeText || '全部类型';
+            const start = params.startTime ? formatDateTimeForFilename(params.startTime) : '';
+            const end = params.endTime ? formatDateTimeForFilename(params.endTime) : '';
+            const timeRange = (start || end) ? `${start}_${end}` : '全部时间';
+            const fileName = `统计分析_${timeRange}_${fileCaseType}.csv`;
+
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
