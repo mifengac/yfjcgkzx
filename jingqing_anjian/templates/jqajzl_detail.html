@@ -9,7 +9,7 @@
 
     <style>
         .detail-container {
-            padding: 10px;
+            padding: 10px 10px 26px;
         }
 
         .detail-header {
@@ -68,7 +68,7 @@
         }
 
         .results-table-container {
-            overflow-x: auto;
+            overflow-x: hidden;
             width: 100%;
         }
 
@@ -118,13 +118,17 @@
         }
 
         .horizontal-scroll {
-            margin-top: 8px;
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
             height: 12px;
             overflow-x: auto;
             overflow-y: hidden;
             background: #f0f0f0;
             border: 1px solid #e0e0e0;
             border-radius: 6px;
+            z-index: 2000;
         }
 
         .horizontal-scroll-inner {
@@ -152,9 +156,10 @@
                 正在加载明细数据...
             </p>
         </div>
-        <div id="jqajzlDetailScroll" class="horizontal-scroll">
-            <div id="jqajzlDetailScrollInner" class="horizontal-scroll-inner"></div>
-        </div>
+    </div>
+
+    <div id="jqajzlDetailScroll" class="horizontal-scroll">
+        <div id="jqajzlDetailScrollInner" class="horizontal-scroll-inner"></div>
     </div>
 
     <script>

@@ -21,10 +21,19 @@ WITH base_jq AS (
             jq.casemarkok,
             jq.leixing
         FROM ywdata.v_jq_optimized jq
+        WHERE 1=1
+{base_filters}
         ),
         aj AS (
-        SELECT *
-        FROM ywdata.mv_zfba_all_ajxx
+        SELECT a.*
+        FROM ywdata.mv_zfba_all_ajxx a
+        JOIN base_jq b
+        ON b.caseno = a."警情编号"
+        ),
+        aj_ids AS (
+        SELECT DISTINCT a."案件编号"
+        FROM aj a
+        WHERE a."案件编号" IS NOT NULL
         ),
         ry_agg AS (
         SELECT
@@ -34,6 +43,8 @@ WITH base_jq AS (
             ';'
             ) AS ry_list
         FROM ywdata.zfba_ry_002 r
+        JOIN aj_ids a
+        ON a."案件编号" = r.asjbh
         GROUP BY r.asjbh
         ),
         ws_agg AS (
@@ -47,16 +58,20 @@ WITH base_jq AS (
             count(*) FILTER (WHERE w.flws_zlmc LIKE '%%起诉意见书%%') AS qisu_cnt,
             count(*) FILTER (WHERE w.flws_dxlxdm = '01' AND w.flws_zlmc LIKE '%%起诉意见书%%') AS yisong_cnt
         FROM ywdata.zfba_ws_001 w
+        JOIN aj_ids a
+        ON a."案件编号" = w.asjbh
         WHERE w.flws_lzztdm = '04'
         GROUP BY w.asjbh
         ),
         aj009_agg AS (
         SELECT
             a.asjbh,
-            count(*) FILTER (WHERE a.jlts > 0) AS jvliu_cnt,
-            count(*) FILTER (WHERE a.fk > 0) AS fakuan_cnt,
-            count(*) FILTER (WHERE a.sfjg::NUMERIC > 0) AS jinggao_cnt
+            count(*) FILTER (WHERE a.jlts::text ~ '^[0-9]+$' AND a.jlts::NUMERIC > 0) AS jvliu_cnt,
+            count(*) FILTER (WHERE a.fk::text ~ '^[0-9]+$' AND a.fk::NUMERIC > 0) AS fakuan_cnt,
+            count(*) FILTER (WHERE a.sfjg::text ~ '^[0-9]+$' AND a.sfjg::NUMERIC > 0) AS jinggao_cnt
         FROM ywdata.zfba_aj_009 a
+        JOIN aj_ids aj
+        ON aj."案件编号" = a.asjbh
         GROUP BY a.asjbh
         )
         SELECT
@@ -96,6 +111,7 @@ WITH base_jq AS (
         ON a."案件编号" = a9.asjbh
 WHERE 1=1
 """
+
 
 
 DETAIL_COLUMNS = [
@@ -160,16 +176,18 @@ class JqajzlService:
         status_name: Optional[str],
         require_case: bool,
     ) -> Tuple[str, List[object]]:
-        sql = BASE_SQL
         params: List[object] = []
-
-        if case_types:
-            sql += " AND b.leixing = ANY(%s)"
-            params.append(list(case_types))
+        base_filters = ""
 
         if start_time and end_time:
-            sql += " AND b.calltime BETWEEN %s AND %s"
+            base_filters += " AND jq.calltime BETWEEN %s AND %s"
             params.extend([start_time, end_time])
+
+        if case_types:
+            base_filters += " AND jq.leixing = ANY(%s)"
+            params.append(list(case_types))
+
+        sql = BASE_SQL.format(base_filters=base_filters)
 
         if region:
             sql += " AND b.cmdname = %s"
