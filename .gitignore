@@ -1,4 +1,16 @@
-﻿.env
+.env
 .venv
 __pycache__/
 *.pyc
+
+# Office 临时/备份文件
+*.doc
+~$*.docx
+~$*.xlsx
+*.bak.docx
+* copy.docx
+__test_out_*.docx
+
+# 不上传的模板/附件（按需求）
+jingqing_anjian/templates/biaochezhajie_ribao.docx
+jingqing_anjian/templates/biaochezhajieribao_fujian.xlsx

@@ -365,6 +365,7 @@
                         <label style="visibility: hidden;">查询</label>
                         <div>
                             <button class="btn-search" onclick="searchCases()">查询统计</button>
+                            <button class="btn-export" onclick="triggerBiaochezhajieUpload()" style="margin-left: 10px;">导出飙车炸街</button>
                             <button class="btn-export" onclick="exportJingqingYanpan()" style="margin-left: 10px;">导出警情研判</button>
                         </div>
                     </div>
@@ -381,6 +382,9 @@
             <div id="statusMessage" class="status-message" style="display: none;"></div>
             <!-- 导出研判进度显示区域 -->
             <div id="exportStatus" class="status-message" style="display: none; margin-top: 10px; max-height: 150px; overflow-y: auto; white-space: pre-line;"></div>
+
+            <!-- 导出飙车炸街：隐藏上传控件 -->
+            <input id="biaochezhajieFileInput" type="file" accept=".xlsx" style="display:none;" />
             
             <!-- 查询结果区域 -->
             <div class="card">
@@ -702,6 +706,109 @@
                 }
             });
         }
+
+        function triggerBiaochezhajieUpload() {
+            const input = document.getElementById('biaochezhajieFileInput');
+            if (!input) return;
+            input.value = '';
+            input.click();
+        }
+
+        async function exportBiaochezhajie(file) {
+            if (!file) return;
+            const name = (file.name || '').toLowerCase();
+            if (!name.endsWith('.xlsx')) {
+                alert('请上传xlsx文件');
+                return;
+            }
+
+            const loading = document.getElementById('loading');
+            const exportStatus = document.getElementById('exportStatus');
+
+            if (loading) loading.style.display = 'block';
+            if (exportStatus) {
+                exportStatus.style.display = 'block';
+                exportStatus.className = 'status-message success';
+                exportStatus.textContent = '开始生成飙车炸街日报...';
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch('/jingqing_anjian/export_biaochezhajie_report', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin'
+                });
+
+                const contentType = response.headers.get('Content-Type') || '';
+                if (contentType.includes('application/json')) {
+                    const data = await response.json();
+                    if (exportStatus) exportStatus.className = 'status-message error';
+                    alert(data && data.message ? data.message : '导出失败，请稍后重试');
+                    return;
+                }
+
+                if (!response.ok) {
+                    if (exportStatus) exportStatus.className = 'status-message error';
+                    alert('导出失败，请稍后重试');
+                    return;
+                }
+
+                const blob = await response.blob();
+                const disposition = response.headers.get('Content-Disposition') || '';
+                let filename = '飙车炸街日报.docx';
+
+                const matchStar = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+                if (matchStar && matchStar[1]) {
+                    try {
+                        filename = decodeURIComponent(matchStar[1]);
+                    } catch (e) {
+                        filename = matchStar[1];
+                    }
+                } else {
+                    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+                    if (match && match[1]) {
+                        try {
+                            filename = decodeURIComponent(match[1]);
+                        } catch (e) {
+                            filename = match[1];
+                        }
+                    }
+                }
+
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                if (exportStatus) {
+                    exportStatus.textContent = '日报已生成，正在下载到浏览器...';
+                }
+            } catch (err) {
+                console.error('导出飙车炸街日报失败', err);
+                if (exportStatus) {
+                    exportStatus.className = 'status-message error';
+                    exportStatus.textContent = '导出失败，请稍后重试。';
+                }
+            } finally {
+                if (loading) loading.style.display = 'none';
+            }
+        }
+
+        (function bindBiaochezhajieUpload() {
+            const input = document.getElementById('biaochezhajieFileInput');
+            if (!input) return;
+            input.addEventListener('change', function () {
+                const file = input.files && input.files[0] ? input.files[0] : null;
+                exportBiaochezhajie(file);
+            });
+        })();
 
         // ---------------------------
         // 案件统计字段选择与展示（覆盖 main.js 中的同名方法）

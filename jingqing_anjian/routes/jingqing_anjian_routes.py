@@ -22,9 +22,11 @@ from flask import (
     send_file,
     current_app,
 )
+from urllib.parse import quote
 
 from jingqing_anjian.service.case_service import CaseService
 from jingqing_anjian.service.jingqing_yanpan_service import generate_yanpan_report
+from jingqing_anjian.service.biaochezhajie_service import generate_biaochezhajie_report
 from jingqing_anjian.service.jqajzl_service import JqajzlService
 from gonggong.config.database import execute_query, get_database_connection
 
@@ -433,6 +435,73 @@ def export_yanpan_report():
             400,
         )
 
+
+@jingqing_anjian_bp.route("/export_biaochezhajie_report", methods=["POST"])
+def export_biaochezhajie_report():
+    """
+    导出飙车炸街日报（docx）。
+
+    前端上传 xlsx 附件后：
+    - 校验必须为 xlsx
+    - 读取第一个 sheet 的单元格作为模板变量（如 {{B7}}）
+    - 对 C/K/L/N/R/U/V 列进行“上升/下降/持平”清洗
+    - 使用 biaochezhajie_ribao.docx 渲染并下载
+    """
+    upload = request.files.get("file")
+    if upload is None:
+        return jsonify({"success": False, "message": "请先上传xlsx文件"}), 400
+
+    filename = (upload.filename or "").strip()
+    if not filename.lower().endswith(".xlsx"):
+        return jsonify({"success": False, "message": "请上传xlsx文件"}), 400
+
+    try:
+        template_path = (
+            Path(current_app.root_path)
+            / "jingqing_anjian"
+            / "templates"
+            / "biaochezhajie_ribao.docx"
+        )
+        xlsx_bytes = upload.read()
+        result = generate_biaochezhajie_report(xlsx_bytes, template_path)
+
+        buffer = io.BytesIO(result.content)
+        buffer.seek(0)
+
+        response = send_file(
+            buffer,
+            as_attachment=True,
+            download_name=result.filename,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        ascii_fallback = "biaochezhajie_report.docx"
+        response.headers["Content-Disposition"] = (
+            f'attachment; filename="{ascii_fallback}"; '
+            f"filename*=UTF-8''{quote(result.filename)}"
+        )
+        return response
+    except FileNotFoundError as exc:
+        logging.error("导出飙车炸街日报失败，模板缺失: %s", exc)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "模板文件不存在，请联系管理员配置 biaochezhajie_ribao.docx",
+                }
+            ),
+            500,
+        )
+    except Exception as exc:
+        logging.exception("导出飙车炸街日报时发生异常: %s", exc)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": f"生成飙车炸街日报失败: {exc}",
+                }
+            ),
+            500,
+        )
     try:
         template_path = (
             Path(current_app.root_path)

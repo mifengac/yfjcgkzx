@@ -12,11 +12,11 @@ except Exception:
 
 # 数据库连接配置
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', '127.0.0.1'),
-    'port': int(os.getenv('DB_PORT', '54321')),  # 人大金仓默认端口
-    'database': os.getenv('DB_NAME', 'yfywk'),
-    'user': os.getenv('DB_USER', 'ywkuser'),
-    'password': os.getenv('DB_PASSWORD', 'ywkuser_2025'),
+    'host': os.getenv('DB_HOST'),
+    'port': int(os.getenv('DB_PORT')),  # 人大金仓默认端口
+    'database': os.getenv('DB_NAME'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
     'schema': os.getenv('DB_SCHEMA', 'ywdata')
 }
 
