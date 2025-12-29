@@ -51,12 +51,12 @@ WITH base_jq AS (
         SELECT
             w.asjbh,
             json_agg(
-            json_build_object('name', w.flws_zlmc, 'url', w.flwslldz)
+            json_build_object('name', w.flws_bt, 'url', w.flwslldz)
             ORDER BY w.wsywxxid
             ) AS ws_json_list,
             count(*) FILTER (WHERE w.flws_zlmc LIKE '%%逮捕申请%%') AS daibu_cnt,
             count(*) FILTER (WHERE w.flws_zlmc LIKE '%%起诉意见书%%') AS qisu_cnt,
-            count(*) FILTER (WHERE w.flws_dxlxdm = '01' AND w.flws_zlmc LIKE '%%起诉意见书%%') AS yisong_cnt
+            count(*) FILTER (WHERE w.flws_dxlxdm = '01' AND w.flws_zlmc LIKE '%%移送%%') AS yisong_cnt
         FROM ywdata.zfba_ws_001 w
         JOIN aj_ids a
         ON a."案件编号" = w.asjbh

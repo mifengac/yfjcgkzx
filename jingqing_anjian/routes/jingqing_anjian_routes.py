@@ -365,12 +365,11 @@ def export_jqajzl_detail():
 def sync_data():
     """同步数据库物化视图。"""
     materialized_views = [
-        "mv_zfba_ajxx",
         "mv_zfba_all_ajxx",
         "mv_zfba_jlzxx",
         "mv_zfba_xzcfjdsxx",
-        "mv_zfba_jiemiansanlei_ajxx",
         "mv_minor_person",
+        "mv_zfba_wenshu",
     ]
 
     try:
@@ -434,7 +433,69 @@ def export_yanpan_report():
             ),
             400,
         )
+    try:
+        template_path = (
+            Path(current_app.root_path)
+            / "jingqing_anjian"
+            / "templates"
+            / "template.docx"
+        )
+        result = generate_yanpan_report(start_time, end_time, template_path)
 
+        buffer = io.BytesIO(result.content)
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=result.filename,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+    except RuntimeError as exc:
+        # 大模型服务不可用等情况
+        logging.warning("导出警情研判报告的大模型服务错误: %s", exc)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "请启动大模型服务！",
+                }
+            ),
+            400,
+        )
+    except FileNotFoundError as exc:
+        logging.error("导出警情研判报告失败，模板缺失: %s", exc)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "模板文件不存在，请联系管理员配置 template.docx",
+                }
+            ),
+            500,
+        )
+    except ValueError as exc:
+        logging.warning("导出警情研判报告参数或数据错误: %s", exc)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": str(exc),
+                }
+            ),
+            400,
+        )
+    except Exception as exc:  # pragma: no cover - 兜底
+        logging.exception("导出警情研判报告时发生异常: %s", exc)
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": f"生成警情研判报告失败: {exc}",
+                }
+            ),
+            500,
+        )
 
 @jingqing_anjian_bp.route("/export_biaochezhajie_report", methods=["POST"])
 def export_biaochezhajie_report():
@@ -502,66 +563,4 @@ def export_biaochezhajie_report():
             ),
             500,
         )
-    try:
-        template_path = (
-            Path(current_app.root_path)
-            / "jingqing_anjian"
-            / "templates"
-            / "template.docx"
-        )
-        result = generate_yanpan_report(start_time, end_time, template_path)
-
-        buffer = io.BytesIO(result.content)
-        buffer.seek(0)
-
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name=result.filename,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-    except RuntimeError as exc:
-        # 大模型服务不可用等情况
-        logging.warning("导出警情研判报告的大模型服务错误: %s", exc)
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "请启动大模型服务！",
-                }
-            ),
-            400,
-        )
-    except FileNotFoundError as exc:
-        logging.error("导出警情研判报告失败，模板缺失: %s", exc)
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": "模板文件不存在，请联系管理员配置 template.docx",
-                }
-            ),
-            500,
-        )
-    except ValueError as exc:
-        logging.warning("导出警情研判报告参数或数据错误: %s", exc)
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": str(exc),
-                }
-            ),
-            400,
-        )
-    except Exception as exc:  # pragma: no cover - 兜底
-        logging.exception("导出警情研判报告时发生异常: %s", exc)
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "message": f"生成警情研判报告失败: {exc}",
-                }
-            ),
-            500,
-        )
+    
