@@ -563,4 +563,13 @@ def export_biaochezhajie_report():
             ),
             500,
         )
-    
+
+
+# ---------------------------------------------------------------------------
+# 注册子蓝图：警情案件处罚查询与统计
+# ---------------------------------------------------------------------------
+from jingqing_anjian.routes.jqaj_jqajcfcxytj_routes import jqajcfcxytj_bp
+
+# 使用 Flask 的蓝图层级注册功能
+jingqing_anjian_bp.register_blueprint(jqajcfcxytj_bp)
+
