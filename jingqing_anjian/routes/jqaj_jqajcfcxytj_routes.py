@@ -205,6 +205,8 @@ def get_detail():
                 "message": "缺少地区参数"
             }), 400
 
+        # 地区代码为 "all" 时表示查询所有地区，不过滤
+
         columns, data = service.get_detail_data(kssj, jssj, leixing, click_field, region_code)
 
         return jsonify({

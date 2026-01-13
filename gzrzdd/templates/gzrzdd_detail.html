@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重复工作日志详情</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .card { background: #fff; padding: 16px; border-radius: 10px; margin-bottom: 16px; box-shadow: 0 6px 22px rgba(18,38,63,.06); border: 1px solid #e6e8ef; }
+        .toolbar { display:flex; justify-content:space-between; align-items:center; margin: 10px 0; }
+        .muted { color:#666; font-size: 12px; }
+        .btn { height: 34px; border: 0; border-radius: 8px; background: #1976d2; color:#fff; padding: 0 14px; font-weight: 600; cursor: pointer; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display:none; position:absolute; right:0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; min-width:140px; box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index: 20; }
+        .dropdown-menu a { display:block; padding:10px 12px; color:#111; text-decoration:none; font-size:13px; }
+        .dropdown-menu a:hover { background:#f3f5fb; }
+        .dropdown.open .dropdown-menu { display:block; }
+        .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #eef0f6; padding: 10px 12px; font-size: 13px; text-align: left; }
+        th { position: sticky; top: 0; background: #fbfcff; }
+        .err { color: #b42318; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+<header class="header">
+    <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+        <div>
+            <h1 style="margin:0;">重复工作日志详情</h1>
+            <p style="margin:6px 0 0 0;" id="subtitle">加载中...</p>
+        </div>
+        <div>
+            <a href="{{ url_for('gzrzdd.index') }}" style="background:#555; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">返回</a>
+        </div>
+    </div>
+</header>
+
+<main class="container" style="max-width:1200px;">
+    <div class="toolbar">
+        <div class="muted" id="status"></div>
+        <div class="dropdown" id="dd">
+            <button class="btn" id="exportBtn">导出</button>
+            <div class="dropdown-menu">
+                <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                <a href="#" data-fmt="csv">导出 csv</a>
+            </div>
+        </div>
+    </div>
+
+    <section class="card">
+        <div id="err" class="err"></div>
+        <div class="table-wrap">
+            <table id="tbl"></table>
+        </div>
+    </section>
+</main>
+
+<script src="{{ url_for('static', filename='js/gzrzdd_detail.js') }}"></script>
+</body>
+</html>
+

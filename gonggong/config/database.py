@@ -12,7 +12,7 @@ except Exception:
 
 # 数据库连接配置
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST','127.0.0.1'),
+    'host': os.getenv('DB_HOST','68.252.130.51'),
     'port': int(os.getenv('DB_PORT')),  # 人大金仓默认端口
     'database': os.getenv('DB_NAME'),
     'user': os.getenv('DB_USER'),
@@ -56,8 +56,10 @@ def execute_query(query: str, params: tuple = None):
         cursor = connection.cursor()
 
         if params:
+            print(query)
             cursor.execute(query, params)
         else:
+            print(query)
             cursor.execute(query)
 
         results = cursor.fetchall()

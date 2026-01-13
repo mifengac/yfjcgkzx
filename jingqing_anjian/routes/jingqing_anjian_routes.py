@@ -510,11 +510,11 @@ def export_biaochezhajie_report():
     """
     upload = request.files.get("file")
     if upload is None:
-        return jsonify({"success": False, "message": "请先上传xlsx文件"}), 400
+        return jsonify({"success": False, "message": "请先上传Excel文件"}), 400
 
     filename = (upload.filename or "").strip()
-    if not filename.lower().endswith(".xlsx"):
-        return jsonify({"success": False, "message": "请上传xlsx文件"}), 400
+    if not (filename.lower().endswith(".xlsx") or filename.lower().endswith(".xls")):
+        return jsonify({"success": False, "message": "请上传xlsx或xls文件"}), 400
 
     try:
         template_path = (
@@ -523,8 +523,8 @@ def export_biaochezhajie_report():
             / "templates"
             / "biaochezhajie_ribao.docx"
         )
-        xlsx_bytes = upload.read()
-        result = generate_biaochezhajie_report(xlsx_bytes, template_path)
+        file_bytes = upload.read()
+        result = generate_biaochezhajie_report(file_bytes, filename, template_path)
 
         buffer = io.BytesIO(result.content)
         buffer.seek(0)

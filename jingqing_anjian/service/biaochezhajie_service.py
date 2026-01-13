@@ -9,6 +9,7 @@ import io
 from docxtpl import DocxTemplate
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_boundaries
+import pandas as pd
 import re
 
 
@@ -146,7 +147,7 @@ def _build_result_text(ws, context: Dict[str, Any]) -> Dict[str, str]:
     result4_segments = []
     for r in rows:
         result4_segments.append(
-            f"{cell_text(f'A{r}')}{cell_text(f'H{r}')}条,查处比值{cell_text(f'I{r}')},万人查处比{cell_text(f'F{r}')},人均查处{cell_text(f'G{r}')}"
+            f"{cell_text(f'A{r}')}{cell_text(f'H{r}')}条,查处比值{cell_text(f'I{r}')},万人查处比{cell_text(f'F{r}')},人均查处{cell_text(f'G{r}')}起"
         )
 
     result5_segments = []
@@ -175,14 +176,116 @@ def _build_result_text(ws, context: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
+def _load_worksheet_from_bytes(file_bytes: bytes, filename: str):
+    """
+    根据文件扩展名选择合适的库读取 Excel 文件。
+
+    支持 .xlsx (openpyxl) 和 .xls (pandas + xlrd) 格式。
+    返回一个与 openpyxl worksheet 兼容的对象，至少需要以下属性:
+    - iter_rows(): 遍历行
+    - calculate_dimension(): 返回范围
+    - 以及 cell 对象需要: value, coordinate, column_letter, number_format
+    """
+    is_xls = filename.lower().endswith(".xls")
+
+    if is_xls:
+        # 使用 pandas 读取 .xls 文件
+        df = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0, header=None, engine="xlrd")
+
+        class XlsCell:
+            """模拟 openpyxl 的 Cell 对象"""
+            def __init__(self, value, row_idx, col_idx):
+                self.value = value
+                self.row = row_idx
+                self.column = col_idx
+                self.coordinate = f"{_col_number_to_letter(col_idx)}{row_idx}"
+                self.column_letter = _col_number_to_letter(col_idx)
+                self.number_format = ""
+
+        class XlsWorksheet:
+            """模拟 openpyxl 的 Worksheet 对象"""
+            def __init__(self, df):
+                self.df = df
+                self.max_row = len(df)
+                self.max_column = len(df.columns) if len(df.columns) > 0 else 1
+
+            def calculate_dimension(self):
+                return f"A1:{_col_number_to_letter(self.max_column)}{self.max_row}"
+
+            def __getitem__(self, key):
+                """支持单元格坐标访问，如 ws['A1']"""
+                # 解析坐标，如 "A1" -> col=A, row=1
+                match = re.match(r"([A-Z]+)(\d+)", str(key))
+                if not match:
+                    raise KeyError(f"Invalid cell coordinate: {key}")
+
+                col_letters = match.group(1)
+                row_idx = int(match.group(2))
+                col_idx = _letter_to_col_number(col_letters)
+
+                # 获取单元格值
+                df_row_idx = row_idx - 1
+                df_col_idx = col_idx - 1
+                value = None
+                if 0 <= df_row_idx < len(self.df) and 0 <= df_col_idx < len(self.df.columns):
+                    val = self.df.iloc[df_row_idx, df_col_idx]
+                    if pd.notna(val):
+                        value = val
+
+                return XlsCell(value, row_idx, col_idx)
+
+            def iter_rows(self, min_row=None, max_row=None, min_col=None, max_col=None):
+                min_row = min_row or 1
+                max_row = max_row or self.max_row
+                min_col = min_col or 1
+                max_col = max_col or self.max_column
+
+                for row_idx in range(min_row, max_row + 1):
+                    row_cells = []
+                    for col_idx in range(min_col, max_col + 1):
+                        df_row_idx = row_idx - 1
+                        df_col_idx = col_idx - 1
+                        value = None
+                        if 0 <= df_row_idx < len(self.df) and 0 <= df_col_idx < len(self.df.columns):
+                            val = self.df.iloc[df_row_idx, df_col_idx]
+                            # 处理 pandas 的 NaN 值
+                            if pd.notna(val):
+                                value = val
+                        row_cells.append(XlsCell(value, row_idx, col_idx))
+                    yield row_cells
+
+        return XlsWorksheet(df)
+    else:
+        # 使用 openpyxl 读取 .xlsx 文件
+        wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
+        return wb.worksheets[0]
+
+
+def _col_number_to_letter(col_num: int) -> str:
+    """将列号转换为字母（如 1 -> A, 27 -> AA）"""
+    result = ""
+    while col_num > 0:
+        col_num -= 1
+        result = chr(col_num % 26 + ord('A')) + result
+        col_num //= 26
+    return result
+
+
+def _letter_to_col_number(letters: str) -> int:
+    """将列字母转换为列号（如 A -> 1, AA -> 27）"""
+    result = 0
+    for char in letters:
+        result = result * 26 + (ord(char) - ord('A') + 1)
+    return result
+
+
 def generate_biaochezhajie_report(
-    xlsx_bytes: bytes, template_path: Path, today: Optional[datetime] = None
+    file_bytes: bytes, filename: str, template_path: Path, today: Optional[datetime] = None
 ) -> BiaochezhajieReportResult:
     if today is None:
         today = datetime.now()
 
-    wb = load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
-    ws = wb.worksheets[0]
+    ws = _load_worksheet_from_bytes(file_bytes, filename)
 
     context: Dict[str, Any] = {}
     context["time"] = _format_date_cn(today)

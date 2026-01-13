@@ -385,7 +385,7 @@
             <div id="exportStatus" class="status-message" style="display: none; margin-top: 10px; max-height: 150px; overflow-y: auto; white-space: pre-line;"></div>
 
             <!-- 导出飙车炸街：隐藏上传控件 -->
-            <input id="biaochezhajieFileInput" type="file" accept=".xlsx" style="display:none;" />
+            <input id="biaochezhajieFileInput" type="file" accept=".xlsx,.xls" style="display:none;" />
             
             <!-- 查询结果区域 -->
             <div class="card">
@@ -737,8 +737,8 @@
         async function exportBiaochezhajie(file) {
             if (!file) return;
             const name = (file.name || '').toLowerCase();
-            if (!name.endsWith('.xlsx')) {
-                alert('请上传xlsx文件');
+            if (!name.endsWith('.xlsx') && !name.endsWith('.xls')) {
+                alert('请上传xlsx或xls文件');
                 return;
             }
 

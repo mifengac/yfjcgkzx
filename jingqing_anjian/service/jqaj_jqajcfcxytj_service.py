@@ -312,7 +312,7 @@ class JqajcfcxytjService:
             jssj: 结束时间
             leixing_list: 警情类型列表
             click_field: 点击的字段名
-            region_code: 地区代码
+            region_code: 地区代码，"all" 表示不过滤地区
 
         Returns:
             tuple: (columns, data) 字段列表和数据列表
@@ -327,8 +327,11 @@ class JqajcfcxytjService:
                 query_kssj, query_jssj = kssj, jssj
 
             jingqings = self.dao.get_jingqings(query_kssj, query_jssj, leixing_list)
-            # 过滤地区
-            filtered = [jq for jq in jingqings if str(jq.get('diqu', '')) == region_code]
+            # 过滤地区（"all" 表示不过滤，查询所有地区）
+            if region_code == 'all':
+                filtered = jingqings
+            else:
+                filtered = [jq for jq in jingqings if str(jq.get('diqu', '')) == region_code]
 
             columns = ['警情编号', '类型', '报警时间', '地区', '派出所', '警情地址', '处警情况']
             data = []
@@ -338,7 +341,7 @@ class JqajcfcxytjService:
                     '类型': jq.get('leixing', ''),
                     '报警时间': str(jq.get('calltime', '')),
                     '地区': jq.get('diqu', ''),
-                    '派出所': jq.get('dutyedptname', ''),
+                    '派出所': jq.get('dutydeptname', ''),
                     '警情地址': jq.get('occuraddress', ''),
                     '警情地址': jq.get('casecontents', ''),
                     '处警情况': jq.get('replies', '')
@@ -354,10 +357,13 @@ class JqajcfcxytjService:
 
             ajlx = '行政' if '行政' in click_field else '刑事'
             anjians = self.dao.get_anjians(query_kssj, query_jssj, leixing_list)
-            # 过滤地区和案件类型
-            filtered = [aj for aj in anjians if str(aj.get('地区', '')) == region_code and aj.get('案件类型') == ajlx]
+            # 过滤地区和案件类型（"all" 表示不过滤地区）
+            if region_code == 'all':
+                filtered = [aj for aj in anjians if aj.get('案件类型') == ajlx]
+            else:
+                filtered = [aj for aj in anjians if str(aj.get('地区', '')) == region_code and aj.get('案件类型') == ajlx]
 
-            columns = ['案件编号', '案件名称', '简要案情', '案件类型', '立案日期', '案由', '案件状态']
+            columns = ['案件编号', '案件名称','办案单位名称', '简要案情', '案件类型', '立案日期', '案由', '案件状态']
             data = []
             for aj in filtered:
                 data.append({
@@ -366,6 +372,7 @@ class JqajcfcxytjService:
                     '案件名称': aj.get('案件名称', ''),
                     '简要案情': aj.get('简要案情', ''),
                     '案件类型': aj.get('案件类型', ''),
+                    '办案单位名称':aj.get('办案单位名称',''),
                     '立案日期': str(aj.get('立案日期', '')),
                     '案由': aj.get('案由', ''),
                     '案件状态': aj.get('案件状态名称', '')
@@ -380,8 +387,11 @@ class JqajcfcxytjService:
                 query_kssj, query_jssj = kssj, jssj
 
             wenshus = self.dao.get_wenshus(query_kssj, query_jssj, leixing_list)
-            # 过滤地区
-            filtered = [ws for ws in wenshus if str(ws.get('region', '')) == region_code]
+            # 过滤地区（"all" 表示不过滤，查询所有地区）
+            if region_code == 'all':
+                filtered = wenshus
+            else:
+                filtered = [ws for ws in wenshus if str(ws.get('region', '')) == region_code]
 
             # 根据点击字段进一步过滤数据
             if click_field in ['治拘', '同比治拘']:
@@ -400,13 +410,14 @@ class JqajcfcxytjService:
                 # 移送案件: dxlxdm='04' 且 flws_bt 包含 '移送'
                 filtered = [ws for ws in filtered if str(ws.get('dxlxdm', '')) == '04' and '移送' in ws.get('flws_bt', '')]
 
-            columns = ['文书编号', '文书标题', '时间', '案件编号', '案件名称', '案由', '警告', '罚款', '治拘']
+            columns = ['文书编号', '文书标题','办案单位', '时间', '案件编号', '案件名称', '案由', '警告', '罚款', '治拘']
             data = []
             for ws in filtered:
                 data.append({
                     '文书编号': ws.get('flws_dxbh', ''),
                     '地区': ws.get('region', ''),
                     '文书标题': ws.get('flws_bt', ''),
+                    '办案单位': ws.get('badwmc', ''),
                     '时间': str(ws.get('spsj', '')),
                     '案件编号': ws.get('asjbh', ''),
                     '案件名称': ws.get('asjmc', ''),

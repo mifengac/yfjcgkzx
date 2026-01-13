@@ -6,11 +6,33 @@ import requests
 import threading
 from datetime import datetime, timedelta
 import logging
+from typing import Optional, Tuple
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
+
+def _decode_response_text(content: bytes, preferred: Optional[str] = None) -> Tuple[str, str]:
+    """
+    兼容部分内网系统返回 GBK/GB18030 但声明为 UTF-8 的情况，避免 response.text 直接抛 UnicodeDecodeError。
+    返回 (text, encoding_used)。
+    """
+    candidates = []
+    if preferred:
+        candidates.append(preferred)
+    candidates.extend(["utf-8", "gb18030", "gbk"])
+
+    last_error: Optional[Exception] = None
+    for enc in candidates:
+        try:
+            return content.decode(enc), enc
+        except Exception as exc:
+            last_error = exc
+            continue
+
+    logging.warning("响应内容解码失败，将使用 utf-8 replace 兜底: %s", last_error)
+    return content.decode("utf-8", errors="replace"), "utf-8(replace)"
 
 class SessionManager:
     """
@@ -122,7 +144,15 @@ class SessionManager:
             logging.info(f"登录响应头: {dict(response.headers)}")
 
             # 尝试获取响应内容用于调试
-            response_text = response.text
+            preferred = None
+            try:
+                preferred = response.apparent_encoding
+            except Exception:
+                preferred = None
+            response_text, used_encoding = _decode_response_text(response.content, preferred=preferred)
+            # 让后续 response.json()/response.text 使用同一编码（如对方声明错误，这里会覆盖）
+            if used_encoding and not used_encoding.endswith("(replace)"):
+                response.encoding = used_encoding
             logging.info(f"登录响应内容前200字符: {response_text[:200]}")
 
             login_success = False

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工作日志督导</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .card { background: #fff; padding: 16px; border-radius: 10px; margin-bottom: 16px; box-shadow: 0 6px 22px rgba(18,38,63,.06); border: 1px solid #e6e8ef; }
+        .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+        .row label { font-size: 14px; color:#333; }
+        input[type="number"], input[type="text"] { height: 34px; border: 1px solid #d7dbe7; border-radius: 8px; padding: 0 10px; font-size: 14px; }
+        textarea { width: 100%; min-height: 160px; border: 1px solid #d7dbe7; border-radius: 10px; padding: 10px; font-size: 13px; }
+        .btn { height: 34px; border: 0; border-radius: 8px; background: #1976d2; color:#fff; padding: 0 14px; font-weight: 600; cursor: pointer; }
+        .btn:disabled { opacity: .6; cursor: not-allowed; }
+        .err { color: #b42318; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+        .toolbar { display:flex; justify-content:space-between; align-items:center; margin: 10px 0; }
+        .muted { color:#666; font-size: 12px; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display:none; position:absolute; right:0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; min-width:140px; box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index: 20; }
+        .dropdown-menu a { display:block; padding:10px 12px; color:#111; text-decoration:none; font-size:13px; }
+        .dropdown-menu a:hover { background:#f3f5fb; }
+        .dropdown.open .dropdown-menu { display:block; }
+        .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+        table { border-collapse: collapse; width: 100%; min-width: 860px; }
+        th, td { border-bottom: 1px solid #eef0f6; padding: 10px 12px; font-size: 13px; text-align: center; white-space: nowrap; }
+        th { position: sticky; top: 0; background: #fbfcff; z-index: 2; }
+        td.rowh { background: #fbfcff; text-align: left; position: sticky; left: 0; z-index: 1; }
+        td a { color: #1976d2; text-decoration: none; font-weight: 700; }
+    </style>
+</head>
+<body>
+<header class="header">
+    <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+        <div>
+            <h1 style="margin:0;">工作日志督导</h1>
+            <p style="margin:6px 0 0 0;">统计最近 N 条工作日志重复度</p>
+        </div>
+        <div>
+            <a href="{{ url_for('main') }}" style="background:#555; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">返回主页</a>
+        </div>
+    </div>
+</header>
+
+<main class="container" style="max-width:1200px;">
+    <section class="card">
+        <div class="row">
+            <label>统计近 <input id="count" type="number" min="1" value="5" style="width:80px;"> 次工作日志</label>
+            <label>重复度 <input id="chongfudu" type="number" min="0" max="100" value="80" style="width:80px;"> %</label>
+            <button class="btn" id="btn">统计</button>
+        </div>
+        <div style="margin-top:10px;">
+            <div class="muted">SQL（仅允许 SELECT/WITH，不允许分号；需包含：证件号码、列管时间、工作日志工作情况说明、分局名称、所属派出所）</div>
+            <textarea id="sql" placeholder="在此粘贴 SQL..."></textarea>
+        </div>
+        <div id="err" class="err"></div>
+    </section>
+
+    <div class="toolbar">
+        <div class="muted" id="status"></div>
+        <div class="dropdown" id="dd">
+            <button class="btn" id="exportBtn" disabled>导出</button>
+            <div class="dropdown-menu">
+                <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                <a href="#" data-fmt="csv">导出 csv</a>
+            </div>
+        </div>
+    </div>
+
+    <section class="card">
+        <div class="table-wrap">
+            <table id="tbl"></table>
+        </div>
+    </section>
+</main>
+
+<script src="{{ url_for('static', filename='js/gzrzdd.js') }}"></script>
+</body>
+</html>
+

@@ -37,6 +37,7 @@ from jingqing_anjian.service.case_service import CaseService  # noqa: E402
 from xunfang.routes.xunfang_routes import xunfang_bp  # noqa: E402
 from zhizong.routes.zhizong_routes import zhizong_bp  # noqa: E402
 from weichengnianren.routes.wcnr_routes import weichengnianren_bp  # noqa: E402
+from gzrzdd.routes.gzrzdd_routes import gzrzdd_bp  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Flask 应用与全局变量
@@ -145,6 +146,7 @@ def main():
                 "治综": {"endpoint": "zhizong.index", "label": "治综平台数据统计"},
                 "后台": {"endpoint": "houtai.import_page", "label": "后台管理"},
                 "未成年人": {"endpoint": "weichengnianren.index", "label": "未成年人"},
+                "工作日志督导": {"endpoint": "gzrzdd.index", "label": "工作日志督导"},
             }.get(module_name)
             if not conf:
                 continue
@@ -347,6 +349,7 @@ app.register_blueprint(xunfang_bp, url_prefix="/xunfang")
 app.register_blueprint(zhizong_bp, url_prefix="/zhizong")
 app.register_blueprint(jingqing_anjian_bp, url_prefix="/jingqing_anjian")
 app.register_blueprint(weichengnianren_bp, url_prefix="/weichengnianren")
+app.register_blueprint(gzrzdd_bp, url_prefix="/gzrzdd")
 try:
     from houtai.routes.houtai_routes import houtai_bp  # 后台批量导入模块
     app.register_blueprint(houtai_bp, url_prefix="/houtai")

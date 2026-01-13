@@ -243,7 +243,13 @@ function renderSummaryTable(columns, data) {
     html += '<tr class="total-row">';
     displayColumns.forEach(col => {
         const value = totals[col];
-        html += `<td>${value}</td>`;
+        if (col === '地区') {
+            html += `<td>${value}</td>`;
+        } else if (value && value > 0) {
+            html += `<td class="clickable-cell" onclick="openDetail('${col}', 'all', ${value})">${value}</td>`;
+        } else {
+            html += `<td>${value || 0}</td>`;
+        }
     });
     html += '</tr>';
 
