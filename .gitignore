@@ -14,3 +14,6 @@ __test_out_*.docx
 # 不上传的模板/附件（按需求）
 jingqing_anjian/templates/biaochezhajie_ribao.docx
 jingqing_anjian/templates/biaochezhajieribao_fujian.xlsx
+
+# 五类地址分类模型（不上传大模型文件）
+xunfang/5lei_dizhi_model/

@@ -14,7 +14,7 @@ import pandas as pd
 from openpyxl import Workbook
 
 from gonggong.utils.error_handler import log_info
-from gzrzdd.dao.gzrzdd_dao import find_col, query_to_dataframe
+from gzrzdd.dao.gzrzdd_dao import DEFAULT_GZRZ_SQL, find_col, query_to_dataframe
 
 
 COL_ID = "证件号码"
@@ -23,6 +23,7 @@ COL_BRANCH = "分局名称"
 COL_STATION = "所属派出所"
 COL_NAME = "姓名"
 COL_SORT = "列管时间"
+COL_WORK_TIME = "工作日志开展工作时间"
 
 
 def _now_ts() -> str:
@@ -209,7 +210,7 @@ class CachedResult:
     count: int
     threshold: float
     pivot: pd.DataFrame
-    dup_df: pd.DataFrame
+    dup_person_df: pd.DataFrame
 
 
 CACHE: Dict[str, CachedResult] = {}
@@ -230,7 +231,19 @@ def _required_columns(df: pd.DataFrame) -> Dict[str, str]:
     c_station = find_col(df, COL_STATION)
     c_name = find_col(df, COL_NAME)  # optional
     c_sort = find_col(df, COL_SORT)
-    missing = [n for n, c in [(COL_ID, c_id), (COL_TEXT, c_text), (COL_BRANCH, c_branch), (COL_STATION, c_station), (COL_SORT, c_sort)] if not c]
+    c_work_time = find_col(df, COL_WORK_TIME)
+    missing = [
+        n
+        for n, c in [
+            (COL_ID, c_id),
+            (COL_TEXT, c_text),
+            (COL_BRANCH, c_branch),
+            (COL_STATION, c_station),
+            (COL_SORT, c_sort),
+            (COL_WORK_TIME, c_work_time),
+        ]
+        if not c
+    ]
     if missing:
         raise ValueError(f"SQL 结果缺少必要字段：{', '.join(missing)}（可通过 SQL AS 对齐字段名）")
     return {
@@ -240,12 +253,52 @@ def _required_columns(df: pd.DataFrame) -> Dict[str, str]:
         "station": c_station or COL_STATION,
         "name": c_name or "",
         "sort": c_sort or COL_SORT,
+        "work_time": c_work_time or COL_WORK_TIME,
     }
 
+def _format_dt_any(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, (pd.Timestamp, datetime)):
+        if pd.isna(v):
+            return ""
+        try:
+            return v.strftime("%Y-%m-%d")
+        except Exception:
+            return str(v)
+    return str(v).strip()
 
-def compute_stats(*, sql: str, count: int, threshold_percent: float) -> Tuple[str, Dict[str, Any]]:
+
+def _join_times(values: Iterable[Any]) -> str:
+    seen = set()
+    out: List[str] = []
+    for v in values:
+        s = _format_dt_any(v)
+        if not s:
+            continue
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return ",".join(out)
+
+def _join_texts(values: Iterable[Any]) -> str:
+    out: List[str] = []
+    for v in values:
+        s = "" if v is None else str(v).strip()
+        s = re.sub(r"\s+", " ", s)
+        if not s:
+            continue
+        out.append(s)
+    lines: List[str] = []
+    for i, s in enumerate(out, start=1):
+        lines.append(f"{i}. {s}")
+    return "\n".join(lines)
+
+
+def compute_stats(*, count: int, threshold_percent: float) -> Tuple[str, Dict[str, Any]]:
     cache_gc()
-    df = query_to_dataframe(sql)
+    df = query_to_dataframe(DEFAULT_GZRZ_SQL)
     if df.empty:
         rid = uuid.uuid4().hex
         CACHE[rid] = CachedResult(time.time(), count, parse_threshold_percent(threshold_percent), pd.DataFrame(), df.copy())
@@ -258,6 +311,7 @@ def compute_stats(*, sql: str, count: int, threshold_percent: float) -> Tuple[st
     c_station = cols["station"]
     c_name = cols["name"]
     c_sort = cols["sort"]
+    c_work_time = cols["work_time"]
 
     thr = parse_threshold_percent(threshold_percent)
 
@@ -293,17 +347,50 @@ def compute_stats(*, sql: str, count: int, threshold_percent: float) -> Tuple[st
     else:
         dup_df = latest.iloc[0:0].copy()
 
+    # 关键改动：重复度计算完成后，先按“证件号码”聚合，并拼接“工作日志开展工作时间”
     if dup_df.empty:
+        dup_person_df = dup_df.copy()
         pivot = pd.DataFrame()
     else:
-        pivot = dup_df.pivot_table(index=c_station, columns=c_branch, values="序号", aggfunc="count", fill_value=0)
-        pivot = pivot.sort_index()
+        tmp = dup_df.copy()
+        tmp["__rep_score"] = (
+            tmp.get("重复度", "").astype(str).str.replace("%", "", regex=False).astype(float).fillna(0.0)
+        )
+        # 按开展工作时间排序后再聚合，保证“开展工作时间”和“工作情况说明”拼接顺序一致
+        tmp["__work_dt"] = pd.to_datetime(tmp[c_work_time], errors="coerce")
+        tmp = tmp.sort_values(by=[c_id, "__work_dt"], ascending=[True, True], kind="mergesort")
+
+        def _agg_one(g: pd.DataFrame) -> pd.Series:
+            return pd.Series(
+                {
+                    c_branch: g[c_branch].iloc[0],
+                    c_station: g[c_station].iloc[0],
+                    (c_name if c_name else c_id): (g[c_name].iloc[0] if c_name else g[c_id].iloc[0]),
+                    c_sort: g[c_sort].max(),
+                    c_work_time: _join_times(g[c_work_time].tolist()),
+                    c_text: _join_texts(g[c_text].tolist()),
+                    "__rep_score": g["__rep_score"].max(),
+                }
+            )
+
+        agg = tmp.groupby(c_id, as_index=False).apply(_agg_one).reset_index(drop=True).rename(
+            columns={"__rep_score": "重复度(%)"}
+        )
+        agg["重复度"] = agg["重复度(%)"].map(lambda x: f"{float(x):.2f}%")
+        agg.insert(0, "序号", range(1, len(agg) + 1))
+        dup_person_df = agg.drop(columns=["重复度(%)"])
+
+        # 交叉表：按“分局名称(列)”汇总（页面不再按“所属派出所”分组）
+        series = dup_person_df.groupby(c_branch, dropna=False)[c_id].count()
+        pivot = pd.DataFrame([series])
+        pivot.index = ["合计"]
+        pivot = pivot.fillna(0).astype(int)
 
     rid = uuid.uuid4().hex
-    CACHE[rid] = CachedResult(time.time(), count, thr, pivot, dup_df)
+    CACHE[rid] = CachedResult(time.time(), count, thr, pivot, dup_person_df)
 
     payload = pivot_to_payload(pivot)
-    log_info(f"gzrzdd stats computed: result_id={rid}, rows={len(dup_df)}")
+    log_info(f"gzrzdd stats computed: result_id={rid}, person_rows={len(dup_person_df)}")
     return rid, payload
 
 
@@ -321,13 +408,16 @@ def get_detail_records(result_id: str, *, branch: str, station: str, limit: int 
     res = CACHE.get(result_id)
     if not res:
         raise ValueError("result_id 不存在或已过期，请重新统计")
-    df = res.dup_df
+    df = res.dup_person_df
     if df is None or df.empty:
         return []
 
     c_branch = find_col(df, COL_BRANCH) or COL_BRANCH
     c_station = find_col(df, COL_STATION) or COL_STATION
-    sub = df[(df[c_branch].astype(str) == branch) & (df[c_station].astype(str) == station)].copy()
+    if station and station != "__ALL__":
+        sub = df[(df[c_branch].astype(str) == branch) & (df[c_station].astype(str) == station)].copy()
+    else:
+        sub = df[(df[c_branch].astype(str) == branch)].copy()
 
     front = [c for c in ["序号", "重复度"] if c in sub.columns]
     rest = [c for c in sub.columns if c not in front and c not in ("__clean_text",)]
@@ -374,13 +464,16 @@ def export_detail(result_id: str, *, branch: str, station: str, fmt: str, count:
     res = CACHE.get(result_id)
     if not res:
         raise ValueError("result_id 不存在或已过期，请重新统计")
-    df = res.dup_df
+    df = res.dup_person_df
     if df is None or df.empty:
         df_out = pd.DataFrame()
     else:
         c_branch = find_col(df, COL_BRANCH) or COL_BRANCH
         c_station = find_col(df, COL_STATION) or COL_STATION
-        df_out = df[(df[c_branch].astype(str) == branch) & (df[c_station].astype(str) == station)].copy()
+        if station and station != "__ALL__":
+            df_out = df[(df[c_branch].astype(str) == branch) & (df[c_station].astype(str) == station)].copy()
+        else:
+            df_out = df[(df[c_branch].astype(str) == branch)].copy()
         front = [c for c in ["序号", "重复度"] if c in df_out.columns]
         rest = [c for c in df_out.columns if c not in front and c not in ("__clean_text",)]
         df_out = df_out[front + rest]

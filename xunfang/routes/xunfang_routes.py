@@ -44,6 +44,9 @@ from xunfang.service.xunfang_service import (
 
 xunfang_bp = Blueprint("xunfang", __name__, template_folder="../templates")
 
+# 注册“街面三类警情”路由（避免改动 app.py 注册方式）
+import xunfang.routes.jiemiansanlei_routes  # noqa: F401,E402
+
 
 @xunfang_bp.before_request
 def _ensure_access() -> None:

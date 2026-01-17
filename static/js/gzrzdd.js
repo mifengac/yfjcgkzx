@@ -25,7 +25,7 @@ function renderTable(payload) {
   const thead = document.createElement("thead");
   const trh = document.createElement("tr");
   const th0 = document.createElement("th");
-  th0.textContent = "所属派出所";
+  th0.textContent = "统计";
   trh.appendChild(th0);
   cols.forEach((c) => {
     const th = document.createElement("th");
@@ -40,7 +40,7 @@ function renderTable(payload) {
     const tr = document.createElement("tr");
     const td0 = document.createElement("td");
     td0.className = "rowh";
-    td0.textContent = r;
+    td0.textContent = r || "合计";
     tr.appendChild(td0);
     cols.forEach((c, j) => {
       const v = (data[i] || [])[j] || 0;
@@ -53,8 +53,6 @@ function renderTable(payload) {
           encodeURIComponent(lastResultId) +
           "&branch=" +
           encodeURIComponent(c) +
-          "&station=" +
-          encodeURIComponent(r) +
           "&count=" +
           encodeURIComponent(lastCount);
         a.target = "_blank";
@@ -79,7 +77,6 @@ async function run() {
   const body = {
     count: lastCount,
     chongfudu: parseFloat($("chongfudu").value || "80"),
-    sql: $("sql").value || "",
   };
 
   try {

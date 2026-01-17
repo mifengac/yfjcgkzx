@@ -36,6 +36,10 @@ function render(records) {
     keys.forEach((k) => {
       const td = document.createElement("td");
       td.textContent = r[k] == null ? "" : String(r[k]);
+      if (k === "工作日志工作情况说明") {
+        td.style.whiteSpace = "pre-wrap";
+        td.style.wordBreak = "break-word";
+      }
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -47,10 +51,9 @@ async function load() {
   const qs = new URLSearchParams(location.search);
   const resultId = qs.get("result_id") || "";
   const branch = qs.get("branch") || "";
-  const station = qs.get("station") || "";
   const count = qs.get("count") || "5";
 
-  $("subtitle").textContent = station + " / " + branch;
+  $("subtitle").textContent = branch ? ("分局：" + branch) : "详情";
 
   setErr("");
   setStatus("加载中...");
@@ -59,9 +62,7 @@ async function load() {
       "/gzrzdd/api/detail?result_id=" +
       encodeURIComponent(resultId) +
       "&branch=" +
-      encodeURIComponent(branch) +
-      "&station=" +
-      encodeURIComponent(station);
+      encodeURIComponent(branch);
     const resp = await fetch(url);
     const js = await resp.json();
     if (!resp.ok || !js.success) {
@@ -85,8 +86,6 @@ async function load() {
           encodeURIComponent(resultId) +
           "&branch=" +
           encodeURIComponent(branch) +
-          "&station=" +
-          encodeURIComponent(station) +
           "&format=" +
           encodeURIComponent(fmt) +
           "&count=" +

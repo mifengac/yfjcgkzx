@@ -49,10 +49,6 @@
             <label>重复度 <input id="chongfudu" type="number" min="0" max="100" value="80" style="width:80px;"> %</label>
             <button class="btn" id="btn">统计</button>
         </div>
-        <div style="margin-top:10px;">
-            <div class="muted">SQL（仅允许 SELECT/WITH，不允许分号；需包含：证件号码、列管时间、工作日志工作情况说明、分局名称、所属派出所）</div>
-            <textarea id="sql" placeholder="在此粘贴 SQL..."></textarea>
-        </div>
         <div id="err" class="err"></div>
     </section>
 
@@ -70,6 +66,9 @@
     <section class="card">
         <div class="table-wrap">
             <table id="tbl"></table>
+        </div>
+        <div class="muted" style="margin-top:10px;">
+            说明：当前页面仅按“分局名称”汇总展示（已取消“所属派出所”分组）。点击数字查看该分局的重复人员明细。
         </div>
     </section>
 </main>

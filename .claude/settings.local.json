@@ -4,7 +4,8 @@
       "Bash(dir:*)",
       "Bash(pip download:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }

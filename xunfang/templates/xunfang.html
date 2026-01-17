@@ -139,6 +139,44 @@
         .tab-content {
             padding-top: 20px;
         }
+
+        .ms {
+            position: relative;
+            min-width: 220px;
+        }
+
+        .ms-btn {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .ms-panel {
+            display: none;
+            position: absolute;
+            top: 40px;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 220px;
+            overflow: auto;
+            z-index: 20;
+            padding: 6px 8px;
+        }
+
+        .ms-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 2px;
+            white-space: nowrap;
+        }
         
         textarea {
             padding: 8px;
@@ -191,6 +229,7 @@
             <div style="margin-bottom: 20px;">
                 <button class="tab-btn active" onclick="switchTab('xunfang-tab')" id="xunfang-tab-btn">巡防统计</button>
                 <button class="tab-btn" onclick="switchTab('request-data-tab')" id="request-data-tab-btn">请求数据</button>
+                <button class="tab-btn" onclick="switchTab('jiemiansanlei-tab')" id="jiemiansanlei-tab-btn">街面三类警情</button>
             </div>
             
             <!-- 巡防统计页面 -->
@@ -284,6 +323,8 @@
                     <button class="calculate-btn" onclick="downloadResultV2()" style="background: #1976d2; margin-top: 15px;">下载结果</button>
                 </div>
             </div>
+
+            {% include 'jiemiansanlei_tab.html' %}
         </section>
     </main>
     
@@ -293,11 +334,12 @@
     
     <!-- 本地JavaScript资源 -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/jiemiansanlei.js') }}"></script>
     
     <!-- 内联JavaScript确保基础功能 -->
     <script>
         // 设置默认日期为昨天，添加时分秒
-        window.onload = function() {
+        window.addEventListener('load', function() {
             document.getElementById('loading').style.display = 'none';
 
             const yesterday = new Date();
@@ -314,7 +356,7 @@
 
             document.getElementById('startTime').value = startTimeStr;
             document.getElementById('endTime').value = endTimeStr;
-        };
+        });
 
         // 时间格式化函数：将datetime-local格式转换为'YYYY-MM-DD HH:MM:SS'格式
         function formatDateTime(dateTimeStr) {
@@ -674,15 +716,8 @@
         
         // TAB切换功能
         function switchTab(tabId) {
-            // 隐藏所有tab内容
-            document.getElementById('xunfang-tab').style.display = 'none';
-            document.getElementById('request-data-tab').style.display = 'none';
-            
-            // 移除所有tab按钮的active类
-            document.getElementById('xunfang-tab-btn').classList.remove('active');
-            document.getElementById('request-data-tab-btn').classList.remove('active');
-            
-            // 显示选中的tab内容并添加active类
+            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             document.getElementById(tabId).style.display = 'block';
             document.getElementById(tabId + '-btn').classList.add('active');
         }

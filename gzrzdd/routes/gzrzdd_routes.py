@@ -60,15 +60,12 @@ def detail() -> str:
 @handle_errors("工作日志督导统计")
 def api_stats() -> Response:
     payload: Dict[str, Any] = request.json or {}
-    sql = (payload.get("sql") or "").strip()
     count = int(payload.get("count") or 5)
     chongfudu = payload.get("chongfudu", 80)
-    if not sql:
-        return jsonify({"success": False, "message": "SQL 不能为空"}), 400
     if count <= 0 or count > 100:
         return jsonify({"success": False, "message": "count 取值范围建议 1~100"}), 400
 
-    result_id, pivot = compute_stats(sql=sql, count=count, threshold_percent=chongfudu)
+    result_id, pivot = compute_stats(count=count, threshold_percent=chongfudu)
     return jsonify({"success": True, "result_id": result_id, "count": count, "threshold_percent": chongfudu, "pivot": pivot})
 
 
@@ -78,8 +75,8 @@ def api_detail() -> Response:
     result_id = (request.args.get("result_id") or "").strip()
     branch = (request.args.get("branch") or "").strip()
     station = (request.args.get("station") or "").strip()
-    if not result_id or not branch or not station:
-        return jsonify({"success": False, "message": "缺少参数 result_id/branch/station"}), 400
+    if not result_id or not branch:
+        return jsonify({"success": False, "message": "缺少参数 result_id/branch"}), 400
     records = get_detail_records(result_id, branch=branch, station=station)
     return jsonify({"success": True, "records": records, "count": len(records)})
 
