@@ -280,7 +280,10 @@ def _join_times(values: Iterable[Any]) -> str:
             continue
         seen.add(s)
         out.append(s)
-    return ",".join(out)
+    lines: List[str] = []
+    for i, s in enumerate(out, start=1):
+        lines.append(f"{i}. {s}")
+    return "\n".join(lines)
 
 def _join_texts(values: Iterable[Any]) -> str:
     out: List[str] = []

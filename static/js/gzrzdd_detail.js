@@ -36,9 +36,8 @@ function render(records) {
     keys.forEach((k) => {
       const td = document.createElement("td");
       td.textContent = r[k] == null ? "" : String(r[k]);
-      if (k === "工作日志工作情况说明") {
-        td.style.whiteSpace = "pre-wrap";
-        td.style.wordBreak = "break-word";
+      if (k === "工作日志工作情况说明" || k === "工作日志开展工作时间") {
+        td.classList.add("prewrap");
       }
       tr.appendChild(td);
     });

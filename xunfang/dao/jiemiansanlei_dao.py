@@ -98,6 +98,7 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
             return "SELECT 0", []
         return (
             "SELECT ''::text AS leixing, ''::text AS yuanshiqueren, ''::text AS 分局, "
+            "''::text AS 派出所编号, ''::text AS 派出所名称, "
             "NULL::timestamp AS 报警时间, ''::text AS 警情地址, ''::text AS jq_type "
             "WHERE 1=0",
             [],
@@ -117,6 +118,8 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
                 ctc.leixing AS leixing,
                 %s::text AS yuanshiqueren,
                 jq.cmdname AS 分局,
+                jq.dutydeptno AS 派出所编号,
+                jq.dutydeptname AS 派出所名称,
                 jq.calltime AS 报警时间,
                 jq.occuraddress AS 警情地址,
                 jq.{type_name_col} AS jq_type
@@ -136,7 +139,7 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
         return f"SELECT COUNT(1) FROM ({union_sql}) t", params
 
     final_sql = f"""
-    SELECT leixing, yuanshiqueren, 分局, 报警时间, 警情地址, jq_type
+    SELECT leixing, yuanshiqueren, 分局, 派出所编号, 派出所名称, 报警时间, 警情地址, jq_type
     FROM ({union_sql}) t
     ORDER BY 报警时间 DESC
     """

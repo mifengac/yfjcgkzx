@@ -94,6 +94,8 @@ def query_classified(
                 "警情性质": r.get("leixing") or "",
                 "警情性质口径": r.get("yuanshiqueren") or "",
                 "分局": r.get("分局") or "",
+                "派出所编号": r.get("派出所编号") or "",
+                "派出所名称": r.get("派出所名称") or "",
                 "报警时间": _format_dt(r.get("报警时间")),
                 "警情地址": r.get("警情地址") or "",
                 "警情类型": r.get("jq_type") or "",
@@ -193,12 +195,14 @@ def _build_xls_bytes(
 
 
 def _write_table_xlsx(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
-    headers = ["分局", "报警时间", "警情地址", "警情类型", "分类结果", "置信度"]
+    headers = ["分局", "派出所编号", "派出所名称", "报警时间", "警情地址", "警情类型", "分类结果", "置信度"]
     ws.append(headers)
     for r in rows:
         ws.append(
             [
                 r.get("分局") or "",
+                r.get("派出所编号") or "",
+                r.get("派出所名称") or "",
                 _format_dt(r.get("报警时间")),
                 r.get("警情地址") or "",
                 r.get("jq_type") or "",
@@ -209,17 +213,19 @@ def _write_table_xlsx(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
 
 
 def _write_table_xls(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
-    headers = ["分局", "报警时间", "警情地址", "警情类型", "分类结果", "置信度"]
+    headers = ["分局", "派出所编号", "派出所名称", "报警时间", "警情地址", "警情类型", "分类结果", "置信度"]
     for col, h in enumerate(headers):
         ws.write(0, col, h)
 
     for i, r in enumerate(rows, start=1):
         ws.write(i, 0, r.get("分局") or "")
-        ws.write(i, 1, _format_dt(r.get("报警时间")))
-        ws.write(i, 2, r.get("警情地址") or "")
-        ws.write(i, 3, r.get("jq_type") or "")
-        ws.write(i, 4, r.get("pred_label") or "")
-        ws.write(i, 5, _format_prob(r.get("pred_prob")))
+        ws.write(i, 1, r.get("派出所编号") or "")
+        ws.write(i, 2, r.get("派出所名称") or "")
+        ws.write(i, 3, _format_dt(r.get("报警时间")))
+        ws.write(i, 4, r.get("警情地址") or "")
+        ws.write(i, 5, r.get("jq_type") or "")
+        ws.write(i, 6, r.get("pred_label") or "")
+        ws.write(i, 7, _format_prob(r.get("pred_prob")))
 
 
 def _append_predictions(rows: List[Dict[str, Any]]) -> None:
