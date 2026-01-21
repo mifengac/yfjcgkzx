@@ -12,6 +12,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
 from openpyxl import Workbook
+from openpyxl.styles import Alignment
+from openpyxl.utils import get_column_letter
 
 from gonggong.utils.error_handler import log_info
 from gzrzdd.dao.gzrzdd_dao import DEFAULT_GZRZ_SQL, find_col, query_to_dataframe
@@ -320,9 +322,17 @@ def compute_stats(*, count: int, threshold_percent: float) -> Tuple[str, Dict[st
 
     work = df.copy()
     work[c_sort] = pd.to_datetime(work[c_sort], errors="coerce")
-    work = work.sort_values(by=[c_id, c_sort], ascending=[True, False], kind="mergesort")
+    # 取“最近N条”时，按“开展工作时间”倒序优先（同一人内）
+    work["__work_dt_sel"] = pd.to_datetime(work[c_work_time], errors="coerce")
+    work["__work_dt_sel_filled"] = work["__work_dt_sel"].fillna(pd.Timestamp.min)
+    work = work.sort_values(
+        by=[c_id, "__work_dt_sel_filled", c_sort],
+        ascending=[True, False, False],
+        kind="mergesort",
+    )
     latest = work.groupby(c_id, sort=False).head(int(count)).copy()
     latest = latest.reset_index(drop=True)
+    latest = latest.drop(columns=["__work_dt_sel", "__work_dt_sel_filled"], errors="ignore")
 
     station_vals = latest[c_station].astype(str).fillna("")
     name_vals = latest[c_name].astype(str).fillna("") if c_name else [""] * len(latest)
@@ -505,6 +515,22 @@ def _df_to_xlsx_bytes(df: pd.DataFrame, *, sheet: str) -> bytes:
     ws.append(list(df.columns))
     for _, row in df.iterrows():
         ws.append(["" if pd.isna(x) else x for x in row.tolist()])
+
+    # 让“工作日志开展工作时间”能完整显示类似“1. 2025-01-01”，避免列太窄导致同一行内折行
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        name = "" if col_name is None else str(col_name).strip()
+        if name != COL_WORK_TIME and "开展工作时间" not in name:
+            continue
+        max_len = len(name)
+        for r in range(2, ws.max_row + 1):
+            v = ws.cell(row=r, column=col_idx).value
+            s = "" if v is None else str(v)
+            for line in s.splitlines() or [""]:
+                if len(line) > max_len:
+                    max_len = len(line)
+            ws.cell(row=r, column=col_idx).alignment = Alignment(wrap_text=True, vertical="top")
+        ws.column_dimensions[get_column_letter(col_idx)].width = max(18, min(80, max_len + 2))
+        break
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()

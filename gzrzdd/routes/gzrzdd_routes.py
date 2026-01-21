@@ -24,7 +24,7 @@ from gzrzdd.service.gzrzdd_service import (
 )
 
 
-gzrzdd_bp = Blueprint("gzrzdd", __name__, template_folder="../templates")
+gzrzdd_bp = Blueprint("gzrzdd", __name__, template_folder="../templates", static_folder="../static")
 
 
 @gzrzdd_bp.before_request
@@ -109,4 +109,8 @@ def download_detail() -> Response:
     buf = BytesIO(data)
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name=filename, mimetype=mimetype)
+
+
+# 注册“工作日志超期统计”子功能路由（与 gzrzdd_bp 同一个蓝图）
+from gzrzdd.routes import gzrzdd_cqtj_routes_impl  # noqa: E402,F401
 

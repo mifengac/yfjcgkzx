@@ -98,12 +98,30 @@ function updateSelectedTypes() {
 // 设置默认时间范围（最近一个月）
 function setDefaultTimeRange() {
     const now = new Date();
-    const endTime = new Date(now);
-    const startTime = new Date(now);
-    startTime.setMonth(startTime.getMonth() - 1);
 
-    document.getElementById('endTime').value = formatDateTimeLocal(endTime);
-    document.getElementById('startTime').value = formatDateTimeLocal(startTime);
+    // 本期：开始=今日向前7天 00:00:00；结束=前一日 23:59:59
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - 7);
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() - 1);
+
+    // 环比：开始=今日向前14天 00:00:00；结束=今日向前8天 23:59:59
+    const hbStartDate = new Date(now);
+    hbStartDate.setDate(hbStartDate.getDate() - 14);
+    const hbEndDate = new Date(now);
+    hbEndDate.setDate(hbEndDate.getDate() - 8);
+
+    document.getElementById('startTime').value = formatDateTimeLocal(new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0));
+    document.getElementById('endTime').value = formatDateTimeLocal(new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59));
+
+    const hbStartEl = document.getElementById('hbStartTime');
+    const hbEndEl = document.getElementById('hbEndTime');
+    if (hbStartEl) {
+        hbStartEl.value = formatDateTimeLocal(new Date(hbStartDate.getFullYear(), hbStartDate.getMonth(), hbStartDate.getDate(), 0, 0, 0));
+    }
+    if (hbEndEl) {
+        hbEndEl.value = formatDateTimeLocal(new Date(hbEndDate.getFullYear(), hbEndDate.getMonth(), hbEndDate.getDate(), 23, 59, 59));
+    }
 }
 
 // 格式化日期时间为 datetime-local 输入格式
@@ -120,6 +138,7 @@ function formatDateTimeLocal(date) {
 // 格式化日期时间为标准格式
 function formatDateTime(dateStr) {
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -329,6 +348,63 @@ async function exportData(format) {
     } catch (error) {
         console.error('导出失败:', error);
         showStatus('导出失败: ' + error.message, 'error');
+    }
+}
+
+// 导出报表（写入 xls 模板；固定类型，不受多选框影响）
+async function exportReport() {
+    const kssj = formatDateTime(document.getElementById('startTime').value);
+    const jssj = formatDateTime(document.getElementById('endTime').value);
+    const hbkssj = formatDateTime((document.getElementById('hbStartTime') || {}).value || '');
+    const hbjssj = formatDateTime((document.getElementById('hbEndTime') || {}).value || '');
+
+    if (!kssj || !jssj || !hbkssj || !hbjssj) {
+        showStatus('请填写开始/结束/环比开始/环比结束时间', 'error');
+        return;
+    }
+
+    showStatus('正在导出报表...', 'success');
+    try {
+        const response = await fetch('/jingqing_anjian/api/jqajcfcxytj/report_export', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                kssj: kssj,
+                jssj: jssj,
+                hbkssj: hbkssj,
+                hbjssj: hbjssj
+            })
+        });
+
+        if (!response.ok) {
+            let msg = '导出失败';
+            try {
+                const js = await response.json();
+                msg = (js && js.message) ? js.message : msg;
+            } catch (e) {}
+            showStatus(msg, 'error');
+            return;
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+
+        const cd = response.headers.get('content-disposition') || '';
+        const m = cd.match(/filename\\*=UTF-8''([^;]+)/i) || cd.match(/filename=\"?([^;\"]+)\"?/i);
+        a.download = m ? decodeURIComponent(m[1]) : `警情案件处罚统计报表_${new Date().getTime()}.xls`;
+
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showStatus('导出成功', 'success');
+    } catch (error) {
+        console.error('导出报表失败:', error);
+        showStatus('导出报表失败: ' + error.message, 'error');
     }
 }
 

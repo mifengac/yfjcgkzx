@@ -7,6 +7,10 @@ Service (业务逻辑层)
 from datetime import datetime
 import io
 import csv
+import tempfile
+from pathlib import Path
+from typing import Callable, Optional
+import threading
 from openpyxl import Workbook
 
 from jingqing_anjian.dao.jqaj_jqajcfcxytj_dao import JqajcfcxytjDAO
@@ -29,9 +33,27 @@ class JqajcfcxytjService:
     SUMMARY_COLUMNS = [
         '地区', '警情', '同比警情', '行政', '同比行政',
         '刑事', '同比刑事', '治拘', '同比治拘',
-        '刑拘', '同比刑拘', '起诉', '同比起诉',
+        '刑拘', '同比刑拘', '逮捕', '同比逮捕', '起诉', '同比起诉',
         '移送人员', '同比移送人员', '移送案件', '同比移送案件'
     ]
+
+    REPORT_FIXED_TYPES = ['涉黄', '赌博', '打架斗殴', '盗窃']
+    REPORT_REGION_CODES = [
+        ('市局', '445300'),
+        ('云城', '445302'),
+        ('云安', '445303'),
+        ('罗定', '445381'),
+        ('新兴', '445321'),
+        ('郁南', '445322'),
+    ]
+    REPORT_TYPE_START_ROW = {
+        '涉黄': 3,
+        '赌博': 13,
+        '打架斗殴': 23,
+        '盗窃': 33,
+    }
+
+    _EXCEL_COM_LOCK = threading.Lock()
 
     def __init__(self):
         self.dao = JqajcfcxytjDAO()
@@ -44,6 +66,200 @@ class JqajcfcxytjService:
             list: 警情类型列表
         """
         return self.dao.get_case_types()
+
+    def build_report_xls(self, kssj: str, jssj: str, hbkssj: str, hbjssj: str) -> bytes:
+        """
+        导出报表（写入 xls 模板）：固定类型为“打架斗殴/涉黄/赌博/盗窃”，不受页面多选框影响。
+
+        Args:
+            kssj/jssj: 本期开始/结束 (YYYY-MM-DD HH:MM:SS)
+            hbkssj/hbjssj: 环比开始/结束 (YYYY-MM-DD HH:MM:SS)
+
+        Returns:
+            bytes: 生成的 xls 文件内容
+        """
+        tbkssj, tbjssj = self.calculate_tb_dates(kssj, jssj)
+
+        template_path = (
+            Path(__file__).resolve().parent.parent / "templates" / "jqaj_jqajcfcxytj_template.xls"
+        )
+
+        # 使用 Excel COM 写入：确保模板公式与样式不丢失。
+        # 注意：Excel COM 非线程安全，必须加锁避免并发导出导致失败或回退生成无公式文件。
+        with self._EXCEL_COM_LOCK:
+            try:
+                return self._build_report_xls_via_excel_com(
+                    template_path=template_path,
+                    kssj=kssj,
+                    jssj=jssj,
+                    tbkssj=tbkssj,
+                    tbjssj=tbjssj,
+                    hbkssj=hbkssj,
+                    hbjssj=hbjssj,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"导出报表需要使用本机 Excel 写入 .xls 模板以保留公式；当前导出失败：{exc}"
+                )
+
+    def _build_report_xls_via_excel_com(
+        self,
+        *,
+        template_path: Path,
+        kssj: str,
+        jssj: str,
+        tbkssj: str,
+        tbjssj: str,
+        hbkssj: str,
+        hbjssj: str,
+    ) -> bytes:
+        """
+        使用 Windows Excel COM 自动化写入模板。
+        优点：模板的公式/格式完全保留；只写指定的数字单元格。
+        """
+        try:
+            import win32com.client  # type: ignore
+        except Exception as exc:
+            raise RuntimeError(f"缺少 pywin32 或当前环境不支持 Excel COM: {exc}")
+
+        try:
+            import pythoncom  # type: ignore
+        except Exception:
+            pythoncom = None
+
+        def _col_letter(n: int) -> str:
+            s = ""
+            while n > 0:
+                n, r = divmod(n - 1, 26)
+                s = chr(65 + r) + s
+            return s
+
+        def _addr(row: int, col: int) -> str:
+            return f"{_col_letter(col)}{row}"
+
+        periods = {
+            "cur": (kssj, jssj),
+            "tb": (tbkssj, tbjssj),
+            "hb": (hbkssj, hbjssj),
+        }
+        col_jq = {"cur": 2, "tb": 3, "hb": 4}   # B/C/D
+        col_xz = {"cur": 7, "tb": 8, "hb": 9}   # G/H/I
+        col_xs = {"cur": 12, "tb": 13, "hb": 14}  # L/M/N
+        col_zj = {"cur": 17, "tb": 18, "hb": 19}  # Q/R/S
+        col_jlz = {"cur": 22, "tb": 23, "hb": 24}  # V/W/X
+
+        excel = None
+        wb = None
+        tmp_path = None
+        try:
+            if pythoncom is not None:
+                pythoncom.CoInitialize()
+            excel = win32com.client.DispatchEx("Excel.Application")
+            excel.Visible = False
+            excel.DisplayAlerts = False
+
+            # ReadOnly=True 防止任何形式的模板落盘修改
+            wb = excel.Workbooks.Open(str(template_path), 0, True)
+            ws = wb.Worksheets(1)
+
+            for leixing in self.REPORT_FIXED_TYPES:
+                start_row = self.REPORT_TYPE_START_ROW[leixing]
+
+                data_by_period = {}
+                for key, (s, e) in periods.items():
+                    jingqings = self.dao.get_jingqings(s, e, [leixing])
+                    anjians = self.dao.get_anjians(s, e, [leixing])
+                    wenshus = self.dao.get_wenshus(s, e, [leixing])
+                    data_by_period[key] = (jingqings, anjians, wenshus)
+
+                def _count_jingqing(rows, region_code: Optional[str]) -> int:
+                    seen = set()
+                    for r in rows:
+                        caseno = r.get('caseno')
+                        if not caseno:
+                            continue
+                        if region_code is not None and str(r.get('diqu', '')) != region_code:
+                            continue
+                        seen.add(caseno)
+                    return len(seen)
+
+                def _count_anjians(rows, *, ajlx: str, region_code: Optional[str]) -> int:
+                    return sum(
+                        1
+                        for r in rows
+                        if r.get('案件类型') == ajlx
+                        and (region_code is None or str(r.get('地区', '')) == region_code)
+                    )
+
+                def _count_wenshus(rows, *, region_code: str, predicate: Callable[[dict], bool]) -> int:
+                    seen = set()
+                    for r in rows:
+                        if str(r.get('region', '')) != region_code:
+                            continue
+                        wsywxxid = r.get('wsywxxid')
+                        if not wsywxxid:
+                            continue
+                        if not predicate(r):
+                            continue
+                        seen.add(wsywxxid)
+                    return len(seen)
+
+                # 市局~郁南
+                for idx, (_, region_code) in enumerate(self.REPORT_REGION_CODES):
+                    row = start_row + idx
+                    for pkey in ("cur", "tb", "hb"):
+                        jq_rows, aj_rows, ws_rows = data_by_period[pkey]
+                        ws.Range(_addr(row, col_jq[pkey])).Value = _count_jingqing(jq_rows, region_code)
+                        ws.Range(_addr(row, col_xz[pkey])).Value = _count_anjians(aj_rows, ajlx="行政", region_code=region_code)
+                        ws.Range(_addr(row, col_xs[pkey])).Value = _count_anjians(aj_rows, ajlx="刑事", region_code=region_code)
+                        ws.Range(_addr(row, col_zj[pkey])).Value = _count_wenshus(ws_rows, region_code=region_code, predicate=lambda r: str(r.get('zhiju', '0')) != '0')
+                        ws.Range(_addr(row, col_jlz[pkey])).Value = _count_wenshus(ws_rows, region_code=region_code, predicate=lambda r: '拘留证' in str(r.get('flws_bt', '')))
+
+                # “所有”行（包含其他地区码）只写 警情/案件，不写文书
+                all_row = start_row + len(self.REPORT_REGION_CODES)
+                for pkey in ("cur", "tb", "hb"):
+                    jq_rows, aj_rows, _ws_rows = data_by_period[pkey]
+                    ws.Range(_addr(all_row, col_jq[pkey])).Value = _count_jingqing(jq_rows, None)
+                    ws.Range(_addr(all_row, col_xz[pkey])).Value = _count_anjians(aj_rows, ajlx="行政", region_code=None)
+                    ws.Range(_addr(all_row, col_xs[pkey])).Value = _count_anjians(aj_rows, ajlx="刑事", region_code=None)
+
+            # 让公式重新计算一次（不改公式本身）
+            try:
+                excel.CalculateFull()
+            except Exception:
+                pass
+
+            tmp_dir = Path(tempfile.gettempdir())
+            tmp_path = tmp_dir / f"jqajcfcxytj_report_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.xls"
+            wb.SaveAs(str(tmp_path), FileFormat=56)  # 56 = xlExcel8 (.xls)
+            wb.Close(SaveChanges=False)
+            wb = None
+            excel.Quit()
+            excel = None
+
+            return tmp_path.read_bytes()
+        finally:
+            try:
+                if wb is not None:
+                    wb.Close(SaveChanges=False)
+            except Exception:
+                pass
+            try:
+                if excel is not None:
+                    excel.Quit()
+            except Exception:
+                pass
+            try:
+                if pythoncom is not None:
+                    pythoncom.CoUninitialize()
+            except Exception:
+                pass
+            try:
+                if tmp_path and tmp_path.exists():
+                    tmp_path.unlink()
+            except Exception:
+                pass
+
 
     def calculate_tb_dates(self, kssj, jssj):
         """
@@ -118,6 +334,7 @@ class JqajcfcxytjService:
             'xingshi': 0, 'tb_xingshi': 0,
             'zhiju': 0, 'tb_zhiju': 0,
             'xingju': 0, 'tb_xingju': 0,
+            'daibu': 0, 'tb_daibu': 0,
             'qisu': 0, 'tb_qisu': 0,
             'yisong_ry': 0, 'tb_yisong_ry': 0,
             'yisong_aj': 0, 'tb_yisong_aj': 0
@@ -132,6 +349,7 @@ class JqajcfcxytjService:
             xingshi_count = self._count_anjians(anjians, region_code, '刑事', kssj, jssj)
             zhiju_count = self._count_zhiju(wenshus, region_code, kssj, jssj)
             xingju_count = self._count_xingju(wenshus, region_code, kssj, jssj)
+            daibu_count = self._count_daibu(wenshus, region_code, kssj, jssj)
             qisu_count = self._count_qisu(wenshus, region_code, kssj, jssj)
             yisong_ry_count = self._count_yisong(wenshus, region_code, '01', kssj, jssj)
             yisong_aj_count = self._count_yisong(wenshus, region_code, '04', kssj, jssj)
@@ -142,6 +360,7 @@ class JqajcfcxytjService:
             tb_xingshi_count = self._count_anjians(anjians, region_code, '刑事', tbkssj, tbjssj)
             tb_zhiju_count = self._count_zhiju(wenshus, region_code, tbkssj, tbjssj)
             tb_xingju_count = self._count_xingju(wenshus, region_code, tbkssj, tbjssj)
+            tb_daibu_count = self._count_daibu(wenshus, region_code, tbkssj, tbjssj)
             tb_qisu_count = self._count_qisu(wenshus, region_code, tbkssj, tbjssj)
             tb_yisong_ry_count = self._count_yisong(wenshus, region_code, '01', tbkssj, tbjssj)
             tb_yisong_aj_count = self._count_yisong(wenshus, region_code, '04', tbkssj, tbjssj)
@@ -161,6 +380,8 @@ class JqajcfcxytjService:
                     '同比治拘': tb_zhiju_count,
                     '刑拘': xingju_count,
                     '同比刑拘': tb_xingju_count,
+                    '逮捕': daibu_count,
+                    '同比逮捕': tb_daibu_count,
                     '起诉': qisu_count,
                     '同比起诉': tb_qisu_count,
                     '移送人员': yisong_ry_count,
@@ -180,6 +401,8 @@ class JqajcfcxytjService:
                 other_data['tb_zhiju'] += tb_zhiju_count
                 other_data['xingju'] += xingju_count
                 other_data['tb_xingju'] += tb_xingju_count
+                other_data['daibu'] += daibu_count
+                other_data['tb_daibu'] += tb_daibu_count
                 other_data['qisu'] += qisu_count
                 other_data['tb_qisu'] += tb_qisu_count
                 other_data['yisong_ry'] += yisong_ry_count
@@ -189,7 +412,7 @@ class JqajcfcxytjService:
 
         # 如果有"其他"数据，添加到结果
         if other_data['jingqing'] > 0 or other_data['xingzheng'] > 0 or other_data['xingshi'] > 0 or \
-           other_data['zhiju'] > 0 or other_data['xingju'] > 0 or other_data['qisu'] > 0 or \
+           other_data['zhiju'] > 0 or other_data['xingju'] > 0 or other_data['daibu'] > 0 or other_data['qisu'] > 0 or \
            other_data['yisong_ry'] > 0 or other_data['yisong_aj'] > 0:
             result.append({
                 '地区': '其他',
@@ -204,6 +427,8 @@ class JqajcfcxytjService:
                 '同比治拘': other_data['tb_zhiju'],
                 '刑拘': other_data['xingju'],
                 '同比刑拘': other_data['tb_xingju'],
+                '逮捕': other_data['daibu'],
+                '同比逮捕': other_data['tb_daibu'],
                 '起诉': other_data['qisu'],
                 '同比起诉': other_data['tb_qisu'],
                 '移送人员': other_data['yisong_ry'],
@@ -264,6 +489,22 @@ class JqajcfcxytjService:
                 spsj = ws.get('spsj')
                 # 检查时间、标题和去重
                 if wsywxxid and '拘留证' in flws_bt:
+                    if wsywxxid not in seen_wsywxxid:
+                        if spsj and kssj <= str(spsj) <= jssj:
+                            seen_wsywxxid.add(wsywxxid)
+                            count += 1
+        return count
+
+    def _count_daibu(self, wenshus, region_code, kssj, jssj):
+        """统计逮捕数量 (flws_bt包含'逮捕')"""
+        count = 0
+        seen_wsywxxid = set()
+        for ws in wenshus:
+            if str(ws.get('region', '')) == region_code:
+                wsywxxid = ws.get('wsywxxid')
+                flws_bt = ws.get('flws_bt', '')
+                spsj = ws.get('spsj')
+                if wsywxxid and '逮捕' in flws_bt:
                     if wsywxxid not in seen_wsywxxid:
                         if spsj and kssj <= str(spsj) <= jssj:
                             seen_wsywxxid.add(wsywxxid)
@@ -379,7 +620,7 @@ class JqajcfcxytjService:
                 })
             return columns, data
 
-        elif click_field in ['治拘', '同比治拘', '刑拘', '同比刑拘', '起诉', '同比起诉', '移送人员', '同比移送人员', '移送案件', '同比移送案件']:
+        elif click_field in ['治拘', '同比治拘', '刑拘', '同比刑拘', '逮捕', '同比逮捕', '起诉', '同比起诉', '移送人员', '同比移送人员', '移送案件', '同比移送案件']:
             tbkssj, tbjssj = self.calculate_tb_dates(kssj, jssj)
             if '同比' in click_field:
                 query_kssj, query_jssj = tbkssj, tbjssj
@@ -400,6 +641,9 @@ class JqajcfcxytjService:
             elif click_field in ['刑拘', '同比刑拘']:
                 # 刑拘: flws_bt 包含 '拘留证'
                 filtered = [ws for ws in filtered if '拘留证' in ws.get('flws_bt', '')]
+            elif click_field in ['逮捕', '同比逮捕']:
+                # 逮捕: flws_bt 包含 '逮捕'
+                filtered = [ws for ws in filtered if '逮捕' in ws.get('flws_bt', '')]
             elif click_field in ['起诉', '同比起诉']:
                 # 起诉: flws_bt 包含 '起诉意见'
                 filtered = [ws for ws in filtered if '起诉意见' in ws.get('flws_bt', '')]
@@ -409,6 +653,19 @@ class JqajcfcxytjService:
             elif click_field in ['移送案件', '同比移送案件']:
                 # 移送案件: dxlxdm='04' 且 flws_bt 包含 '移送'
                 filtered = [ws for ws in filtered if str(ws.get('dxlxdm', '')) == '04' and '移送' in ws.get('flws_bt', '')]
+
+            # 明细去重：按 wsywxxid 去重（与统计口径一致）
+            seen = set()
+            deduped = []
+            for ws in filtered:
+                wsywxxid = ws.get('wsywxxid')
+                if not wsywxxid:
+                    continue
+                if wsywxxid in seen:
+                    continue
+                seen.add(wsywxxid)
+                deduped.append(ws)
+            filtered = deduped
 
             columns = ['文书编号', '文书标题','办案单位', '时间', '案件编号', '案件名称', '案由', '警告', '罚款', '治拘']
             data = []

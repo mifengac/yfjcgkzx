@@ -20,11 +20,13 @@ function render(records) {
     return;
   }
   const keys = Object.keys(records[0]);
+  const workTimeKey = "工作日志开展工作时间";
   const thead = document.createElement("thead");
   const trh = document.createElement("tr");
   keys.forEach((k) => {
     const th = document.createElement("th");
     th.textContent = k;
+    if (k === workTimeKey) th.classList.add("col-worktime");
     trh.appendChild(th);
   });
   thead.appendChild(trh);
@@ -39,6 +41,7 @@ function render(records) {
       if (k === "工作日志工作情况说明" || k === "工作日志开展工作时间") {
         td.classList.add("prewrap");
       }
+      if (k === workTimeKey) td.classList.add("col-worktime");
       tr.appendChild(td);
     });
     tbody.appendChild(tr);

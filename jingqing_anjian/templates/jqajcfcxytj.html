@@ -103,6 +103,21 @@
             background: #1565c0;
         }
 
+        .btn-report {
+            background: #ff9800;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .btn-report:hover {
+            background: #fb8c00;
+        }
+
         .btn-export {
             background: #4caf50;
             color: white;
@@ -335,7 +350,18 @@
                     <input type="datetime-local" id="endTime" step="1">
                 </div>
                 <div class="filter-group">
+                    <label for="hbStartTime">环比开始:</label>
+                    <input type="datetime-local" id="hbStartTime" step="1">
+                </div>
+                <div class="filter-group">
+                    <label for="hbEndTime">环比结束:</label>
+                    <input type="datetime-local" id="hbEndTime" step="1">
+                </div>
+                <div class="filter-group">
                     <button class="btn-search" onclick="searchData()">查询</button>
+                </div>
+                <div class="filter-group">
+                    <button class="btn-report" onclick="exportReport()">导出报表</button>
                 </div>
             </div>
         </div>

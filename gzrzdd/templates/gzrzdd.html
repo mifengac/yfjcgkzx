@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>工作日志督导</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('gzrzdd.static', filename='gzrzdd_cqtj.css') }}">
     <style>
         .card { background: #fff; padding: 16px; border-radius: 10px; margin-bottom: 16px; box-shadow: 0 6px 22px rgba(18,38,63,.06); border: 1px solid #e6e8ef; }
         .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
@@ -27,6 +28,16 @@
         th { position: sticky; top: 0; background: #fbfcff; z-index: 2; }
         td.rowh { background: #fbfcff; text-align: left; position: sticky; left: 0; z-index: 1; }
         td a { color: #1976d2; text-decoration: none; font-weight: 700; }
+        .tabs { display:flex; gap:8px; margin-bottom: 12px; }
+        .tab-btn { height: 34px; border: 1px solid #d7dbe7; border-radius: 999px; background:#fff; padding: 0 14px; cursor:pointer; font-weight: 700; color:#333; }
+        .tab-btn.active { background:#1976d2; color:#fff; border-color:#1976d2; }
+        .tab-panel { display:none; }
+        .tab-panel.active { display:block; }
+        .multi-select { position: relative; display: inline-block; }
+        .multi-select-display { height: 34px; border: 1px solid #d7dbe7; border-radius: 8px; padding: 0 10px; font-size: 14px; background:#fff; cursor:pointer; display:flex; align-items:center; min-width: 220px; }
+        .multi-select-dropdown { display:none; position:absolute; top: 38px; left: 0; right: 0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; box-shadow:0 8px 18px rgba(18,38,63,.12); z-index: 30; padding: 6px 8px; max-height: 220px; overflow:auto; }
+        .multi-select-dropdown.open { display:block; }
+        .multi-select-option { display:flex; align-items:center; gap:6px; padding:6px 4px; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -43,37 +54,138 @@
 </header>
 
 <main class="container" style="max-width:1200px;">
-    <section class="card">
-        <div class="row">
-            <label>统计近 <input id="count" type="number" min="1" value="5" style="width:80px;"> 次工作日志</label>
-            <label>重复度 <input id="chongfudu" type="number" min="0" max="100" value="80" style="width:80px;"> %</label>
-            <button class="btn" id="btn">统计</button>
-        </div>
-        <div id="err" class="err"></div>
-    </section>
-
-    <div class="toolbar">
-        <div class="muted" id="status"></div>
-        <div class="dropdown" id="dd">
-            <button class="btn" id="exportBtn" disabled>导出</button>
-            <div class="dropdown-menu">
-                <a href="#" data-fmt="xlsx">导出 xlsx</a>
-                <a href="#" data-fmt="csv">导出 csv</a>
-            </div>
-        </div>
+    <div class="tabs" id="gzrzddTabs">
+        <button class="tab-btn active" data-tab="repeat">工作日志重复度统计</button>
+        <button class="tab-btn" data-tab="cqtj">工作日志超期统计</button>
     </div>
 
-    <section class="card">
-        <div class="table-wrap">
-            <table id="tbl"></table>
+    <div class="tab-panel active" id="tab-repeat">
+        <section class="card">
+            <div class="row">
+                <label>统计近 <input id="count" type="number" min="1" value="5" style="width:80px;"> 次工作日志</label>
+                <label>重复度 <input id="chongfudu" type="number" min="0" max="100" value="80" style="width:80px;"> %</label>
+                <button class="btn" id="btn">统计</button>
+            </div>
+            <div id="err" class="err"></div>
+        </section>
+
+        <div class="toolbar">
+            <div class="muted" id="status"></div>
+            <div class="dropdown" id="dd">
+                <button class="btn" id="exportBtn" disabled>导出</button>
+                <div class="dropdown-menu">
+                    <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                    <a href="#" data-fmt="csv">导出 csv</a>
+                </div>
+            </div>
         </div>
-        <div class="muted" style="margin-top:10px;">
-            说明：当前页面仅按“分局名称”汇总展示（已取消“所属派出所”分组）。点击数字查看该分局的重复人员明细。
+
+        <section class="card">
+            <div class="table-wrap">
+                <table id="tbl"></table>
+            </div>
+            <div class="muted" style="margin-top:10px;">
+                说明：当前页面仅按“分局名称”汇总展示（已取消“所属派出所”分组）。点击数字查看该分局的重复人员明细。
+            </div>
+        </section>
+    </div>
+
+    <div class="tab-panel" id="tab-cqtj">
+        <section class="card">
+            <div class="row" style="justify-content:space-between; width:100%;">
+                <div class="row" style="gap:10px;">
+                    <label>
+                        <input type="radio" name="cqtj_mode" value="detail" checked>
+                        详细数据
+                    </label>
+                    <label>
+                        <input type="radio" name="cqtj_mode" value="branch">
+                        分局统计
+                    </label>
+                    <button class="btn" id="cqtjWarnBtn" style="background:#b42318;">警告</button>
+                    <label>风险类型
+                        <div class="multi-select" id="cqtjRiskTypes">
+                            <div class="multi-select-display" id="cqtjRiskTypesDisplay">全部</div>
+                            <div class="multi-select-dropdown" id="cqtjRiskTypesDropdown">
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="_all">
+                                    <span>全选</span>
+                                </label>
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="高风险">
+                                    <span>高风险</span>
+                                </label>
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="中风险">
+                                    <span>中风险</span>
+                                </label>
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="低风险">
+                                    <span>低风险</span>
+                                </label>
+                            </div>
+                        </div>
+                    </label>
+                    <label>分局
+                        <div class="multi-select" id="cqtjBranches">
+                            <div class="multi-select-display" id="cqtjBranchesDisplay">全部</div>
+                            <div class="multi-select-dropdown" id="cqtjBranchesDropdown">
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="_all">
+                                    <span>全选</span>
+                                </label>
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="云城">
+                                    <span>云城</span>
+                                </label>
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="云安">
+                                    <span>云安</span>
+                                </label>
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="罗定">
+                                    <span>罗定</span>
+                                </label>
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="新兴">
+                                    <span>新兴</span>
+                                </label>
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="郁南">
+                                    <span>郁南</span>
+                                </label>
+                            </div>
+                        </div>
+                    </label>
+                    <button class="btn" id="cqtjQueryBtn">查询</button>
+                </div>
+                <div class="dropdown" id="cqtjDd">
+                    <button class="btn" id="cqtjExportBtn">导出</button>
+                    <div class="dropdown-menu">
+                        <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                        <a href="#" data-fmt="csv">导出 csv</a>
+                    </div>
+                </div>
+            </div>
+            <div id="cqtjErr" class="err"></div>
+        </section>
+
+        <div class="toolbar">
+            <div class="muted" id="cqtjStatus"></div>
         </div>
-    </section>
+
+        <section class="card">
+            <div class="table-wrap">
+                <table id="cqtjTbl"></table>
+            </div>
+            <div class="muted" style="margin-top:10px;">
+                说明：默认展示达到“提醒”阈值的数据（提醒+警告）；点击“警告”可仅展示达到警告阈值的数据。
+            </div>
+        </section>
+    </div>
 </main>
 
 <script src="{{ url_for('static', filename='js/gzrzdd.js') }}"></script>
+<script src="{{ url_for('gzrzdd.static', filename='gzrzdd_cqtj.js') }}"></script>
 </body>
 </html>
-

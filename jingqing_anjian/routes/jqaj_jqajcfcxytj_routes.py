@@ -298,3 +298,42 @@ def export_data():
             "success": False,
             "message": f"导出失败: {exc}"
         }), 500
+
+
+@jqajcfcxytj_bp.route("/api/jqajcfcxytj/report_export", methods=["POST"])
+def export_report():
+    """导出报表（写入 xls 模板）"""
+    try:
+        params = request.get_json() or {}
+        kssj = params.get("kssj", "")
+        jssj = params.get("jssj", "")
+        hbkssj = params.get("hbkssj", "")
+        hbjssj = params.get("hbjssj", "")
+
+        if not kssj or not jssj or not hbkssj or not hbjssj:
+            return jsonify({
+                "success": False,
+                "message": "缺少参数：kssj/jssj/hbkssj/hbjssj"
+            }), 400
+
+        data = service.build_report_xls(kssj, jssj, hbkssj, hbjssj)
+        timestamp = _build_timestamp()
+        filename = f"警情案件处罚统计报表_{timestamp}.xls"
+        return send_file(
+            io.BytesIO(data),
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/vnd.ms-excel",
+        )
+    except ValueError as exc:
+        logging.error("导出报表参数错误: %s", exc)
+        return jsonify({
+            "success": False,
+            "message": str(exc)
+        }), 400
+    except Exception as exc:
+        logging.error("导出报表失败: %s", exc)
+        return jsonify({
+            "success": False,
+            "message": f"导出报表失败: {exc}"
+        }), 500

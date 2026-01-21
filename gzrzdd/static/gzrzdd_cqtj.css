@@ -1,0 +1,12 @@
+.cqtj-red td { background: #fee4e2; }
+.cqtj-yellow td { background: #fff4cc; }
+.cqtj-red td, .cqtj-yellow td { transition: background .15s ease-in-out; }
+
+.cqtj-table th, .cqtj-table td { text-align: left; }
+.cqtj-table td { white-space: nowrap; }
+.cqtj-table td.pre { white-space: pre-line; }
+
+@media (max-width: 900px) {
+  #cqtjRiskTypes { min-width: 160px !important; }
+}
+
