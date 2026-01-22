@@ -97,9 +97,10 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
         if count_only:
             return "SELECT 0", []
         return (
-            "SELECT ''::text AS leixing, ''::text AS yuanshiqueren, ''::text AS 分局, "
+            "SELECT ''::text AS caseno, ''::text AS leixing, ''::text AS yuanshiqueren, ''::text AS 分局, "
             "''::text AS 派出所编号, ''::text AS 派出所名称, "
-            "NULL::timestamp AS 报警时间, ''::text AS 警情地址, ''::text AS jq_type "
+            "NULL::timestamp AS 报警时间, ''::text AS 警情地址, ''::text AS 报警内容, "
+            "''::text AS 处警情况, ''::text AS jq_type "
             "WHERE 1=0",
             [],
         )
@@ -115,6 +116,7 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
         selects.append(
             f"""
             SELECT
+                jq.caseno,
                 ctc.leixing AS leixing,
                 %s::text AS yuanshiqueren,
                 jq.cmdname AS 分局,
@@ -122,6 +124,8 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
                 jq.dutydeptname AS 派出所名称,
                 jq.calltime AS 报警时间,
                 jq.occuraddress AS 警情地址,
+                jq.casecontents AS 报警内容,
+                jq.replies AS 处警情况,
                 jq.{type_name_col} AS jq_type
             FROM "ywdata"."case_type_config" ctc
             JOIN LATERAL UNNEST(ctc.newcharasubclass_list) AS subclass(code) ON TRUE
@@ -139,7 +143,7 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
         return f"SELECT COUNT(1) FROM ({union_sql}) t", params
 
     final_sql = f"""
-    SELECT leixing, yuanshiqueren, 分局, 派出所编号, 派出所名称, 报警时间, 警情地址, jq_type
+    SELECT caseno, leixing, yuanshiqueren, 分局, 派出所编号, 派出所名称, 报警时间, 警情地址, 报警内容, 处警情况, jq_type
     FROM ({union_sql}) t
     ORDER BY 报警时间 DESC
     """

@@ -11,7 +11,7 @@ from flask import Response, jsonify, request, send_file
 
 from gonggong.utils.error_handler import handle_errors, log_error
 from xunfang.routes.xunfang_routes import xunfang_bp
-from xunfang.service.jiemiansanlei_service import export_classified, get_case_types, query_classified
+from xunfang.service.jiemiansanlei_service import export_classified, export_report, get_case_types, query_classified
 
 
 def _as_list(val: Any) -> List[str]:
@@ -107,3 +107,32 @@ def jiemiansanlei_export() -> Response:
     bio.seek(0)
     return send_file(bio, as_attachment=True, download_name=filename, mimetype=mimetype)
 
+
+@xunfang_bp.route("/jiemiansanlei/export_report", methods=["POST"])
+@handle_errors("街面三类警情导出报表")
+def jiemiansanlei_export_report() -> Response:
+    payload = request.json or {}
+    start_time = str(payload.get("startTime") or "").strip()
+    end_time = str(payload.get("endTime") or "").strip()
+    hb_start_time = str(payload.get("hbStartTime") or "").strip()
+    hb_end_time = str(payload.get("hbEndTime") or "").strip()
+
+    if not start_time or not end_time:
+        return jsonify({"success": False, "message": "开始时间和结束时间不能为空"}), 400
+    if not hb_start_time or not hb_end_time:
+        return jsonify({"success": False, "message": "环比开始和环比结束不能为空"}), 400
+
+    try:
+        file_bytes, mimetype, filename = export_report(
+            start_time=start_time,
+            end_time=end_time,
+            hb_start_time=hb_start_time,
+            hb_end_time=hb_end_time,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log_error(f"街面三类警情导出报表失败: {exc}")
+        return jsonify({"success": False, "message": f"导出报表失败: {exc}"}), 500
+
+    bio = BytesIO(file_bytes)
+    bio.seek(0)
+    return send_file(bio, as_attachment=True, download_name=filename, mimetype=mimetype)

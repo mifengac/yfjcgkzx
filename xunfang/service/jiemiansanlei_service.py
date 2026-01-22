@@ -13,7 +13,7 @@ import json
 import os
 import threading
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
@@ -29,6 +29,14 @@ from xunfang.dao.jiemiansanlei_dao import (
 )
 
 ExportFormat = Literal["xlsx", "xls"]
+ReportBureau = Literal[
+    "云城分局",
+    "云安分局",
+    "罗定市公安局",
+    "新兴县公安局",
+    "郁南县公安局",
+    "ALL",
+]
 
 _MODEL_LOCK = threading.Lock()
 _MODEL_BUNDLE: Optional["ModelBundle"] = None
@@ -142,6 +150,136 @@ def export_classified(
     return xls_bytes, "application/vnd.ms-excel", filename
 
 
+def export_report(
+    *,
+    start_time: str,
+    end_time: str,
+    hb_start_time: str,
+    hb_end_time: str,
+) -> Tuple[bytes, str, str]:
+    """
+    使用模板导出“街面三类警情统计表”（xlsx）。
+
+    仅统计：
+    - 警情性质：人身伤害类 / 侵犯财产类 / 扰乱秩序类
+    - 口径：原始 / 确认
+    - 分类结果严格等于：街面与公共区域
+    - caseno 作为唯一标识去重（同一口径内）
+    """
+    try:
+        from openpyxl import load_workbook  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"缺少依赖 openpyxl，无法导出报表：{exc}") from exc
+
+    current_start = _parse_dt(start_time)
+    current_end = _parse_dt(end_time)
+    hb_start = _parse_dt(hb_start_time)
+    hb_end = _parse_dt(hb_end_time)
+
+    if current_start >= current_end:
+        raise ValueError("开始时间必须早于结束时间")
+    if hb_start >= hb_end:
+        raise ValueError("环比开始必须早于环比结束")
+
+    # 2.3：同比（针对 2.1）
+    yoy_current_start = _shift_year(current_start, -1)
+    yoy_current_end = _shift_year(current_end, -1)
+
+    # 2.4：今年 1 月 1 日至 end_time
+    ytd_start = datetime(current_end.year, 1, 1, 0, 0, 0)
+    x_days = (current_end - ytd_start).days
+
+    # 2.5：环比 2.4（今年 1 月 1 日向前推 x 天至今年 1 月 1 日）
+    hb_ytd_start = ytd_start - timedelta(days=x_days)
+    hb_ytd_end = ytd_start
+
+    # 2.6：同比（针对 2.4）
+    yoy_ytd_start = _shift_year(ytd_start, -1)
+    yoy_ytd_end = _shift_year(current_end, -1)
+
+    # 仅 2 次取数：一次取“今年窗口”（覆盖 2.1/2.2/2.4/2.5），一次取“去年窗口”（覆盖 2.3/2.6）
+    leixing_list = ["人身伤害类", "侵犯财产类", "扰乱秩序类"]
+    source_list: List[SourceType] = ["原始", "确认"]
+
+    year_window_start = min(current_start, hb_start, ytd_start, hb_ytd_start)
+    year_window_end = current_end
+    last_year_window_start = yoy_ytd_start
+    last_year_window_end = yoy_ytd_end
+
+    rows_year = fetch_jingqings(
+        JiemianSanleiQuery(
+            start_time=_format_dt(year_window_start),
+            end_time=_format_dt(year_window_end),
+            leixing_list=leixing_list,
+            source_list=source_list,
+            limit=None,
+            offset=0,
+        )
+    )
+    _append_predictions(rows_year)
+
+    rows_last_year = fetch_jingqings(
+        JiemianSanleiQuery(
+            start_time=_format_dt(last_year_window_start),
+            end_time=_format_dt(last_year_window_end),
+            leixing_list=leixing_list,
+            source_list=source_list,
+            limit=None,
+            offset=0,
+        )
+    )
+    _append_predictions(rows_last_year)
+
+    counts, missing_sheets = _build_report_counts(
+        rows_year=rows_year,
+        rows_last_year=rows_last_year,
+        segments_year=[
+            ("current", current_start, current_end, "C", "D"),
+            ("hb", hb_start, hb_end, "K", "N"),
+            ("ytd", ytd_start, current_end, "Q", "R"),
+            ("hb_ytd", hb_ytd_start, hb_ytd_end, "Y", "AB"),
+        ],
+        segments_last_year=[
+            ("yoy_current", yoy_current_start, yoy_current_end, "E", "F"),
+            ("yoy_ytd", yoy_ytd_start, yoy_ytd_end, "S", "T"),
+        ],
+    )
+
+    template_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "templates", "jiemiansanleijingqing_template.xlsx")
+    )
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f"未找到报表模板文件：{template_path}")
+
+    wb = load_workbook(template_path)
+
+    expected_sheets = ["人身伤害类", "侵犯财产类", "扰乱秩序类", "三类合计"]
+    for sheet_name in expected_sheets:
+        if sheet_name not in wb.sheetnames:
+            missing_sheets.append(sheet_name)
+            continue
+
+        ws = wb[sheet_name]
+        for bureau, row_idx in _REPORT_BUREAU_ROW.items():
+            for col in _REPORT_COLS:
+                key = (sheet_name, bureau, col)
+                ws[f"{col}{row_idx}"].value = int(counts.get(key, 0))
+
+    if missing_sheets:
+        missing = "、".join(sorted(set(missing_sheets)))
+        raise RuntimeError(f"模板缺少 sheet：{missing}")
+
+    filename = f"{_safe_filename_part(start_time)}-{_safe_filename_part(end_time)}_街面三类警情统计表.xlsx"
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return (
+        bio.read(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename,
+    )
+
+
 def _build_xlsx_workbook(
     start_time: str,
     end_time: str,
@@ -195,7 +333,7 @@ def _build_xls_bytes(
 
 
 def _write_table_xlsx(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
-    headers = ["分局", "派出所编号", "派出所名称", "报警时间", "警情地址", "警情类型", "分类结果", "置信度"]
+    headers = ["分局", "派出所编号", "派出所名称", "报警时间", "警情地址", "报警内容", "处警情况", "警情类型", "分类结果", "置信度"]
     ws.append(headers)
     for r in rows:
         ws.append(
@@ -205,6 +343,8 @@ def _write_table_xlsx(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
                 r.get("派出所名称") or "",
                 _format_dt(r.get("报警时间")),
                 r.get("警情地址") or "",
+                r.get("报警内容") or "",
+                r.get("处警情况") or "",
                 r.get("jq_type") or "",
                 r.get("pred_label") or "",
                 _format_prob(r.get("pred_prob")),
@@ -213,7 +353,7 @@ def _write_table_xlsx(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
 
 
 def _write_table_xls(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
-    headers = ["分局", "派出所编号", "派出所名称", "报警时间", "警情地址", "警情类型", "分类结果", "置信度"]
+    headers = ["分局", "派出所编号", "派出所名称", "报警时间", "警情地址", "报警内容", "处警情况", "警情类型", "分类结果", "置信度"]
     for col, h in enumerate(headers):
         ws.write(0, col, h)
 
@@ -223,9 +363,11 @@ def _write_table_xls(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
         ws.write(i, 2, r.get("派出所名称") or "")
         ws.write(i, 3, _format_dt(r.get("报警时间")))
         ws.write(i, 4, r.get("警情地址") or "")
-        ws.write(i, 5, r.get("jq_type") or "")
-        ws.write(i, 6, r.get("pred_label") or "")
-        ws.write(i, 7, _format_prob(r.get("pred_prob")))
+        ws.write(i, 5, r.get("报警内容") or "")
+        ws.write(i, 6, r.get("处警情况") or "")
+        ws.write(i, 7, r.get("jq_type") or "")
+        ws.write(i, 8, r.get("pred_label") or "")
+        ws.write(i, 9, _format_prob(r.get("pred_prob")))
 
 
 def _append_predictions(rows: List[Dict[str, Any]]) -> None:
@@ -326,3 +468,119 @@ def _safe_sheet_name(name: str) -> str:
     cleaned = "".join("_" if ch in _ILLEGAL_SHEET_CHARS else ch for ch in (name or "sheet"))
     cleaned = cleaned.strip() or "sheet"
     return cleaned[:31]
+
+
+def _safe_filename_part(val: str) -> str:
+    s = str(val or "").strip()
+    # Windows 文件名不允许 ":" 等字符
+    return (
+        s.replace(":", "-")
+        .replace("/", "-")
+        .replace("\\", "-")
+        .replace(" ", "_")
+        .replace("\t", "_")
+    )
+
+
+_REPORT_BUREAU_ROW: Dict[ReportBureau, int] = {
+    "云城分局": 6,
+    "云安分局": 7,
+    "罗定市公安局": 8,
+    "新兴县公安局": 9,
+    "郁南县公安局": 10,
+    "ALL": 11,
+}
+
+_REPORT_COLS = ["C", "D", "E", "F", "K", "N", "Q", "R", "S", "T", "Y", "AB"]
+
+
+def _parse_dt(s: str) -> datetime:
+    return datetime.strptime(str(s).strip(), "%Y-%m-%d %H:%M:%S")
+
+
+def _shift_year(dt: datetime, years: int) -> datetime:
+    try:
+        return dt.replace(year=dt.year + years)
+    except ValueError:
+        # 处理 2/29 等日期：回退到当月最后一天
+        base = dt.replace(day=1, month=dt.month, year=dt.year + years)
+        next_month = base.replace(day=28) + timedelta(days=4)
+        last_day = next_month - timedelta(days=next_month.day)
+        return dt.replace(year=dt.year + years, day=last_day.day)
+
+
+def _as_dt(val: Any) -> Optional[datetime]:
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val
+    s = str(val).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"):
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception:
+            continue
+    return None
+
+
+def _build_report_counts(
+    *,
+    rows_year: Sequence[Dict[str, Any]],
+    rows_last_year: Sequence[Dict[str, Any]],
+    segments_year: Sequence[Tuple[str, datetime, datetime, str, str]],
+    segments_last_year: Sequence[Tuple[str, datetime, datetime, str, str]],
+) -> Tuple[Dict[Tuple[str, ReportBureau, str], int], List[str]]:
+    """
+    返回 counts[(sheet_name, bureau_key, col_letter)] = count
+    """
+    target_leixing = {"人身伤害类", "侵犯财产类", "扰乱秩序类"}
+    target_sources = {"原始", "确认"}
+    target_pred = "街面与公共区域"
+    bureaus = {"云城分局", "云安分局", "罗定市公安局", "新兴县公安局", "郁南县公安局"}
+
+    counts: Dict[Tuple[str, ReportBureau, str], int] = {}
+    seen: Dict[Tuple[str, ReportBureau, str], set] = {}
+    missing_sheets: List[str] = []
+
+    def inc(sheet: str, bureau: ReportBureau, col: str, caseno_key: str) -> None:
+        k = (sheet, bureau, col)
+        s = seen.setdefault(k, set())
+        if caseno_key in s:
+            return
+        s.add(caseno_key)
+        counts[k] = counts.get(k, 0) + 1
+
+    def process_rows(rows: Sequence[Dict[str, Any]], segs: Sequence[Tuple[str, datetime, datetime, str, str]]) -> None:
+        for idx, r in enumerate(rows):
+            leixing = str(r.get("leixing") or "").strip()
+            source = str(r.get("yuanshiqueren") or "").strip()
+            if leixing not in target_leixing or source not in target_sources:
+                continue
+
+            if str(r.get("pred_label") or "").strip() != target_pred:
+                continue
+
+            dt = _as_dt(r.get("报警时间"))
+            if dt is None:
+                continue
+
+            bureau_raw = str(r.get("分局") or "").strip()
+            bureau_keys: List[ReportBureau] = ["ALL"]
+            if bureau_raw in bureaus:
+                bureau_keys = [bureau_raw, "ALL"]  # type: ignore[list-item]
+
+            caseno = str(r.get("caseno") or "").strip()
+            caseno_key = caseno or f"__row__{idx}"
+
+            for _, start, end, col_orig, col_conf in segs:
+                # 统一按 [start, end) 计算，避免边界重复
+                if dt < start or dt >= end:
+                    continue
+                col = col_orig if source == "原始" else col_conf
+                for sheet in (leixing, "三类合计"):
+                    for b in bureau_keys:
+                        inc(sheet, b, col, caseno_key)
+
+    process_rows(rows_year, segments_year)
+    process_rows(rows_last_year, segments_last_year)
+    return counts, missing_sheets

@@ -13,11 +13,11 @@
 
             <div>
                 <label for="jiemiansanleiStartTime">开始时间:</label>
-                <input type="datetime-local" id="jiemiansanleiStartTime" name="jiemiansanleiStartTime" value="">
+                <input type="datetime-local" step="1" id="jiemiansanleiStartTime" name="jiemiansanleiStartTime" value="">
             </div>
             <div>
                 <label for="jiemiansanleiEndTime">结束时间:</label>
-                <input type="datetime-local" id="jiemiansanleiEndTime" name="jiemiansanleiEndTime" value="">
+                <input type="datetime-local" step="1" id="jiemiansanleiEndTime" name="jiemiansanleiEndTime" value="">
             </div>
 
             <div style="min-width: 220px;">
@@ -37,10 +37,20 @@
                         <a href="javascript:void(0)" onclick="jiemiansanleiExport('xlsx')" style="display:block; padding:8px 12px; text-decoration:none; color:#333;">xlsx</a>
                     </div>
                 </div>
+
+                <button class="calculate-btn" onclick="jiemiansanleiExportReport()" style="background:#1976d2;">导出报表</button>
             </div>
         </div>
 
         <div class="date-inputs" style="align-items: center; flex-wrap: wrap;">
+            <div>
+                <label for="jiemiansanleiHbStartTime">环比开始:</label>
+                <input type="datetime-local" step="1" id="jiemiansanleiHbStartTime" name="jiemiansanleiHbStartTime" value="">
+            </div>
+            <div>
+                <label for="jiemiansanleiHbEndTime">环比结束:</label>
+                <input type="datetime-local" step="1" id="jiemiansanleiHbEndTime" name="jiemiansanleiHbEndTime" value="">
+            </div>
             <div>
                 <label for="jiemiansanleiPageSize">每页:</label>
                 <select id="jiemiansanleiPageSize" onchange="jiemiansanleiQuery(1)">

@@ -13,6 +13,7 @@ function jiemiansanleiInit() {
   _jiemiansanleiInited = true;
 
   jiemiansanleiSetDefaultTimeRange();
+  jiemiansanleiSetDefaultHbTimeRange();
   initMultiSelect("jiemiansanleiSourcesMs", [
     { value: "原始", label: "原始", checked: true },
     { value: "确认", label: "确认", checked: false },
@@ -63,6 +64,29 @@ function jiemiansanleiSetDefaultTimeRange() {
   endEl.value = jiemiansanleiToDatetimeLocal(end);
 }
 
+function jiemiansanleiSetDefaultHbTimeRange() {
+  const hbStartEl = document.getElementById("jiemiansanleiHbStartTime");
+  const hbEndEl = document.getElementById("jiemiansanleiHbEndTime");
+  const endEl = document.getElementById("jiemiansanleiEndTime");
+  if (!hbStartEl || !hbEndEl) return;
+
+  let baseEnd;
+  if (endEl && endEl.value) {
+    baseEnd = new Date(endEl.value);
+  } else {
+    baseEnd = new Date();
+  }
+  baseEnd.setHours(0, 0, 0, 0);
+
+  const hbEnd = new Date(baseEnd);
+  hbEnd.setDate(hbEnd.getDate() - 7);
+  const hbStart = new Date(baseEnd);
+  hbStart.setDate(hbStart.getDate() - 14);
+
+  hbStartEl.value = jiemiansanleiToDatetimeLocal(hbStart);
+  hbEndEl.value = jiemiansanleiToDatetimeLocal(hbEnd);
+}
+
 function jiemiansanleiToDatetimeLocal(d) {
   const pad = (n) => String(n).padStart(2, "0");
   return (
@@ -74,7 +98,9 @@ function jiemiansanleiToDatetimeLocal(d) {
     "T" +
     pad(d.getHours()) +
     ":" +
-    pad(d.getMinutes())
+    pad(d.getMinutes()) +
+    ":" +
+    pad(d.getSeconds())
   );
 }
 
@@ -92,7 +118,8 @@ function jiemiansanleiFormatDateTime(dateTimeStr) {
     pad(date.getHours()) +
     ":" +
     pad(date.getMinutes()) +
-    ":00"
+    ":" +
+    pad(date.getSeconds())
   );
 }
 
@@ -390,4 +417,71 @@ function parseFilenameFromContentDisposition(cd) {
   } catch (e) {
     return name;
   }
+}
+
+function jiemiansanleiExportReport() {
+  const startTime = document.getElementById("jiemiansanleiStartTime").value;
+  const endTime = document.getElementById("jiemiansanleiEndTime").value;
+  const hbStartTime = document.getElementById("jiemiansanleiHbStartTime").value;
+  const hbEndTime = document.getElementById("jiemiansanleiHbEndTime").value;
+
+  if (!startTime || !endTime) {
+    showJiemiansanleiMessage("请填写完整的时间范围", "error");
+    return;
+  }
+  if (!hbStartTime || !hbEndTime) {
+    showJiemiansanleiMessage("请填写完整的环比时间范围", "error");
+    return;
+  }
+  if (new Date(startTime) > new Date(endTime)) {
+    showJiemiansanleiMessage("开始时间不能晚于结束时间", "error");
+    return;
+  }
+  if (new Date(hbStartTime) > new Date(hbEndTime)) {
+    showJiemiansanleiMessage("环比开始不能晚于环比结束", "error");
+    return;
+  }
+
+  showJiemiansanleiMessage("正在导出报表...", "success");
+
+  fetch("/xunfang/jiemiansanlei/export_report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      startTime: jiemiansanleiFormatDateTime(startTime),
+      endTime: jiemiansanleiFormatDateTime(endTime),
+      hbStartTime: jiemiansanleiFormatDateTime(hbStartTime),
+      hbEndTime: jiemiansanleiFormatDateTime(hbEndTime),
+    }),
+  })
+    .then((resp) => {
+      if (!resp.ok) {
+        return resp.json().then((j) => {
+          throw new Error((j && j.message) || "导出报表失败");
+        });
+      }
+      const cd = resp.headers.get("content-disposition") || "";
+      return resp.blob().then((blob) => ({ blob, cd }));
+    })
+    .then(({ blob, cd }) => {
+      const a = document.createElement("a");
+      const url = window.URL.createObjectURL(blob);
+      a.href = url;
+      const fallbackName = (
+        jiemiansanleiFormatDateTime(startTime) +
+        "-" +
+        jiemiansanleiFormatDateTime(endTime) +
+        "_街面三类警情统计表.xlsx"
+      )
+        .replace(/[:\\/]/g, "-")
+        .replace(/\s+/g, "_");
+      a.download =
+        parseFilenameFromContentDisposition(cd) || fallbackName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showJiemiansanleiMessage("导出报表完成", "success");
+    })
+    .catch((e) => showJiemiansanleiMessage("导出报表失败: " + e.message, "error"));
 }
