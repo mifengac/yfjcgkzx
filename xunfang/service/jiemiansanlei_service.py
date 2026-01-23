@@ -253,6 +253,13 @@ def export_report(
 
     wb = load_workbook(template_path)
 
+    time_range_text = f"{_format_zh_date(current_start)}至{_format_zh_date(current_end)}"
+    for sheet_name in wb.sheetnames:
+        try:
+            wb[sheet_name]["A6"].value = time_range_text
+        except Exception:
+            continue
+
     expected_sheets = ["人身伤害类", "侵犯财产类", "扰乱秩序类", "三类合计"]
     for sheet_name in expected_sheets:
         if sheet_name not in wb.sheetnames:
@@ -480,6 +487,10 @@ def _safe_filename_part(val: str) -> str:
         .replace(" ", "_")
         .replace("\t", "_")
     )
+
+
+def _format_zh_date(dt: datetime) -> str:
+    return f"{dt.year}年{dt.month}月{dt.day}日"
 
 
 _REPORT_BUREAU_ROW: Dict[ReportBureau, int] = {
