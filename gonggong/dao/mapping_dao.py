@@ -5,8 +5,7 @@ import os
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from gonggong.config.database import DB_CONFIG
-import psycopg2
+from gonggong.config.database import DB_CONFIG, get_database_connection
 
 
 class MappingDAO:
@@ -16,13 +15,7 @@ class MappingDAO:
     def get_connection(self):
         """获取数据库连接"""
         try:
-            connection = psycopg2.connect(
-                host=self.db_config['host'],
-                port=self.db_config.get('port', 54321),  # 人大金仓默认端口
-                database=self.db_config['database'],
-                user=self.db_config['user'],
-                password=self.db_config['password']
-            )
+            connection = get_database_connection()
             
             # 设置搜索路径到指定的schema
             cursor = connection.cursor()

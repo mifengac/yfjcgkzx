@@ -83,13 +83,21 @@ def _load_import_func():
     以便复用“导入送校数据”的逻辑。
     """
     import importlib.util
+    import sys
 
     script_path = Path(__file__).resolve().parents[1] / "0125_wcnr_sfzxx_import.py"
-    spec = importlib.util.spec_from_file_location("wcnr_sfzxx_import", script_path)
+    # 注意：exec_module 之前必须先把模块放入 sys.modules。
+    # 否则在 Python 3.12 下，dataclasses 处理类型注解时会访问 sys.modules[cls.__module__]，导致 NoneType 异常。
+    spec = importlib.util.spec_from_file_location("wcnr_djdo.wcnr_sfzxx_import", script_path)
     if spec is None or spec.loader is None:
         raise RuntimeError("无法加载导入脚本")
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    sys.modules[spec.name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        sys.modules.pop(spec.name, None)
+        raise
     func = getattr(mod, "import_sfzxx_file", None)
     if func is None:
         raise RuntimeError("导入脚本缺少 import_sfzxx_file()")
@@ -195,6 +203,22 @@ def api_import_sx_xls():
         import_func = _load_import_func()
         stats = import_func(tmp_path, sheet_name="累计招生", truncate=False)
         return jsonify({"success": True, "message": "导入成功", "stats": stats})
+    except UnicodeEncodeError as exc:
+        bad = ""
+        try:
+            if isinstance(exc.object, str):
+                bad = exc.object[exc.start : exc.end]
+        except Exception:
+            bad = ""
+        codepoints = ""
+        if bad:
+            codepoints = " ".join(f"U+{ord(ch):04X}" for ch in bad)
+        msg = "导入失败：存在数据库编码无法写入的字符"
+        if bad:
+            msg += f" {bad!r}({codepoints})"
+        msg += "。请将数据库客户端编码调整为 GB18030/UTF8，或先在 Excel 中清洗/替换该字符后再导入。"
+        logging.exception("import sx xls failed (unicode encode)")
+        return jsonify({"success": False, "message": msg}), 500
     except Exception as exc:
         logging.exception("import sx xls failed")
         return jsonify({"success": False, "message": str(exc)}), 500
