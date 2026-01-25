@@ -253,7 +253,7 @@ def export_report(
 
     wb = load_workbook(template_path)
 
-    time_range_text = f"{_format_zh_date(current_start)}至{_format_zh_date(current_end)}"
+    time_range_text = f"{_format_zh_date(current_start)}-{_format_zh_date(current_end)}"
     for sheet_name in wb.sheetnames:
         try:
             wb[sheet_name]["A6"].value = time_range_text

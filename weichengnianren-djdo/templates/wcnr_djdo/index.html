@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>未成年人打架斗殴六项指标监测</title>
+    <link rel="stylesheet" href="{{ url_for('wcnr_djdo.static', filename='wcnr_djdo.css') }}" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="topbar">
+        <div class="left">
+          <div class="title">未成年人打架斗殴六项指标监测</div>
+          <div class="range">
+            <label>开始时间</label>
+            <input id="globalStart" type="datetime-local" step="1" />
+            <label>结束时间</label>
+            <input id="globalEnd" type="datetime-local" step="1" />
+            <button id="globalRefresh" class="btn">刷新全部</button>
+          </div>
+        </div>
+        <div class="right">
+          <button id="btnExportPdf" class="btn primary">导出总览</button>
+          <button id="btnExportXlsx" class="btn">导出详情</button>
+          <label class="btn">
+            导入送校数据
+            <input id="fileImport" type="file" accept=".xls" style="display: none" />
+          </label>
+          <button id="btnSendSms" class="btn">发送短信</button>
+        </div>
+      </header>
+
+      <main class="grid">
+        {% set cards = [
+          ('jq_za','警情转案率'),
+          ('jzjy','采取矫治教育措施率'),
+          ('sx_sx','涉刑人员送学率'),
+          ('zljqjh','责令加强监护率'),
+          ('cs_fa','场所发案率'),
+          ('ng_zf','纳管人员再犯率'),
+        ] %}
+        {% for key,title in cards %}
+        <section class="card" data-metric="{{ key }}">
+          <div class="card-head">
+            <div class="card-title">{{ title }}</div>
+            <div class="card-tools">
+              <input class="start" type="datetime-local" step="1" />
+              <input class="end" type="datetime-local" step="1" />
+              <select class="sortBy">
+                <option value="0">按第1柱排序</option>
+                <option value="1">按第2柱排序</option>
+                <option value="2">按第3柱排序</option>
+              </select>
+              <select class="sortDir">
+                <option value="desc">降序</option>
+                <option value="asc">升序</option>
+              </select>
+              <button class="btn download">下载</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <canvas class="chart"></canvas>
+          </div>
+          <div class="card-foot">
+            <span class="hint">点击图例可显示/隐藏柱子</span>
+            <span class="stat"></span>
+          </div>
+        </section>
+        {% endfor %}
+      </main>
+    </div>
+
+    <script src="{{ url_for('wcnr_djdo.static', filename='chart.min.js', v='4.4.1') }}"></script>
+    <script>
+      window.__WCN_DJDO_DEFAULT_START__ = "{{ default_start }}";
+      window.__WCN_DJDO_DEFAULT_END__ = "{{ default_end }}";
+    </script>
+    <script src="{{ url_for('wcnr_djdo.static', filename='wcnr_djdo.js') }}"></script>
+  </body>
+</html>

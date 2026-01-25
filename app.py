@@ -26,6 +26,12 @@ from werkzeug.security import check_password_hash, generate_password_hash
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(PROJECT_ROOT)
 
+# 未成年人（打架斗殴）模块代码位于 `weichengnianren-djdo/`（目录名含 '-' 不能作为包名）
+# 将该目录加入 sys.path，以便导入其下的 `wcnr_djdo` 包。
+WCN_DJDO_ROOT = os.path.join(PROJECT_ROOT, "weichengnianren-djdo")
+if os.path.isdir(WCN_DJDO_ROOT) and WCN_DJDO_ROOT not in sys.path:
+    sys.path.append(WCN_DJDO_ROOT)
+
 # ---------------------------------------------------------------------------
 # 导入项目内部依赖
 # ---------------------------------------------------------------------------
@@ -38,6 +44,10 @@ from xunfang.routes.xunfang_routes import xunfang_bp  # noqa: E402
 from zhizong.routes.zhizong_routes import zhizong_bp  # noqa: E402
 from weichengnianren.routes.wcnr_routes import weichengnianren_bp  # noqa: E402
 from gzrzdd.routes.gzrzdd_routes import gzrzdd_bp  # noqa: E402
+try:
+    from wcnr_djdo import wcnr_djdo_bp  # type: ignore  # noqa: E402
+except Exception:
+    wcnr_djdo_bp = None
 
 # ---------------------------------------------------------------------------
 # Flask 应用与全局变量
@@ -58,6 +68,7 @@ MODULE_DEFINITIONS: List[Dict[str, str]] = [
     {"key": "jingqing_anjian", "label": "警情案件", "endpoint": "jingqing_anjian.jingqing_anjian"},
     {"key": "xunfang", "label": "巡防统计", "endpoint": "xunfang.xunfang"},
     {"key": "zhizong", "label": "治综平台数据统计", "endpoint": "zhizong.index"},
+    {"key": "weichengnianren_djdo", "label": "未成年人(打架斗殴)", "endpoint": "wcnr_djdo.index"},
 ]
 
 
@@ -140,14 +151,18 @@ def main():
 
         modules: List[Dict[str, str]] = []
         for (module_name,) in rows:
-            conf = {
+            conf_map = {
                 "警情": {"endpoint": "jingqing_anjian.jingqing_anjian", "label": "警情案件"},
                 "巡防": {"endpoint": "xunfang.xunfang", "label": "巡防统计"},
                 "治综": {"endpoint": "zhizong.index", "label": "治综平台数据统计"},
                 "后台": {"endpoint": "houtai.import_page", "label": "后台管理"},
                 "未成年人": {"endpoint": "weichengnianren.index", "label": "未成年人"},
                 "工作日志督导": {"endpoint": "gzrzdd.index", "label": "工作日志督导"},
-            }.get(module_name)
+            }
+            if wcnr_djdo_bp is not None:
+                conf_map["未成年人(打架斗殴)"] = {"endpoint": "wcnr_djdo.index", "label": "未成年人(打架斗殴)"}
+
+            conf = conf_map.get(module_name)
             if not conf:
                 continue
             modules.append({"label": conf["label"], "url": url_for(conf["endpoint"])})
@@ -350,6 +365,8 @@ app.register_blueprint(zhizong_bp, url_prefix="/zhizong")
 app.register_blueprint(jingqing_anjian_bp, url_prefix="/jingqing_anjian")
 app.register_blueprint(weichengnianren_bp, url_prefix="/weichengnianren")
 app.register_blueprint(gzrzdd_bp, url_prefix="/gzrzdd")
+if wcnr_djdo_bp is not None:
+    app.register_blueprint(wcnr_djdo_bp, url_prefix="/weichengnianren-djdo")
 try:
     from houtai.routes.houtai_routes import houtai_bp  # 后台批量导入模块
     app.register_blueprint(houtai_bp, url_prefix="/houtai")
