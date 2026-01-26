@@ -18,8 +18,21 @@ def _fetch_all(sql: str, params: Tuple[Any, ...]) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def query_jq_za_details(start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
-    sql = """
+def query_jq_za_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:
+    # 构建类型过滤条件
+    if case_types and len(case_types) > 0:
+        type_condition = """
+AND jq."newcharasubclass" IN (
+    SELECT UNNEST(ctc."newcharasubclass_list")
+    FROM ywdata."case_type_config" ctc
+    WHERE ctc."leixing" = ANY(%s)
+)"""
+        params = (start_time, end_time, case_types)
+    else:
+        type_condition = ""
+        params = (start_time, end_time)
+
+    sql = f"""
 SELECT
     jq."caseno" AS "警情编号",
     jq."calltime" AS "报警时间",
@@ -42,20 +55,29 @@ SELECT
 FROM ywdata."zq_kshddpt_dsjfx_jq" jq
 LEFT JOIN ywdata."mv_zfba_all_ajxx" mza
     ON jq."caseno" = mza."警情编号"
-WHERE jq."newcharasubclass" IN (
-    SELECT UNNEST(ctc."newcharasubclass_list")
-    FROM ywdata."case_type_config" ctc
-    WHERE ctc."leixing" = '打架斗殴'
-)
-AND jq."calltime" BETWEEN %s AND %s
+WHERE jq."calltime" BETWEEN %s AND %s
 AND jq."casemarkok" ~ '未成年'
+{type_condition}
 ;
 """
-    return _fetch_all(sql, (start_time, end_time))
+    return _fetch_all(sql, params)
 
 
-def query_jzjy_details(start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
-    sql = """
+def query_jzjy_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:
+    # 构建类型过滤条件
+    if case_types and len(case_types) > 0:
+        type_condition = """
+    AND mzaa."案由" SIMILAR TO (
+        SELECT ctc."ay_pattern"
+        FROM ywdata."case_type_config" ctc
+        WHERE ctc."leixing" = ANY(%s)
+    )"""
+        params = (start_time, end_time, case_types)
+    else:
+        type_condition = ""
+        params = (start_time, end_time)
+
+    sql = f"""
 WITH minor_fight AS (
     SELECT
         mzaa."案件编号",
@@ -77,13 +99,9 @@ WITH minor_fight AS (
     FROM ywdata."mv_zfba_all_ajxx" mzaa
     INNER JOIN ywdata."mv_minor_person" mmp
         ON mzaa."案件编号" = mmp."asjbh"
-    WHERE mzaa."案由" SIMILAR TO (
-        SELECT ctc."ay_pattern"
-        FROM ywdata."case_type_config" ctc
-        WHERE ctc."leixing" = '打架斗殴'
-    )
-    AND mzaa."立案日期"::timestamp BETWEEN %s AND %s
+    WHERE mzaa."立案日期"::timestamp BETWEEN %s AND %s
     AND mmp."role_names" = '嫌疑人'
+{type_condition}
 ),
 target_aj AS (
     SELECT DISTINCT "案件编号"
@@ -155,11 +173,24 @@ LEFT JOIN baxgry_json bx
     ON mf."案件编号" = bx."案件编号"
 ;
 """
-    return _fetch_all(sql, (start_time, end_time))
+    return _fetch_all(sql, params)
 
 
-def query_sx_sx_details(start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
-    sql = """
+def query_sx_sx_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:
+    # 构建类型过滤条件
+    if case_types and len(case_types) > 0:
+        type_condition = """
+AND mzaa."案由" SIMILAR TO (
+    SELECT ctc."ay_pattern"
+    FROM ywdata."case_type_config" ctc
+    WHERE ctc."leixing" = ANY(%s)
+)"""
+        params = (start_time, end_time, case_types)
+    else:
+        type_condition = ""
+        params = (start_time, end_time)
+
+    sql = f"""
 SELECT
     mmp."anjxgrybh" AS "人员编号",
     mmp."xm" AS "姓名",
@@ -213,19 +244,28 @@ LEFT JOIN LATERAL (
 ) sx ON TRUE
 WHERE mmp."role_names" = '嫌疑人'
 AND mzaa."立案日期"::timestamp BETWEEN %s AND %s
-AND mzaa."案由" SIMILAR TO (
-    SELECT ctc."ay_pattern"
-    FROM ywdata."case_type_config" ctc
-    WHERE ctc."leixing" = '打架斗殴'
-)
+{type_condition}
 AND mzaa."案件类型" = '刑事'
 ;
 """
-    return _fetch_all(sql, (start_time, end_time))
+    return _fetch_all(sql, params)
 
 
-def query_zljqjh_details(start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
-    sql = """
+def query_zljqjh_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:
+    # 构建类型过滤条件
+    if case_types and len(case_types) > 0:
+        type_condition = """
+    AND mzaa."案由" SIMILAR TO (
+        SELECT ctc."ay_pattern"
+        FROM ywdata."case_type_config" ctc
+        WHERE ctc."leixing" = ANY(%s)
+    )"""
+        params = (start_time, end_time, case_types)
+    else:
+        type_condition = ""
+        params = (start_time, end_time)
+
+    sql = f"""
 WITH minor_fight AS (
     SELECT
         mzaa."案件编号",
@@ -247,13 +287,9 @@ WITH minor_fight AS (
     FROM ywdata."mv_zfba_all_ajxx" mzaa
     INNER JOIN ywdata."mv_minor_person" mmp
         ON mzaa."案件编号" = mmp."asjbh"
-    WHERE mzaa."案由" SIMILAR TO (
-        SELECT ctc."ay_pattern"
-        FROM ywdata."case_type_config" ctc
-        WHERE ctc."leixing" = '打架斗殴'
-    )
-    AND mzaa."立案日期"::timestamp BETWEEN %s AND %s
+    WHERE mzaa."立案日期"::timestamp BETWEEN %s AND %s
     AND mmp."role_names" = '嫌疑人'
+{type_condition}
 ),
 target_aj AS (
     SELECT DISTINCT "案件编号"
@@ -307,24 +343,33 @@ AND mf."人员编号" = jh."人员编号"
 LEFT JOIN baxgry_json bx
     ON mf."案件编号" = bx."案件编号";
 """
-    return _fetch_all(sql, (start_time, end_time))
+    return _fetch_all(sql, params)
 
 
-def query_cs_fa_details(start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
-    sql = """
+def query_cs_fa_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:
+    # 构建类型过滤条件
+    if case_types and len(case_types) > 0:
+        type_condition = """
+    AND mza."案由" SIMILAR TO (
+        SELECT ctc."ay_pattern"
+        FROM ywdata."case_type_config" ctc
+        WHERE ctc."leixing" = ANY(%s)
+    )"""
+        params = (start_time, end_time, case_types)
+    else:
+        type_condition = ""
+        params = (start_time, end_time)
+
+    sql = f"""
 WITH aj_list AS (
     SELECT DISTINCT
         mza.*
     FROM ywdata."mv_zfba_all_ajxx" mza
     INNER JOIN ywdata."mv_minor_person" mmp
         ON mza."案件编号" = mmp."asjbh"
-    WHERE mza."案由" SIMILAR TO (
-        SELECT ctc."ay_pattern"
-        FROM ywdata."case_type_config" ctc
-        WHERE ctc."leixing" = '打架斗殴'
-    )
-    AND mza."立案日期" BETWEEN %s AND %s
+    WHERE mza."立案日期" BETWEEN %s AND %s
     AND mmp."role_names" = '嫌疑人'
+{type_condition}
 ),
 
 target_aj AS (
@@ -374,44 +419,65 @@ FROM aj_list a
 LEFT JOIN baxgry_json bx
     ON a."案件编号" = bx."案件编号";
 """
-    return _fetch_all(sql, (start_time, end_time))
+    return _fetch_all(sql, params)
 
 
-def query_ng_zf_details(start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
-    sql = """
-WITH fight_suspect AS (
-    SELECT DISTINCT
-        mmp."zjhm" AS zjhm
-    FROM ywdata."mv_minor_person" mmp
-    INNER JOIN ywdata."mv_zfba_all_ajxx" mzaa
-        ON mmp."asjbh" = mzaa."案件编号"
-    WHERE mzaa."案由" SIMILAR TO (
-        SELECT ctc."ay_pattern"
-        FROM ywdata."case_type_config" ctc
-        WHERE ctc."leixing" = '打架斗殴'
-    )
-    -- 纳管人员再犯率：按需求固定时间范围（不使用页面时间控件）
-    AND mzaa."立案日期" BETWEEN '2026-01-01' AND NOW()
-    AND mmp."role_names" = '嫌疑人'
-    AND mmp."zjhm" IS NOT NULL
-)
-SELECT
-    bzr.*,
-    CASE
-        WHEN bzr."ssfj_dm" ='445302000000' THEN '云城'
-        WHEN bzr."ssfj_dm" ='445303000000' THEN '云安'
-        WHEN bzr."ssfj_dm" ='445381000000' THEN '罗定'
-        WHEN bzr."ssfj_dm" ='445321000000' THEN '新兴'
-        WHEN bzr."ssfj_dm" ='445322000000' THEN '郁南'
-    END AS "地区",
-    CASE
-        WHEN fs.zjhm IS NOT NULL THEN '是'
-        ELSE '否'
-    END AS "是否再犯"
-FROM "stdata"."b_zdry_ryxx" bzr
-LEFT JOIN fight_suspect fs
-    ON bzr.zjhm = fs.zjhm
-WHERE bzr.sflg = '1'
-AND bzr."deleteflag" = '0';
+def query_ng_zf_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:
+    # 构建类型过滤条件
+    if case_types and len(case_types) > 0:
+        type_condition = """
+                AND mzaa."案由" SIMILAR TO (
+                    SELECT ctc."ay_pattern"
+                    FROM ywdata."case_type_config" ctc
+                    WHERE ctc."leixing" = ANY(%s)
+                )"""
+        params = (start_time, end_time, case_types)
+    else:
+        type_condition = ""
+        params = (start_time, end_time)
+
+    sql = f"""
+            WITH fight_suspect AS (
+                SELECT
+                    mmp."zjhm" AS zjhm,
+                    mzaa."立案日期" AS larq
+                FROM ywdata."mv_minor_person" mmp
+                INNER JOIN ywdata."mv_zfba_all_ajxx" mzaa
+                    ON mmp."asjbh" = mzaa."案件编号"
+                WHERE mzaa."立案日期" BETWEEN %s AND %s
+                AND mmp."role_names" = '嫌疑人'
+                AND mmp."zjhm" IS NOT NULL
+{type_condition}
+            )
+
+            SELECT
+                bzr.*,
+                CASE
+                    WHEN bzr."ssfj_dm" ='445302000000' THEN '云城'
+                    WHEN bzr."ssfj_dm" ='445303000000' THEN '云安'
+                    WHEN bzr."ssfj_dm" ='445381000000' THEN '罗定'
+                    WHEN bzr."ssfj_dm" ='445321000000' THEN '新兴'
+                    WHEN bzr."ssfj_dm" ='445322000000' THEN '郁南'
+                END AS "地区",
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM fight_suspect fs
+                        WHERE fs.zjhm = bzr.zjhm
+                        AND bzr.lgsj < fs.larq   -- ✅ 列管时间在立案日期之前才算再犯
+                    )
+                    THEN '是'
+                    ELSE '否'
+                END AS "是否再犯"
+            FROM "stdata"."b_zdry_ryxx" bzr
+            WHERE bzr.sflg = '1'
+            AND bzr."deleteflag" = '0';
 """
-    return _fetch_all(sql, ())
+    return _fetch_all(sql, params)
+
+
+def query_case_types() -> List[str]:
+    """查询案件类型列表"""
+    sql = 'SELECT ctc.leixing FROM ywdata.case_type_config ctc'
+    rows = _fetch_all(sql, ())
+    return [row['leixing'] for row in rows]

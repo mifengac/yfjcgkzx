@@ -20,8 +20,8 @@ from flask import (
 
 from gonggong.config.database import get_database_connection
 
-from . import exporters, service
-from .sms import SEND_SMS_PASSWORD, send_dashboard_sms
+from . import exporters, service, dao
+from .sms import SEND_SMS_PASSWORD, MOBILES, send_dashboard_sms, send_batch_sms
 
 
 wcnr_djdo_bp = Blueprint(
@@ -77,6 +77,16 @@ def _get_range_from_request() -> tuple[datetime, datetime]:
     return _parse_dt(start), _parse_dt(end)
 
 
+def _get_case_types_from_request() -> list[str] | None:
+    """从请求参数中获取 case_types"""
+    case_types_str = request.args.get("case_types")
+    if not case_types_str:
+        return None
+    # 支持逗号分隔的多个类型
+    types = [t.strip() for t in case_types_str.split(",") if t.strip()]
+    return types if types else None
+
+
 def _load_import_func():
     """
     动态加载 `weichengnianren-djdo/0125_wcnr_sfzxx_import.py` 中的导入函数，
@@ -118,7 +128,8 @@ def index():
 def api_metric(metric_key: str):
     try:
         s, e = _get_range_from_request()
-        result = service.get_metric(metric_key, s, e)
+        case_types = _get_case_types_from_request()
+        result = service.get_metric(metric_key, s, e, case_types)
         return jsonify(
             {
                 "success": True,
@@ -143,7 +154,8 @@ def api_export_metric_xlsx():
         return jsonify({"success": False, "message": "缺少参数 metric"}), 400
     try:
         s, e = _get_range_from_request()
-        result = service.get_metric(metric_key, s, e)
+        case_types = _get_case_types_from_request()
+        result = service.get_metric(metric_key, s, e, case_types)
         data, filename = exporters.build_metric_xlsx(result, s, e)
         return send_file(
             io.BytesIO(data),
@@ -160,7 +172,8 @@ def api_export_metric_xlsx():
 def api_export_details():
     try:
         s, e = _get_range_from_request()
-        results = [service.get_metric(k, s, e) for k in service.METRICS.keys()]
+        case_types = _get_case_types_from_request()
+        results = [service.get_metric(k, s, e, case_types) for k in service.METRICS.keys()]
         data, filename = exporters.build_details_xlsx(results, s, e)
         return send_file(
             io.BytesIO(data),
@@ -177,7 +190,8 @@ def api_export_details():
 def api_export_overview_pdf():
     try:
         s, e = _get_range_from_request()
-        results = [service.get_metric(k, s, e) for k in service.METRICS.keys()]
+        case_types = _get_case_types_from_request()
+        results = [service.get_metric(k, s, e, case_types) for k in service.METRICS.keys()]
         data, filename = exporters.build_overview_pdf(results, s, e)
         return send_file(io.BytesIO(data), as_attachment=True, download_name=filename, mimetype="application/pdf")
     except Exception as exc:
@@ -237,6 +251,8 @@ def api_send_sms():
     if password != SEND_SMS_PASSWORD:
         return jsonify({"success": False, "message": "密码错误"}), 403
 
+    sms_type = str(payload.get("type") or "leader")
+
     try:
         start = payload.get("start_time")
         end = payload.get("end_time")
@@ -245,19 +261,128 @@ def api_send_sms():
         else:
             s, e = _default_range()
 
-        metric_order = ["jq_za", "jzjy", "sx_sx", "zljqjh", "cs_fa", "ng_zf"]
-        results = [service.get_metric(k, s, e) for k in metric_order]
+        if sms_type == "leader":
+            # 发送给领导
+            mobiles = payload.get("mobiles")
+            content = payload.get("content")
+            case_types = payload.get("case_types")
 
-        out = send_dashboard_sms(start_time=s, end_time=e, results=results)
+            # 如果没有提供自定义内容，则生成默认内容
+            if not content:
+                metric_order = ["jq_za", "jzjy", "sx_sx", "zljqjh", "cs_fa", "ng_zf"]
+                results = [service.get_metric(k, s, e, case_types) for k in metric_order]
+            else:
+                results = []
+
+            # 如果没有提供自定义号码，则使用配置的号码
+            if mobiles and isinstance(mobiles, list):
+                mobiles = [str(m).strip() for m in mobiles if m]
+            else:
+                mobiles = None
+
+            out = send_dashboard_sms(
+                start_time=s,
+                end_time=e,
+                results=results,
+                mobiles=mobiles,
+                content=content,
+            )
+            return jsonify(
+                {
+                    "success": True,
+                    "inserted": out.get("inserted", 0),
+                    "eid": out.get("eid"),
+                    "mobiles": out.get("mobiles", []),
+                    "preview": str(out.get("content") or "")[:300],
+                }
+            )
+
+        elif sms_type == "responsible":
+            # 发送给责任人
+            items = payload.get("items")
+            if not items or not isinstance(items, list):
+                return jsonify({"success": False, "message": "缺少参数 items"}), 400
+
+            out = send_batch_sms(items)
+            return jsonify(
+                {
+                    "success": True,
+                    "inserted": out.get("inserted", 0),
+                    "eid": out.get("eid"),
+                    "failed": out.get("failed", []),
+                }
+            )
+
+        else:
+            return jsonify({"success": False, "message": f"未知类型: {sms_type}"}), 400
+
+    except Exception as exc:
+        logging.exception("send sms failed")
+        return jsonify({"success": False, "message": str(exc)}), 500
+
+
+@wcnr_djdo_bp.get("/api/sms/config")
+def api_sms_config():
+    """获取短信配置"""
+    return jsonify(
+        {
+            "success": True,
+            "mobiles": MOBILES,
+            "password_hint": "请输入密码",
+        }
+    )
+
+
+@wcnr_djdo_bp.get("/api/case_types")
+def api_case_types():
+    """获取案件类型列表"""
+    try:
+        types = dao.query_case_types()
+        return jsonify({"success": True, "types": types})
+    except Exception as exc:
+        logging.exception("get case types failed")
+        return jsonify({"success": False, "message": str(exc)}), 500
+
+
+@wcnr_djdo_bp.get("/api/sms/preview/leader")
+def api_sms_preview_leader():
+    """获取领导短信预览"""
+    try:
+        s, e = _get_range_from_request()
+        case_types = _get_case_types_from_request()
+        metric_order = ["jq_za", "jzjy", "sx_sx", "zljqjh", "cs_fa", "ng_zf"]
+        results = [service.get_metric(k, s, e, case_types) for k in metric_order]
+
+        from .sms import build_dashboard_sms_content
+
+        content = build_dashboard_sms_content(results)
+
         return jsonify(
             {
                 "success": True,
-                "inserted": out.get("inserted", 0),
-                "eid": out.get("eid"),
-                "mobiles": out.get("mobiles", []),
-                "preview": str(out.get("content") or "")[:300],
+                "mobiles": MOBILES,
+                "content": content,
             }
         )
     except Exception as exc:
-        logging.exception("send sms failed")
+        logging.exception("preview leader sms failed")
+        return jsonify({"success": False, "message": str(exc)}), 500
+
+
+@wcnr_djdo_bp.get("/api/sms/preview/responsible")
+def api_sms_preview_responsible():
+    """获取责任人短信数据"""
+    try:
+        s, e = _get_range_from_request()
+        case_types = _get_case_types_from_request()
+        modules = service.get_responsible_sms_data(s, e, case_types)
+
+        return jsonify(
+            {
+                "success": True,
+                "modules": modules,
+            }
+        )
+    except Exception as exc:
+        logging.exception("preview responsible sms failed")
         return jsonify({"success": False, "message": str(exc)}), 500

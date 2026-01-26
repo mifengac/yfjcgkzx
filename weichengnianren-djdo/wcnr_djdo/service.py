@@ -34,9 +34,9 @@ def _region_group(detail_rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str,
     return groups
 
 
-def metric_jq_za(start_time: datetime, end_time: datetime) -> MetricResult:
+def metric_jq_za(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "警情转案率"
-    detail_rows = dao.query_jq_za_details(start_time, end_time)
+    detail_rows = dao.query_jq_za_details(start_time, end_time, case_types)
     groups = _region_group(detail_rows)
 
     all_jq = {str(r.get("警情编号")) for r in detail_rows if r.get("警情编号") is not None}
@@ -58,9 +58,9 @@ def metric_jq_za(start_time: datetime, end_time: datetime) -> MetricResult:
     return MetricResult(title=title, series=["警情", "案件", "转案率"], chart_rows=chart_rows, detail_rows=detail_rows)
 
 
-def metric_jzjy(start_time: datetime, end_time: datetime) -> MetricResult:
+def metric_jzjy(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "采取矫治教育措施率"
-    detail_rows = dao.query_jzjy_details(start_time, end_time)
+    detail_rows = dao.query_jzjy_details(start_time, end_time, case_types)
     groups = _region_group(detail_rows)
 
     all_total = len(detail_rows)
@@ -92,9 +92,9 @@ def metric_jzjy(start_time: datetime, end_time: datetime) -> MetricResult:
     )
 
 
-def metric_sx_sx(start_time: datetime, end_time: datetime) -> MetricResult:
+def metric_sx_sx(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "涉刑人员送学率"
-    detail_rows = dao.query_sx_sx_details(start_time, end_time)
+    detail_rows = dao.query_sx_sx_details(start_time, end_time, case_types)
     groups = _region_group(detail_rows)
 
     all_total = len(detail_rows)
@@ -121,9 +121,9 @@ def metric_sx_sx(start_time: datetime, end_time: datetime) -> MetricResult:
     )
 
 
-def metric_zljqjh(start_time: datetime, end_time: datetime) -> MetricResult:
+def metric_zljqjh(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "责令加强监护率"
-    detail_rows = dao.query_zljqjh_details(start_time, end_time)
+    detail_rows = dao.query_zljqjh_details(start_time, end_time, case_types)
     groups = _region_group(detail_rows)
 
     all_total = len(detail_rows)
@@ -148,9 +148,9 @@ def metric_zljqjh(start_time: datetime, end_time: datetime) -> MetricResult:
     )
 
 
-def metric_cs_fa(start_time: datetime, end_time: datetime) -> MetricResult:
+def metric_cs_fa(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "场所发案率"
-    detail_rows = dao.query_cs_fa_details(start_time, end_time)
+    detail_rows = dao.query_cs_fa_details(start_time, end_time, case_types)
 
     # 地址分类（使用巡防模型）
     try:
@@ -198,9 +198,9 @@ def metric_cs_fa(start_time: datetime, end_time: datetime) -> MetricResult:
     )
 
 
-def metric_ng_zf(start_time: datetime, end_time: datetime) -> MetricResult:
+def metric_ng_zf(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "纳管人员再犯率"
-    detail_rows = dao.query_ng_zf_details(start_time, end_time)
+    detail_rows = dao.query_ng_zf_details(start_time, end_time, case_types)
     groups = _region_group(detail_rows)
 
     all_total = len(detail_rows)
@@ -235,7 +235,139 @@ METRICS = {
 }
 
 
-def get_metric(metric_key: str, start_time: datetime, end_time: datetime) -> MetricResult:
+def get_metric(metric_key: str, start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     if metric_key not in METRICS:
         raise KeyError(metric_key)
-    return METRICS[metric_key](start_time, end_time)
+    return METRICS[metric_key](start_time, end_time, case_types)
+
+
+def get_responsible_sms_data(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> Dict[str, Any]:
+    """
+    获取责任人短信数据（三个模块）
+
+    Returns:
+        {
+            "jzjy": {"title": "采取矫治教育措施率", "items": [...]},
+            "sx_sx": {"title": "涉刑人员送学率", "items": [...]},
+            "zljqjh": {"title": "责令加强监护率", "items": [...]}
+        }
+    """
+    from . import sms
+
+    current_year = datetime.now().year
+    modules: Dict[str, Any] = {}
+
+    # 1. 采取矫治教育措施率（是否开具文书='否'）
+    jzjy_details = dao.query_jzjy_details(start_time, end_time, case_types)
+    jzjy_items = []
+    for record in jzjy_details:
+        if str(record.get("是否开具文书") or "") != "否":
+            continue
+
+        case_name = str(record.get("案件名称") or "")
+        person_name = str(record.get("姓名") or "")
+        desensitized_case = sms.desensitize_case_name(case_name)
+
+        # 过滤手机号
+        phone_json = record.get("联系电话_json")
+        mobiles = sms.filter_mobile_phones(phone_json)
+
+        if not mobiles:
+            continue
+
+        template = (
+            f"{current_year}年未成年人打架斗殴指标监测: "
+            f"您办理的{desensitized_case}的{person_name}未开具"
+            f"《训诫书》/《责令未成年人遵守特定行为规范通知书》【基础管控中心】"
+        )
+
+        jzjy_items.append({
+            "案件名称": case_name,
+            "案件名称_脱敏": desensitized_case,
+            "姓名": person_name,
+            "联系电话": mobiles,
+            "短信模板": template,
+        })
+
+    if jzjy_items:
+        modules["jzjy"] = {
+            "title": "采取矫治教育措施率",
+            "items": jzjy_items,
+        }
+
+    # 2. 涉刑人员送学率（是否送校='否'）
+    sx_sx_details = dao.query_sx_sx_details(start_time, end_time, case_types)
+    sx_sx_items = []
+    for record in sx_sx_details:
+        if str(record.get("是否送校") or "") != "否":
+            continue
+
+        case_name = str(record.get("案件名称") or "")
+        person_name = str(record.get("姓名") or "")
+        desensitized_case = sms.desensitize_case_name(case_name)
+
+        # 过滤手机号
+        phone_json = record.get("联系电话_json")
+        mobiles = sms.filter_mobile_phones(phone_json)
+
+        if not mobiles:
+            continue
+
+        template = (
+            f"{current_year}年未成年人打架斗殴指标监测: "
+            f"您办理的{desensitized_case}的{person_name}未送方正学校【基础管控中心】"
+        )
+
+        sx_sx_items.append({
+            "案件名称": case_name,
+            "案件名称_脱敏": desensitized_case,
+            "姓名": person_name,
+            "联系电话": mobiles,
+            "短信模板": template,
+        })
+
+    if sx_sx_items:
+        modules["sx_sx"] = {
+            "title": "涉刑人员送学率",
+            "items": sx_sx_items,
+        }
+
+    # 3. 责令加强监护率（是否开具文书='否'）
+    zljqjh_details = dao.query_zljqjh_details(start_time, end_time, case_types)
+    zljqjh_items = []
+    for record in zljqjh_details:
+        if str(record.get("是否开具文书") or "") != "否":
+            continue
+
+        case_name = str(record.get("案件名称") or "")
+        person_name = str(record.get("姓名") or "")
+        desensitized_case = sms.desensitize_case_name(case_name)
+
+        # 过滤手机号
+        phone_json = record.get("联系电话_json")
+        mobiles = sms.filter_mobile_phones(phone_json)
+
+        if not mobiles:
+            continue
+
+        template = (
+            f"{current_year}年未成年人打架斗殴指标监测: "
+            f"您办理的{desensitized_case}的{person_name}未开具"
+            f"《加强监督教育/责令接受家庭监督指导通知书》【基础管控中心】"
+        )
+
+        zljqjh_items.append({
+            "案件名称": case_name,
+            "案件名称_脱敏": desensitized_case,
+            "姓名": person_name,
+            "联系电话": mobiles,
+            "短信模板": template,
+        })
+
+    if zljqjh_items:
+        modules["zljqjh"] = {
+            "title": "责令加强监护率",
+            "items": zljqjh_items,
+        }
+
+    return modules
