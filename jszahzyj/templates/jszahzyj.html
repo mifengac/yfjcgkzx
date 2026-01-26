@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>精神障碍患者预警</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f7fa;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin: 0 0 20px 0;
+            font-size: 24px;
+            color: #333;
+        }
+        .page-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .back-home {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 16px;
+            background: #64748b;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .back-home:hover {
+            background: #475569;
+        }
+        .filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 6px;
+        }
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 200px;
+            position: relative;
+        }
+        .filter-group label {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .filter-group input[type="datetime-local"],
+        .filter-group select {
+            padding: 8px 10px;
+            font-size: 13px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .multi-select-box {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px 10px;
+            font-size: 13px;
+            background-color: #fff;
+            cursor: pointer;
+            min-height: 34px;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .multi-select-box span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+        }
+        .multi-select-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 2px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 20;
+            padding: 8px;
+            min-width: 200px;
+        }
+        .multi-select-menu.show {
+            display: block;
+        }
+        .multi-select-menu label {
+            display: block;
+            padding: 5px 0;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .multi-select-menu input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        .module-button {
+            padding: 8px 16px;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .module-button:hover {
+            background: #125ea3;
+        }
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .results-info {
+            font-size: 13px;
+            color: #666;
+        }
+        .download-menu {
+            position: relative;
+            display: inline-block;
+        }
+        .download-menu-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 110%;
+            background-color: #fff;
+            min-width: 120px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 10;
+            border-radius: 4px;
+            padding: 4px 0;
+        }
+        .download-menu-content.show {
+            display: block;
+        }
+        .download-menu-content button {
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            text-align: left;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .download-menu-content button:hover {
+            background: #f5f5f5;
+        }
+        .results-table-container {
+            overflow: auto;
+            max-height: 65vh;
+            border: 1px solid #e3e7ef;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: #fff;
+        }
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f6f8fb;
+            border-bottom: 2px solid #e3e7ef;
+            padding: 10px 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            text-align: left;
+            font-size: 13px;
+        }
+        tbody td {
+            border-bottom: 1px solid #eef2f7;
+            padding: 8px 12px;
+            font-size: 12px;
+            vertical-align: top;
+        }
+        tbody tr:hover {
+            background: #fafcff;
+        }
+        .pagination {
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+        .pagination-info {
+            color: #666;
+        }
+        .pagination-controls {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .pagination-controls a,
+        .pagination-controls span {
+            padding: 5px 10px;
+            text-decoration: none;
+            color: #1976d2;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .pagination-controls span.current {
+            background: #1976d2;
+            color: #fff;
+            border-color: #1976d2;
+        }
+        .pagination-controls a.disabled {
+            color: #ccc;
+            pointer-events: none;
+            cursor: not-allowed;
+        }
+        .error-message {
+            padding: 10px;
+            background: #fee;
+            color: #c33;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="page-head">
+            <h1>精神障碍患者预警</h1>
+            <a class="back-home" href="{{ url_for('main') }}">返回主页</a>
+        </div>
+
+        {% if error_message %}
+        <div class="error-message">{{ error_message }}</div>
+        {% endif %}
+
+        <!-- 过滤表单 -->
+        <form method="GET" action="{{ url_for('jszahzyj.index') }}" class="filter-form">
+            <div class="filter-row">
+                <!-- 列管时间 -->
+                <div class="filter-group">
+                    <label for="liguan_start">列管时间开始</label>
+                    <input type="datetime-local" id="liguan_start" name="liguan_start"
+                           value="{{ liguan_start }}" step="1">
+                </div>
+                <div class="filter-group">
+                    <label for="liguan_end">列管时间结束</label>
+                    <input type="datetime-local" id="liguan_end" name="liguan_end"
+                           value="{{ liguan_end }}" step="1">
+                </div>
+
+                <!-- 矛盾纠纷录入时间 -->
+                <div class="filter-group">
+                    <label for="maodun_start">矛盾纠纷录入时间开始</label>
+                    <input type="datetime-local" id="maodun_start" name="maodun_start"
+                           value="{{ maodun_start }}" step="1">
+                </div>
+                <div class="filter-group">
+                    <label for="maodun_end">矛盾纠纷录入时间结束</label>
+                    <input type="datetime-local" id="maodun_end" name="maodun_end"
+                           value="{{ maodun_end }}" step="1">
+                </div>
+
+                <!-- 分局多选 -->
+                <div class="filter-group">
+                    <label>分局</label>
+                    <div class="multi-select-box" id="fenjuSelectBox">
+                        <span id="fenjuSelectedText">请选择分局</span>
+                    </div>
+                    <div class="multi-select-menu" id="fenjuSelectMenu">
+                        <label><input type="checkbox" name="fenju" value="云城分局"
+                            {% if '云城分局' in fenju_selected %}checked{% endif %}> 云城分局</label>
+                        <label><input type="checkbox" name="fenju" value="云安分局"
+                            {% if '云安分局' in fenju_selected %}checked{% endif %}> 云安分局</label>
+                        <label><input type="checkbox" name="fenju" value="罗定市公安局"
+                            {% if '罗定市公安局' in fenju_selected %}checked{% endif %}> 罗定市公安局</label>
+                        <label><input type="checkbox" name="fenju" value="新兴县公安局"
+                            {% if '新兴县公安局' in fenju_selected %}checked{% endif %}> 新兴县公安局</label>
+                        <label><input type="checkbox" name="fenju" value="郁南县公安局"
+                            {% if '郁南县公安局' in fenju_selected %}checked{% endif %}> 郁南县公安局</label>
+                    </div>
+                </div>
+
+                <!-- 查询按钮 -->
+                <div class="filter-group">
+                    <button type="submit" class="module-button">查询</button>
+                </div>
+            </div>
+        </form>
+
+        <!-- 结果区域 -->
+        <div class="results-header">
+            <div class="results-info">
+                共 <strong>{{ total }}</strong> 条记录
+            </div>
+            <div class="download-menu">
+                <button type="button" class="module-button" id="exportBtn">导出</button>
+                <div class="download-menu-content" id="exportMenu">
+                    <button type="button" onclick="exportData('xlsx')">Excel (xlsx)</button>
+                    <button type="button" onclick="exportData('csv')">CSV</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据表格 -->
+        <div class="results-table-container">
+            {% if rows %}
+            <table>
+                <thead>
+                    <tr>
+                        {% for key in rows[0].keys() %}
+                        <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        {% for value in row.values() %}
+                        <td>{{ value if value is not none else '' }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="no-data">暂无数据</div>
+            {% endif %}
+        </div>
+
+        <!-- 分页 -->
+        {% if total > 0 %}
+        <div class="pagination">
+            <div class="pagination-info">
+                第 {{ page }} / {{ total_pages }} 页
+            </div>
+            <div class="pagination-controls">
+                {% if page > 1 %}
+                <a href="{{ url_for('jszahzyj.index', liguan_start=liguan_start, liguan_end=liguan_end,
+                    maodun_start=maodun_start, maodun_end=maodun_end, fenju=fenju_selected,
+                    page=page-1, page_size=page_size) }}">上一页</a>
+                {% else %}
+                <a class="disabled">上一页</a>
+                {% endif %}
+
+                <span class="current">{{ page }}</span>
+
+                {% if page < total_pages %}
+                <a href="{{ url_for('jszahzyj.index', liguan_start=liguan_start, liguan_end=liguan_end,
+                    maodun_start=maodun_start, maodun_end=maodun_end, fenju=fenju_selected,
+                    page=page+1, page_size=page_size) }}">下一页</a>
+                {% else %}
+                <a class="disabled">下一页</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="{{ url_for('static', filename='js/jszahzyj.js') }}"></script>
+</body>
+</html>

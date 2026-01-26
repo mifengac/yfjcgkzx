@@ -99,10 +99,8 @@ def execute_query(query: str, params: tuple = None):
         cursor = connection.cursor()
 
         if params:
-            print(query)
             cursor.execute(query, params)
         else:
-            print(query)
             cursor.execute(query)
 
         results = cursor.fetchall()

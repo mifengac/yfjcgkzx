@@ -44,6 +44,8 @@ from xunfang.routes.xunfang_routes import xunfang_bp  # noqa: E402
 from zhizong.routes.zhizong_routes import zhizong_bp  # noqa: E402
 from weichengnianren.routes.wcnr_routes import weichengnianren_bp  # noqa: E402
 from gzrzdd.routes.gzrzdd_routes import gzrzdd_bp  # noqa: E402
+from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp  # noqa: E402
+from mdjfxsyj.routes.mdjfxsyj_mdj_xsyj_routes import mdjfxsyj_bp  # noqa: E402
 try:
     from wcnr_djdo import wcnr_djdo_bp  # type: ignore  # noqa: E402
 except Exception:
@@ -158,6 +160,8 @@ def main():
                 "后台": {"endpoint": "houtai.import_page", "label": "后台管理"},
                 "未成年人": {"endpoint": "weichengnianren.index", "label": "未成年人"},
                 "工作日志督导": {"endpoint": "gzrzdd.index", "label": "工作日志督导"},
+                "精神障碍": {"endpoint": "jszahzyj.index", "label": "精神障碍患者预警"},
+                "矛盾纠纷线索移交": {"endpoint": "mdjfxsyj.index", "label": "矛盾纠纷线索移交"},
             }
             if wcnr_djdo_bp is not None:
                 conf_map["未成年人(打架斗殴)"] = {"endpoint": "wcnr_djdo.index", "label": "未成年人(打架斗殴)"}
@@ -351,6 +355,8 @@ app.register_blueprint(zhizong_bp, url_prefix="/zhizong")
 app.register_blueprint(jingqing_anjian_bp, url_prefix="/jingqing_anjian")
 app.register_blueprint(weichengnianren_bp, url_prefix="/weichengnianren")
 app.register_blueprint(gzrzdd_bp, url_prefix="/gzrzdd")
+app.register_blueprint(jszahzyj_bp, url_prefix="/jszahzyj")
+app.register_blueprint(mdjfxsyj_bp, url_prefix="/mdjfxsyj")
 if wcnr_djdo_bp is not None:
     app.register_blueprint(wcnr_djdo_bp, url_prefix="/weichengnianren-djdo")
 try:

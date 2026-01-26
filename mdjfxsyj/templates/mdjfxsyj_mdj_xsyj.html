@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>矛盾纠纷线索移交统计</title>
+    <link rel="stylesheet" href="{{ url_for('mdjfxsyj.static', filename='mdjfxsyj_mdj_xsyj.css') }}" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="page-head">
+        <h1>矛盾纠纷线索移交统计</h1>
+        <a class="back-home" href="{{ url_for('main') }}">返回主页</a>
+      </div>
+
+      {% if error_message %}
+      <div class="error">{{ error_message }}</div>
+      {% endif %}
+
+      <form id="filterForm" method="GET" action="{{ url_for('mdjfxsyj.index') }}" class="filter-form">
+        <div class="filter-row">
+          <div class="filter-group">
+            <label for="start_time">发生时间开始</label>
+            <input
+              type="text"
+              id="start_time"
+              name="start_time"
+              value="{{ start_time }}"
+              placeholder="YYYY-MM-DD HH:MM:SS"
+            />
+          </div>
+          <div class="filter-group">
+            <label for="end_time">发生时间结束</label>
+            <input
+              type="text"
+              id="end_time"
+              name="end_time"
+              value="{{ end_time }}"
+              placeholder="YYYY-MM-DD HH:MM:SS"
+            />
+          </div>
+
+          <div class="filter-group">
+            <label for="jfmc">纠纷名称</label>
+            <input type="text" id="jfmc" name="jfmc" value="{{ jfmc }}" placeholder="支持模糊查询" />
+          </div>
+
+          <div class="filter-group">
+            <label>分局</label>
+            <div class="multi-select-box" id="fenjuSelectBox">
+              <span id="fenjuSelectedText">请选择分局</span>
+            </div>
+            <div class="multi-select-menu" id="fenjuSelectMenu">
+              {% set fenju_options = ['云城分局','云安分局','罗定市公安局','新兴县公安局','郁南县公安局'] %}
+              {% for fj in fenju_options %}
+              <label
+                ><input type="checkbox" name="fenju" value="{{ fj }}" {% if fj in fenju_selected %}checked{% endif %} />
+                {{ fj }}</label
+              >
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <label for="page_size">每页条数</label>
+            <select id="page_size" name="page_size">
+              {% for ps in [20, 50, 100, 200] %}
+              <option value="{{ ps }}" {% if ps == page_size %}selected{% endif %}>{{ ps }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <button type="submit" class="btn primary">查询</button>
+          </div>
+        </div>
+        <input type="hidden" name="page" value="{{ page }}" />
+      </form>
+
+      <div class="results-header">
+        <div class="results-info">共 <strong>{{ total }}</strong> 条记录</div>
+        <div class="download-menu">
+          <button type="button" class="btn" id="exportBtn">导出</button>
+          <div class="download-menu-content" id="exportMenu">
+            <button type="button" data-format="xlsx">xlsx</button>
+            <button type="button" data-format="csv">csv</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="results-table-container">
+        {% if rows %}
+        <table>
+          <thead>
+            <tr>
+              {% for key in rows[0].keys() %}
+              <th>{{ key }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              {% for value in row.values() %}
+              <td>{{ value if value is not none else '' }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="no-data">暂无数据</div>
+        {% endif %}
+      </div>
+
+      {% if total > 0 %}
+      <div class="pagination">
+        <div class="pagination-info">第 {{ page }} / {{ total_pages }} 页</div>
+        <div class="pagination-controls">
+          {% if page > 1 %}
+          <a
+            href="{{ url_for('mdjfxsyj.index', start_time=start_time, end_time=end_time, jfmc=jfmc, fenju=fenju_selected, page=page-1, page_size=page_size) }}"
+            >上一页</a
+          >
+          {% else %}
+          <a class="disabled">上一页</a>
+          {% endif %}
+
+          <span class="current">{{ page }}</span>
+
+          {% if page < total_pages %}
+          <a
+            href="{{ url_for('mdjfxsyj.index', start_time=start_time, end_time=end_time, jfmc=jfmc, fenju=fenju_selected, page=page+1, page_size=page_size) }}"
+            >下一页</a
+          >
+          {% else %}
+          <a class="disabled">下一页</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <script>
+      window.__MDJXS_EXPORT_URL__ = "{{ url_for('mdjfxsyj.export') }}";
+    </script>
+    <script src="{{ url_for('mdjfxsyj.static', filename='mdjfxsyj_mdj_xsyj.js') }}"></script>
+  </body>
+</html>
