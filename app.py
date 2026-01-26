@@ -192,14 +192,7 @@ def health_check():
 
     # 检查数据库连接是否可用
     try:
-        connection = psycopg2.connect(
-            host=DB_CONFIG["host"],
-            port=DB_CONFIG.get("port", 5432),
-            database=DB_CONFIG["database"],
-            user=DB_CONFIG["user"],
-            password=DB_CONFIG["password"],
-            connect_timeout=10,
-        )
+        connection = get_database_connection()
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
         connection.close()
@@ -296,14 +289,7 @@ def api_case_types():
     查询案件类型配置，供前端下拉框使用。
     """
     try:
-        connection = psycopg2.connect(
-            host=DB_CONFIG["host"],
-            port=DB_CONFIG.get("port", 5432),
-            database=DB_CONFIG["database"],
-            user=DB_CONFIG["user"],
-            password=DB_CONFIG["password"],
-            connect_timeout=10,
-        )
+        connection = get_database_connection()
         with connection.cursor() as cursor:
             cursor.execute('SELECT leixing FROM "ywdata"."case_type_config"')
             rows = cursor.fetchall()
