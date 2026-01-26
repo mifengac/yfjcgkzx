@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from .service import MetricResult, REGIONS
 
@@ -140,20 +140,114 @@ def build_dashboard_sms_content(results: List[MetricResult]) -> str:
     return ";".join(parts)
 
 
-def send_dashboard_sms(*, start_time: datetime, end_time: datetime, results: List[MetricResult]) -> dict:
+def desensitize_name(name: str) -> str:
+    """
+    姓名脱敏：
+    - 两字名：张三 → 张X
+    - 三字及以上：张小三 → 张XX
+    """
+    name = str(name or "").strip()
+    if len(name) <= 1:
+        return name
+    if len(name) == 2:
+        return name[0] + "X"
+    return name[0] + "XX"
+
+
+def desensitize_case_name(case_name: str) -> str:
+    """
+    案件名称脱敏：根据关键字匹配并脱敏姓名
+    例如：'张小三殴打他人案' → '张XX殴打他人案'
+    """
+    case_name = str(case_name or "").strip()
+    keywords = ["殴打", "打架", "滋事", "故意伤害", "斗殴"]
+
+    # 尝试匹配：姓名 + 关键字
+    for keyword in keywords:
+        # 匹配模式：2-4个中文字符 + 关键字
+        pattern = rf"([\u4e00-\u9fa5]{{2,4}})({keyword})"
+        match = re.search(pattern, case_name)
+        if match:
+            original_name = match.group(1)
+            desensitized = desensitize_name(original_name)
+            case_name = case_name.replace(original_name, desensitized, 1)
+            break
+
+    return case_name
+
+
+def filter_mobile_phones(phone_json: Any) -> List[str]:
+    """
+    从联系电话JSON中过滤出手机号，排除座机号
+    座机格式：0XXX-XXXXXXX 或 0XXXXXXXXXX
+    手机格式：11位数字
+    """
+    if not phone_json:
+        return []
+
+    phones: List[str] = []
+    if isinstance(phone_json, list):
+        phones = [str(p).strip() for p in phone_json if p]
+    elif isinstance(phone_json, str):
+        phones = [phone_json.strip()]
+    else:
+        return []
+
+    mobile_phones: List[str] = []
+    for phone in phones:
+        # 移除所有空格和短横线
+        clean_phone = re.sub(r"[\s\-]", "", phone)
+
+        # 排除座机号（以0开头的固定电话）
+        if clean_phone.startswith("0"):
+            continue
+
+        # 只保留11位手机号
+        if re.match(r"^1\d{10}$", clean_phone):
+            mobile_phones.append(clean_phone)
+
+    return mobile_phones
+
+
+def send_dashboard_sms(
+    *,
+    start_time: datetime,
+    end_time: datetime,
+    results: List[MetricResult],
+    mobiles: Optional[List[str]] = None,
+    content: Optional[str] = None,
+) -> dict:
+    """
+    发送大屏短信（发送给领导）
+
+    Args:
+        start_time: 开始时间
+        end_time: 结束时间
+        results: 指标结果列表
+        mobiles: 自定义接收号码列表（可选，默认使用配置的MOBILES）
+        content: 自定义短信内容（可选，默认使用build_dashboard_sms_content生成）
+    """
     try:
         import oracledb  # type: ignore
     except ModuleNotFoundError as exc:
         raise RuntimeError("缺少依赖 oracledb，无法连接 Oracle。请先安装 oracledb") from exc
 
-    mobiles = iter_mobiles(MOBILES)
+    # 使用自定义号码或配置的号码
+    if mobiles is None:
+        mobiles = iter_mobiles(MOBILES)
+    else:
+        mobiles = iter_mobiles(mobiles)
+
     if not mobiles:
-        raise RuntimeError("MOBILES 未配置有效号码")
+        raise RuntimeError("未提供有效的接收号码")
 
     ora_cfg = load_oracle_config_from_env()
     ensure_oracle_client_initialized(ora_cfg)
 
-    content = build_dashboard_sms_content(results)
+    # 使用自定义内容或生成内容
+    if content is None:
+        content = build_dashboard_sms_content(results)
+
     eid = f"WCN_DJDO_{int(datetime.now().timestamp())}"
 
     inserted = 0
@@ -170,5 +264,55 @@ def send_dashboard_sms(*, start_time: datetime, end_time: datetime, results: Lis
         "content": content,
         "start_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
         "end_time": end_time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def send_batch_sms(items: List[Dict[str, str]]) -> dict:
+    """
+    批量发送短信（发送给责任人）
+
+    Args:
+        items: 短信列表，每项包含 {"mobile": "13800138000", "content": "短信内容"}
+
+    Returns:
+        {"inserted": 10, "eid": "WCN_DJDO_xxx", "failed": []}
+    """
+    try:
+        import oracledb  # type: ignore
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("缺少依赖 oracledb，无法连接 Oracle。请先安装 oracledb") from exc
+
+    if not items:
+        raise RuntimeError("未提供待发送的短信")
+
+    ora_cfg = load_oracle_config_from_env()
+    ensure_oracle_client_initialized(ora_cfg)
+
+    eid = f"WCN_DJDO_RESP_{int(datetime.now().timestamp())}"
+
+    inserted = 0
+    failed: List[Dict[str, str]] = []
+
+    with oracledb.connect(user=ora_cfg.user, password=ora_cfg.password, dsn=ora_cfg.dsn) as conn:
+        for item in items:
+            mobile = str(item.get("mobile") or "").strip()
+            content = str(item.get("content") or "").strip()
+
+            if not mobile or not content:
+                failed.append({"mobile": mobile, "reason": "号码或内容为空"})
+                continue
+
+            try:
+                insert_sms(conn, mobile=mobile, content=content, eid=eid)
+                inserted += 1
+            except Exception as e:
+                failed.append({"mobile": mobile, "reason": str(e)})
+
+        conn.commit()
+
+    return {
+        "inserted": inserted,
+        "eid": eid,
+        "failed": failed,
     }
 

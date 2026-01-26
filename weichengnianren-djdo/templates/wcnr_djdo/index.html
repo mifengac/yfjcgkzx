@@ -17,6 +17,12 @@
             <label>结束时间</label>
             <input id="globalEnd" type="datetime-local" step="1" />
             <button id="globalRefresh" class="btn">刷新全部</button>
+            <label>类型</label>
+            <div id="caseTypeDropdown" class="multi-select">
+              <button id="caseTypeTrigger" class="multi-select-trigger" type="button">请选择类型</button>
+              <div id="caseTypePanel" class="multi-select-panel" aria-label="类型多选"></div>
+            </div>
+            <select id="caseTypeSelect" multiple style="display: none"></select>
           </div>
         </div>
         <div class="right">
@@ -26,7 +32,13 @@
             导入送校数据
             <input id="fileImport" type="file" accept=".xls" style="display: none" />
           </label>
-          <button id="btnSendSms" class="btn">发送短信</button>
+          <div class="sms-dropdown">
+            <button id="btnSendSms" class="btn">发送短信</button>
+            <div id="smsDropdownMenu" class="dropdown-menu">
+              <button class="dropdown-item" data-type="leader">发送给领导</button>
+              <button class="dropdown-item" data-type="responsible">发送给责任人</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -68,6 +80,50 @@
         </section>
         {% endfor %}
       </main>
+    </div>
+
+    <!-- 密码输入弹窗 -->
+    <div id="passwordModal" class="modal">
+      <div class="modal-content">
+        <h3>请输入密码</h3>
+        <input id="passwordInput" type="password" placeholder="请输入密码" />
+        <div class="modal-buttons">
+          <button id="passwordConfirm" class="btn primary">确认</button>
+          <button id="passwordCancel" class="btn">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 发送给领导弹窗 -->
+    <div id="leaderModal" class="modal">
+      <div class="modal-content large">
+        <h3>发送给领导</h3>
+        <div class="form-group">
+          <label>发送号码（每行一个）</label>
+          <textarea id="leaderMobiles" rows="3" placeholder="请输入手机号码，每行一个"></textarea>
+        </div>
+        <div class="form-group">
+          <label>短信模板</label>
+          <textarea id="leaderContent" rows="8" placeholder="短信内容"></textarea>
+        </div>
+        <div class="modal-buttons">
+          <button id="leaderSend" class="btn primary">发送</button>
+          <button id="leaderCancel" class="btn">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 发送给责任人弹窗 -->
+    <div id="responsibleModal" class="modal">
+      <div class="modal-content xlarge">
+        <h3>发送给责任人</h3>
+        <div id="responsibleModules"></div>
+        <div class="modal-buttons">
+          <button id="responsibleClear" class="btn">一键清除</button>
+          <button id="responsibleSend" class="btn primary">全部发送</button>
+          <button id="responsibleCancel" class="btn">取消</button>
+        </div>
+      </div>
     </div>
 
     <script src="{{ url_for('wcnr_djdo.static', filename='chart.min.js', v='4.4.1') }}"></script>

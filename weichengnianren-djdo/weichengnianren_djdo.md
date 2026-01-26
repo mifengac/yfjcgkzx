@@ -364,8 +364,9 @@
     6. 纳管人员再犯率
         1. ```
             WITH fight_suspect AS (
-                SELECT DISTINCT
-                    mmp."zjhm" AS zjhm
+                SELECT
+                    mmp."zjhm" AS zjhm,
+                    mzaa."立案日期" AS larq
                 FROM "mv_minor_person" mmp
                 INNER JOIN "mv_zfba_all_ajxx" mzaa
                     ON mmp."asjbh" = mzaa."案件编号"
@@ -389,12 +390,16 @@
                     WHEN bzr."ssfj_dm" ='445322000000' THEN '郁南'
                 END AS "地区",
                 CASE
-                    WHEN fs.zjhm IS NOT NULL THEN '是'
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM fight_suspect fs
+                        WHERE fs.zjhm = bzr.zjhm
+                        AND bzr.lgsj < fs.larq   -- ✅ 列管时间在立案日期之前才算再犯
+                    )
+                    THEN '是'
                     ELSE '否'
                 END AS "是否再犯"
             FROM "stdata"."b_zdry_ryxx" bzr
-            LEFT JOIN fight_suspect fs
-                ON bzr.zjhm = fs.zjhm
             WHERE bzr.sflg = '1'
             AND bzr."deleteflag" = '0';
         ```
@@ -403,3 +408,33 @@
             1. "列管人数",对所有值计数
             2. "再犯人数",对"是否再犯"值为'是'的计数
             3. "再犯率","再犯人数"/"列管人数"*100%取两位小数
+===
+# 任务:帮我修改"发送短信"
+1. 点击"发送短信"后在"发送短信"按钮下面弹出下拉框,有2个按钮,分别为"发送给领导","发送给责任人"点击其中任意一个按钮需先输入密码,密码校验成功后才能进行下一步,校验失败则提示'密码输入错误'
+    1. 点击"发送给领导"按钮后,在当前页面弹出弹出框,有两个字段,分别为"发送号码"和"短信模板",都是可以编辑的,
+        1. 发送号码默认从后端配置的数组获取,且用户可以修改,如果用户修改则按照用户修改的电话号码进行发送
+        2. "短信模板"默认按照build_dashboard_sms_content方法组装好的显示,如果用户修改,则最后按照修改好的内容发送
+    2. 点击"发送给责任人"按钮后,在当前页面弹出弹出框,弹出框构成为
+        1. 三个模块
+            1. 采取矫治教育措施率,该模块只显示"是否开具文书"中值为'否'的数据,同样只显示"短信模板"和"发送号码",模板为'2026年未成年人打架斗殴指标监测: 您办理的{案件名称}的{姓名}未开具《训诫书》/《责令未成年人遵守特定行为规范通知书》【基础管控中心】',其中案件名称中的姓名要脱敏,如'张小三殴打他人案'要脱敏为'张XX殴打他人案'."电话号码"为"联系电话_json"中的值,需要先判断是否是移动电话,如座机"0XXX-XXXXXXX"则过滤掉
+            2. 涉刑人员送学率,该模块只显示"是否送校"中值为'否'的数据,同样只显示"短信模板"和"发送号码",模板为'2026年未成年人打架斗殴指标监测: 您办理的{案件名称}的{姓名}未送方正学校【基础管控中心】',其中案件名称中的姓名要脱敏,如'张小三殴打他人案'要脱敏为'张XX殴打他人案'."电话号码"为"联系电话_json"中的值,需要先判断是否是移动电话,如座机"0XXX-XXXXXXX"则过滤掉
+            3. 责令加强监护率,该模块只显示"是否送校"中值为'否'的数据,同样只显示"短信模板"和"发送号码",模板为'2026年未成年人打架斗殴指标监测: 您办理的{案件名称}的{姓名}未开局《加强监督教育/责令接受家庭监督指导通知书》【基础管控中心】',其中案件名称中的姓名要脱敏,如'张小三殴打他人案'要脱敏为'张XX殴打他人案'."电话号码"为"联系电话_json"中的值,需要先判断是否是移动电话,如座机"0XXX-XXXXXXX"则过滤掉
+        2. 其中"短信模板"和"发送号码"和"发送给领导"是一样可以编辑的
+        3. 进行脱敏时可依据以下关键字过滤,'殴打','打架','滋事','故意伤害','斗殴'
+    3. 点击"发送短信"后用户输入密码,输入的密码要显示'*'而不是明文
+===
+1. 在"刷新全部"后面新增一个"类型"控件,为下拉多选框,值通过```SELECT ctc.leixing from ywdata.case_type_config ctc```获取
+2. 在weichengnianren-djdo\wcnr_djdo\dao.py的6个SQL中,修改```    WHERE ctc."leixing" = '打架斗殴'```为动态的,且支持多选
+3. 当不选择"类型"时,6个SQL要删除这个过滤条件
+    1. ```jq."newcharasubclass" IN (
+        SELECT UNNEST(ctc."newcharasubclass_list")
+        FROM ywdata."case_type_config" ctc
+        WHERE ctc."leixing" = '打架斗殴'
+    )```
+    2. ```mzaa."案由" SIMILAR TO (
+            SELECT ctc."ay_pattern"
+            FROM ywdata."case_type_config" ctc
+            WHERE ctc."leixing" = '打架斗殴'
+        )```
+3. 在"发送给责任人"功能的弹出框中新增"一键清除"功能,点击"一键清除"删除弹出框中所有可编辑的内容
+4. query_ng_zf_details的SQL我已修改,请你在帮我加上start_time和end_time参数,参数放在AND mzaa."立案日期" BETWEEN '2026-01-01' AND NOW()
