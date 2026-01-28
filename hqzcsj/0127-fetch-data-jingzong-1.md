@@ -930,7 +930,7 @@
                 },
 9. 嫌疑人信息
     1. 请求
-        json: {"paramArray":[{"conditions":[{"tabId":"22","tabCode":"xyr","fieldCode":"xyrxx_lrsj","tabType":"1","isPub":false,"operateSign":"10","values":["2024-01-01 00:00:00","2025-12-31 23:59:59"],"excludeDays":[],"rangeIncludeType":"0"},{"tabId":"22","tabCode":"xyr","fieldCode":"xyrxx_isdel","tabType":"1","isPub":false,"operateSign":"7","values":["0"],"isIncludeChilds":false,"dicCode":"00"}],"tabId":"22","tabCode":"xyr","domainId":"11"}]}
+        json: {"paramArray":[{"conditions":[{"tabId":"22","tabCode":"xyr","fieldCode":"xyrxx_isdel","tabType":"1","isPub":false,"operateSign":"7","values":["0"],"isIncludeChilds":false,"dicCode":"00"}],"tabId":"22","tabCode":"xyr","domainId":"11"}]}
         domainId: 11
         resultTabId: 22
         resultTabCode: xyr
@@ -939,6 +939,7 @@
         pageSize: 10
         pageNumber: 1
         sortColumns: 
+        new-password
     2. 响应
         {
             "xyrxx_jtzk": "-",

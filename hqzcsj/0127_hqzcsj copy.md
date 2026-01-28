@@ -951,3 +951,6 @@
     },
 3. 所有表名都按照zq_zfba_*格式
 4. 所有数据都是按照返回数据中的result中获取的
+===
+# 任务:修改hqzcsj模块的导入逻辑,全部都改为'核心字段+jsonb扩展字段'格式,其中:
+    1. 责令未成年人遵守特定行为规范通知书响应数据的核心字段为:zltzs_id,zltzs_wszt_dm,zltzs_cbqy_bh,zltzs_cbqy_bh_dm,zltzs_ajbh,zltzs_cbdw_bh,zltzs_cbdw_bh_dm,zltzs_cbdw_mc,zltzs_cbr_sfzh,zltzs_cbr_xm,zltzs_tfsj,zltzs_rybh,zltzs_ryxm,zltzs_lx,zltzs_sfzzl,zltzs_jhrsfzh,zltzs_blxw,zltzs_signname,zltzs_zjzs,zltzs_cfx

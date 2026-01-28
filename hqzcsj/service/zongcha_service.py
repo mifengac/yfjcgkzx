@@ -509,8 +509,8 @@ def _build_job_defs(*, base_forms: Dict[str, Dict[str, str]], start_time: str, e
                 name="嫌疑人信息",
                 table="zq_zfba_xyrxx",
                 pk_fields=["ajxx_ajbhs", "xyrxx_sfzh"],
-                base_form=_make_form_xyrxx(),
-                time_field_codes=[],
+                base_form=_make_form_xyrxx(start_time=start_time, end_time=end_time),
+                time_field_codes=["xyrxx_lrsj"],
             ),
         ]
     )
@@ -1045,12 +1045,23 @@ def _make_form_qsryxx(*, start_time: str, end_time: str, org_codes: Sequence[str
     )
 
 
-def _make_form_xyrxx() -> Dict[str, str]:
+def _make_form_xyrxx(*, start_time: str, end_time: str) -> Dict[str, str]:
     """
-    嫌疑人信息（不带时间条件）：仅过滤 isdel=0。
+    嫌疑人信息：过滤 isdel=0，并按录入时间范围筛选。
     主键：ajxx_ajbhs + xyrxx_sfzh
     """
     conds = [
+        {
+            "tabId": "22",
+            "tabCode": "xyr",
+            "fieldCode": "xyrxx_lrsj",
+            "tabType": "1",
+            "isPub": False,
+            "operateSign": "10",
+            "values": [start_time, end_time],
+            "excludeDays": [],
+            "rangeIncludeType": "0",
+        },
         {
             "tabId": "22",
             "tabCode": "xyr",
@@ -1061,7 +1072,7 @@ def _make_form_xyrxx() -> Dict[str, str]:
             "values": ["0"],
             "isIncludeChilds": False,
             "dicCode": "00",
-        }
+        },
     ]
     json_obj = {"paramArray": [{"conditions": conds, "tabId": "22", "tabCode": "xyr", "domainId": "11"}]}
     return _make_form_base(
