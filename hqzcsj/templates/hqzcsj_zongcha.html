@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>获取综查数据</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .card { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow:0 6px 22px rgba(18,38,63,.06); border:1px solid #e6e8ef; }
+        .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+        label { font-size:14px; color:#333; }
+        input[type="text"] { height:34px; border:1px solid #d7dbe7; border-radius:8px; padding:0 10px; font-size:14px; width: 420px; max-width: 100%; }
+        input[type="datetime-local"] { height:34px; border:1px solid #d7dbe7; border-radius:8px; padding:0 10px; font-size:14px; }
+        .btn { height:34px; border:0; border-radius:8px; background:#1976d2; color:#fff; padding:0 14px; font-weight:700; cursor:pointer; }
+        .btn.secondary { background:#555; }
+        .btn:disabled { opacity:.6; cursor:not-allowed; }
+        .muted { color:#666; font-size:12px; }
+        .err { color:#b42318; font-size:13px; white-space:pre-wrap; }
+        .ok { color:#067647; font-size:13px; white-space:pre-wrap; }
+        .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+        table { border-collapse: collapse; width: 100%; min-width: 720px; }
+        th, td { border-bottom:1px solid #eef0f6; padding:10px 12px; font-size:13px; text-align:left; white-space:nowrap; }
+        th { position: sticky; top: 0; background: #fbfcff; z-index: 2; }
+        .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index: 50; }
+        .modal { display:none; position:fixed; inset:0; z-index: 60; align-items:center; justify-content:center; padding: 18px; }
+        .modal .panel { width: min(860px, 96vw); background:#fff; border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.18); border:1px solid #e6e8ef; overflow:hidden; }
+        .modal .hd { padding:14px 16px; border-bottom:1px solid #eef0f6; display:flex; justify-content:space-between; align-items:center; }
+        .modal .bd { padding:16px; }
+        .modal .ft { padding:14px 16px; border-top:1px solid #eef0f6; display:flex; justify-content:flex-end; gap:10px; }
+        .grid { display:grid; grid-template-columns: 120px 1fr; gap: 10px 12px; align-items:center; }
+        .multi-select { position: relative; display: inline-block; }
+        .multi-select-display { height: 34px; border: 1px solid #d7dbe7; border-radius: 8px; padding: 0 10px; font-size: 14px; background:#fff; cursor:pointer; display:flex; align-items:center; min-width: 320px; user-select:none; }
+        .multi-select-dropdown { display:none; position:absolute; top: 38px; left: 0; right: 0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; box-shadow:0 8px 18px rgba(18,38,63,.12); z-index: 30; padding: 6px 8px; max-height: 260px; overflow:auto; }
+        .multi-select-dropdown.open { display:block; }
+        .multi-select-option { display:flex; align-items:center; gap:6px; padding:6px 4px; font-size: 13px; }
+        @media (max-width: 680px) {
+            .grid { grid-template-columns: 1fr; }
+            input[type="text"] { width: 100%; }
+            .multi-select-display { min-width: 220px; }
+        }
+    </style>
+</head>
+<body>
+<header class="header">
+    <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+        <div>
+            <h1 style="margin:0;">获取综查数据</h1>
+            <p style="margin:6px 0 0 0;">从综查接口拉取数据并写入数据库</p>
+        </div>
+        <div>
+            <a href="{{ url_for('main') }}" style="background:#555; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">返回主页</a>
+        </div>
+    </div>
+</header>
+
+<main class="container" style="max-width:1200px;">
+    <section class="card">
+        <div class="row" style="justify-content:space-between;">
+            <div class="row">
+                <button class="btn" id="openModalBtn">获取数据</button>
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <span class="muted">数据源</span>
+                    <div class="multi-select" id="sourceMs">
+                        <div class="multi-select-display" id="sourceMsDisplay">全部</div>
+                        <div class="multi-select-dropdown" id="sourceMsDropdown">
+                            <label class="multi-select-option">
+                                <input type="checkbox" value="_all" checked>
+                                <span>全选</span>
+                            </label>
+                            <label class="multi-select-option"><input type="checkbox" value="训诫书" checked><span>训诫书</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="加强监督教育/责令接受家庭教育指导通知书" checked><span>家庭教育指导通知书</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="责令未成年人遵守特定行为规范通知书" checked><span>责令未成年人遵守特定行为规范通知书</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="未成年人(嫌疑人)" checked><span>未成年人(嫌疑人)</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="未成年人案件" checked><span>未成年人案件</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="案件信息" checked><span>案件信息</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="行政处罚决定书" checked><span>行政处罚决定书</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="拘留证" checked><span>拘留证</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="逮捕证" checked><span>逮捕证</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="移送案件通知书" checked><span>移送案件通知书</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="起诉人员信息" checked><span>起诉人员信息</span></label>
+                            <label class="multi-select-option"><input type="checkbox" value="嫌疑人信息" checked><span>嫌疑人信息</span></label>
+                        </div>
+                    </div>
+                </label>
+                <span class="muted">默认开始：{{ default_start }}；默认结束：{{ default_end }}</span>
+            </div>
+            <div class="muted" id="statusText"></div>
+        </div>
+        <div id="errBox" class="err" style="margin-top:10px;"></div>
+        <div id="okBox" class="ok" style="margin-top:10px;"></div>
+    </section>
+
+    <section class="card">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>类型</th>
+                    <th>表</th>
+                    <th>拉取条数</th>
+                    <th>入库处理</th>
+                </tr>
+                </thead>
+                <tbody id="resultBody">
+                <tr><td colspan="4" class="muted">暂无任务</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="muted" style="margin-top:10px;">
+            说明：单位编码列表从环境变量读取（`ZFBA_ORG_CODES`，英文逗号分隔）；未配置时默认使用 `445300000000`。
+        </div>
+    </section>
+</main>
+
+<div class="modal-backdrop" id="modalBackdrop"></div>
+<div class="modal" id="modal">
+    <div class="panel">
+        <div class="hd">
+            <div style="font-weight:800;">获取综查数据</div>
+            <button class="btn secondary" id="closeModalBtn">关闭</button>
+        </div>
+        <div class="bd">
+            <div class="grid">
+                <label>Cookie</label>
+                <input type="text" id="cookieInput" placeholder='例如：projectToken=...'>
+                <label>Authorization</label>
+                <input type="text" id="authInput" placeholder='例如：Bearer xxx'>
+                <label>开始时间</label>
+                <input type="text" id="startInput" value="{{ default_start }}" placeholder="YYYY-MM-DD HH:MM:SS">
+                <label>结束时间</label>
+                <input type="text" id="endInput" value="{{ default_end }}" placeholder="YYYY-MM-DD HH:MM:SS">
+            </div>
+            <div class="muted" style="margin-top:10px;">
+                时间格式：YYYY-MM-DD HH:MM:SS（结束时间默认“今天零点”）。
+            </div>
+        </div>
+        <div class="ft">
+            <button class="btn secondary" id="cancelBtn">取消</button>
+            <button class="btn" id="startBtn">开始获取</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const modal = document.getElementById('modal');
+    const backdrop = document.getElementById('modalBackdrop');
+    const openBtn = document.getElementById('openModalBtn');
+    const closeBtn = document.getElementById('closeModalBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const startBtn = document.getElementById('startBtn');
+    const errBox = document.getElementById('errBox');
+    const okBox = document.getElementById('okBox');
+    const statusText = document.getElementById('statusText');
+    const resultBody = document.getElementById('resultBody');
+
+    // 数据源多选
+    const sourceMs = document.getElementById('sourceMs');
+    const sourceMsDisplay = document.getElementById('sourceMsDisplay');
+    const sourceMsDropdown = document.getElementById('sourceMsDropdown');
+
+    function openSourceDropdown() {
+        sourceMsDropdown.classList.add('open');
+    }
+    function closeSourceDropdown() {
+        sourceMsDropdown.classList.remove('open');
+    }
+    function selectedSources() {
+        const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]'));
+        return boxes
+            .filter(b => b.value !== '_all' && b.checked)
+            .map(b => b.value);
+    }
+    function syncAllCheckbox() {
+        const allBox = sourceMsDropdown.querySelector('input[value="_all"]');
+        const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== '_all');
+        const allChecked = boxes.every(b => b.checked);
+        const noneChecked = boxes.every(b => !b.checked);
+        allBox.checked = allChecked;
+        allBox.indeterminate = !allChecked && !noneChecked;
+    }
+    function renderSourceLabel() {
+        const sel = selectedSources();
+        const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== '_all');
+        if (sel.length === 0) {
+            sourceMsDisplay.textContent = '未选择';
+            return;
+        }
+        if (sel.length === boxes.length) {
+            sourceMsDisplay.textContent = '全部';
+            return;
+        }
+        sourceMsDisplay.textContent = `已选 ${sel.length} 项`;
+    }
+
+    sourceMsDisplay.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (sourceMsDropdown.classList.contains('open')) closeSourceDropdown();
+        else openSourceDropdown();
+    });
+    sourceMsDropdown.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', () => closeSourceDropdown());
+
+    sourceMsDropdown.addEventListener('change', (e) => {
+        const t = e.target;
+        if (!t || t.tagName !== 'INPUT') return;
+        if (t.value === '_all') {
+            const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== '_all');
+            boxes.forEach(b => { b.checked = t.checked; });
+        } else {
+            syncAllCheckbox();
+        }
+        renderSourceLabel();
+    });
+    // 初始状态
+    syncAllCheckbox();
+    renderSourceLabel();
+
+    function openModal() {
+        backdrop.style.display = 'block';
+        modal.style.display = 'flex';
+        errBox.textContent = '';
+        okBox.textContent = '';
+    }
+    function closeModal() {
+        backdrop.style.display = 'none';
+        modal.style.display = 'none';
+    }
+
+    openBtn.addEventListener('click', openModal);
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', closeModal);
+
+    function renderResults(results) {
+        if (!results || results.length === 0) {
+            resultBody.innerHTML = '<tr><td colspan="4" class="muted">暂无数据</td></tr>';
+            return;
+        }
+        resultBody.innerHTML = results.map(r => `
+            <tr>
+                <td>${r.name || ''}</td>
+                <td>${(r.schema || '') + '.' + (r.table || '')}</td>
+                <td>${r.fetched ?? ''}</td>
+                <td>${r.processed ?? ''}</td>
+            </tr>
+        `).join('');
+    }
+
+    async function poll(jobId) {
+        const resp = await fetch(`{{ url_for('hqzcsj.zongcha_status', job_id='__JOB__') }}`.replace('__JOB__', jobId), {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            throw new Error(data.message || '查询任务失败');
+        }
+        const st = data.data;
+        const prog = st.progress || {};
+        statusText.textContent = `${st.state || ''} ${prog.current ?? 0}/${prog.total ?? 0} ${st.message || ''}`;
+        renderResults(st.results || []);
+        if (st.state === 'success') {
+            okBox.textContent = '任务完成';
+            return;
+        }
+        if (st.state === 'failed') {
+            errBox.textContent = st.message || '任务失败';
+            return;
+        }
+        setTimeout(() => poll(jobId).catch(e => { errBox.textContent = e.message; }), 1500);
+    }
+
+    startBtn.addEventListener('click', async () => {
+        errBox.textContent = '';
+        okBox.textContent = '';
+        startBtn.disabled = true;
+
+        const cookie = document.getElementById('cookieInput').value.trim();
+        const authorization = document.getElementById('authInput').value.trim();
+        const start_time = document.getElementById('startInput').value.trim();
+        const end_time = document.getElementById('endInput').value.trim();
+        const sources = selectedSources();
+
+        try {
+            const resp = await fetch(`{{ url_for('hqzcsj.zongcha_start') }}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ cookie, authorization, start_time, end_time, sources })
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                throw new Error(data.message || '启动失败');
+            }
+            closeModal();
+            const jobId = data.job_id;
+            okBox.textContent = `任务已启动：${jobId}`;
+            statusText.textContent = 'running 0/0';
+            resultBody.innerHTML = '<tr><td colspan="4" class="muted">执行中...</td></tr>';
+            poll(jobId).catch(e => { errBox.textContent = e.message; });
+        } catch (e) {
+            errBox.textContent = e.message || String(e);
+        } finally {
+            startBtn.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>
