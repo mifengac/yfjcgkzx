@@ -169,6 +169,8 @@ def _run_job(
                         continue
 
                     fetched_total += len(window_rows)
+                    if job.table in {"zq_zfba_wcnr_xyr", "zq_zfba_xyrxx"}:
+                        window_rows = _expand_rows_by_ajxx_ajbhs(window_rows)
                     if fast_mode:
                         processed_total += upsert_rows_jsonb(
                             conn=conn,
@@ -546,6 +548,37 @@ def _merge_inferred_types(base: Dict[str, str], inc: Dict[str, str]) -> Dict[str
         if cur is None:
             out[k] = v
     return out
+
+
+def _expand_rows_by_ajxx_ajbhs(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    若 ajxx_ajbhs 含空格（多个案件编号），按空格拆分为多条记录，其它字段不变。
+
+    例：{"ajxx_ajbhs": "A1 A2", ...} -> [{"ajxx_ajbhs": "A1", ...}, {"ajxx_ajbhs": "A2", ...}]
+    """
+    expanded: List[Dict[str, Any]] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        raw = row.get("ajxx_ajbhs")
+        if not isinstance(raw, str):
+            expanded.append(row)
+            continue
+        cleaned = raw.strip()
+        parts = [p for p in cleaned.split() if p]
+        if len(parts) <= 1:
+            if cleaned != raw:
+                new_row = dict(row)
+                new_row["ajxx_ajbhs"] = cleaned
+                expanded.append(new_row)
+            else:
+                expanded.append(row)
+            continue
+        for part in parts:
+            new_row = dict(row)
+            new_row["ajxx_ajbhs"] = part
+            expanded.append(new_row)
+    return expanded
 
 
 def _fetch_all_pages(
