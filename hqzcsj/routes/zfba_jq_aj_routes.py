@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from datetime import datetime
 from io import BytesIO, StringIO
+import logging
 from typing import Any, Dict, List
 
 from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -10,6 +11,7 @@ from openpyxl import Workbook
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao.zfba_jq_aj_dao import fetch_leixing_list
+from hqzcsj.service.zfba_jq_aj_report_service import ZfbaJqAjReportService
 from hqzcsj.service.zfba_jq_aj_service import REGION_ORDER, build_summary, default_time_range_for_page, fetch_detail
 
 
@@ -153,6 +155,40 @@ def export_detail() -> Response:
     if fmt == "csv":
         return _download_csv(rows, filename)
     return _download_excel(rows, filename)
+
+
+@zfba_jq_aj_bp.route("/zfba_jq_aj/report_export", methods=["POST"])
+def report_export() -> Response:
+    """导出报表（写入 xls 模板；固定类型，不受多选框影响）"""
+    try:
+        params = request.get_json() or {}
+        kssj = (params.get("kssj") or "").strip()
+        jssj = (params.get("jssj") or "").strip()
+        hbkssj = (params.get("hbkssj") or "").strip()
+        hbjssj = (params.get("hbjssj") or "").strip()
+
+        if not kssj or not jssj or not hbkssj or not hbjssj:
+            return jsonify({"success": False, "message": "缺少参数：kssj/jssj/hbkssj/hbjssj"}), 400
+
+        service = ZfbaJqAjReportService()
+        data = service.build_report_xls(kssj, jssj, hbkssj, hbjssj)
+        ts = datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"警情案件处罚统计报表_{ts}.xls"
+
+        buffer = BytesIO(data)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/vnd.ms-excel",
+        )
+    except ValueError as exc:
+        logging.error("导出报表参数错误: %s", exc)
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception as exc:
+        logging.error("导出报表失败: %s", exc)
+        return jsonify({"success": False, "message": f"导出报表失败: {exc}"}), 500
 
 
 def _download_csv(rows: List[Dict[str, Any]], filename: str) -> Response:

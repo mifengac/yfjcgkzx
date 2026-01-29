@@ -234,6 +234,7 @@ def upsert_rows(
         return 0
 
     pk_fields = [f for f in pk_fields if f]
+    pk_set = set(pk_fields)
     if pk_fields:
         dedup: Dict[Tuple[str, ...], Dict[str, Any]] = {}
         for r in rows:
@@ -263,8 +264,16 @@ def upsert_rows(
         conflict_cols,
     ) + conflict_action
 
-    def _adapt_value(v: Any, ctype: str) -> Any:
+    def _adapt_value(v: Any, ctype: str, *, is_pk: bool) -> Any:
+        # 综查接口常用占位符："-" / "无数据" / ""。
+        # 对非主键字段一律按“空值”处理，避免写入到 TIMESTAMP 等强类型列时报错。
+        if is_pk:
+            if v is None:
+                return ""
+            return str(v)
         if v is None:
+            return None
+        if v in ("", "-", "无数据"):
             return None
         if ctype == "TIMESTAMP":
             if v in ("", "-", "无数据"):
@@ -289,7 +298,7 @@ def upsert_rows(
         tup: List[Any] = []
         for c in columns:
             ctype = (col_types or {}).get(c, "TEXT")
-            tup.append(_adapt_value((r or {}).get(c), ctype))
+            tup.append(_adapt_value((r or {}).get(c), ctype, is_pk=(c in pk_set)))
         data_rows.append(tuple(tup))
 
     with conn.cursor() as cur:

@@ -2,10 +2,16 @@
     <div class="row" style="justify-content:space-between; align-items:center;">
         <div class="row" style="gap:10px;">
             <label>开始时间
-                <input type="text" id="jqajStart" value="{{ jqaj_default_start }}" placeholder="YYYY-MM-DD HH:MM:SS" style="width: 200px;">
+                <input type="datetime-local" id="jqajStart" step="1">
             </label>
             <label>结束时间
-                <input type="text" id="jqajEnd" value="{{ jqaj_default_end }}" placeholder="YYYY-MM-DD HH:MM:SS" style="width: 200px;">
+                <input type="datetime-local" id="jqajEnd" step="1">
+            </label>
+            <label>环比开始
+                <input type="datetime-local" id="jqajHbStart" step="1">
+            </label>
+            <label>环比结束
+                <input type="datetime-local" id="jqajHbEnd" step="1">
             </label>
             <label>类型
                 <div class="multi-select" id="jqajTypesMs">
@@ -23,6 +29,7 @@
                     <a href="#" data-fmt="csv">导出 csv</a>
                 </div>
             </div>
+            <button class="btn" id="jqajReportBtn" style="background:#ff9800;">导出报表</button>
         </div>
     </div>
     <div class="muted" id="jqajStatus" style="margin-top:10px;"></div>
@@ -34,6 +41,24 @@
         <table id="jqajTbl"></table>
     </div>
 </section>
+
+<style>
+    #jqajTbl th { text-align: center; }
+    #jqajTbl td.num-cell { text-align: center; font-variant-numeric: tabular-nums; }
+    #jqajTbl td.rowh { text-align: left; }
+</style>
+
+<div id="jqajDetailModal" class="modal" onclick="jqajCloseModal(event)" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index: 80; align-items:center; justify-content:center; padding: 16px;">
+    <div class="modal-content" onclick="event.stopPropagation()" style="width:min(1200px, 96vw); height:min(860px, 92vh); background:#fff; border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.18); border:1px solid #e6e8ef; overflow:hidden; display:flex; flex-direction:column;">
+        <div class="modal-header" style="padding:12px 14px; border-bottom:1px solid #eef0f6; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:800;">明细数据</div>
+            <button type="button" class="btn secondary" onclick="jqajCloseModal()" style="background:#555;">关闭</button>
+        </div>
+        <div class="modal-body" style="flex:1;">
+            <iframe id="jqajDetailFrame" title="明细数据" style="width:100%; height:100%; border:0;"></iframe>
+        </div>
+    </div>
+</div>
 
 <script>
     (function() {
@@ -70,10 +95,15 @@
 
         const startEl = document.getElementById("jqajStart");
         const endEl = document.getElementById("jqajEnd");
+        const hbStartEl = document.getElementById("jqajHbStart");
+        const hbEndEl = document.getElementById("jqajHbEnd");
         const statusEl = document.getElementById("jqajStatus");
         const errEl = document.getElementById("jqajErr");
         const tbl = document.getElementById("jqajTbl");
         const queryBtn = document.getElementById("jqajQueryBtn");
+        const reportBtn = document.getElementById("jqajReportBtn");
+
+        let lastMeta = null;
 
         // dropdown
         const dd = document.getElementById("jqajExportDd");
@@ -158,9 +188,52 @@
             renderMsLabel();
         }
 
+        function formatDateTimeLocal(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+        }
+
+        function formatDateTime(dateStr) {
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return '';
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
+
+        function setDefaultTimeRange() {
+            // 当前：前7天00:00:00 ~ 当天00:00:00
+            const now = new Date();
+            const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+            const start = new Date(today0);
+            start.setDate(start.getDate() - 7);
+            const end = new Date(today0);
+
+            // 环比：前14天00:00:00 ~ 前7天23:59:59（避免与当前开始重叠）
+            const hbStart = new Date(today0);
+            hbStart.setDate(hbStart.getDate() - 14);
+            const hbEnd = new Date(today0);
+            hbEnd.setDate(hbEnd.getDate() - 7);
+            hbEnd.setSeconds(hbEnd.getSeconds() - 1);
+
+            startEl.value = formatDateTimeLocal(start);
+            endEl.value = formatDateTimeLocal(end);
+            hbStartEl.value = formatDateTimeLocal(hbStart);
+            hbEndEl.value = formatDateTimeLocal(hbEnd);
+        }
+
         function buildQueryParams(metaOverride) {
-            const st = (metaOverride && metaOverride.start_time) ? metaOverride.start_time : startEl.value.trim();
-            const et = (metaOverride && metaOverride.end_time) ? metaOverride.end_time : endEl.value.trim();
+            const st = (metaOverride && metaOverride.start_time) ? metaOverride.start_time : formatDateTime(startEl.value);
+            const et = (metaOverride && metaOverride.end_time) ? metaOverride.end_time : formatDateTime(endEl.value);
             const types = selectedTypes();
             const usp = new URLSearchParams();
             if (st) usp.set("start_time", st);
@@ -177,6 +250,7 @@
                 const tds = COLS.map(c => {
                     if (c === REGION_COL) return `<td class="rowh">${diquName}</td>`;
                     const v = (r[c] == null) ? 0 : r[c];
+                    if (!v || Number(v) <= 0) return `<td class="num-cell">${v || 0}</td>`;
                     const metric = METRIC_BY_COL[c] || "";
                     const isYoy = String(c).startsWith("同比");
                     const st = isYoy ? (meta.yoy_start_time || "") : (meta.start_time || "");
@@ -185,11 +259,19 @@
                     usp.set("metric", metric);
                     usp.set("diqu", diquCode);
                     const href = `{{ url_for('zfba_jq_aj.detail_page') }}?` + usp.toString();
-                    return `<td><a href="${href}" style="color:#1976d2; text-decoration:none; font-weight:700;">${v}</a></td>`;
+                    return `<td class="num-cell clickable-cell" data-href="${href}" style="cursor:pointer; color:#1976d2; font-weight:800;">${v}</td>`;
                 });
                 return `<tr>${tds.join("")}</tr>`;
             }).join("");
             tbl.innerHTML = thead + `<tbody>${tbodyRows || `<tr><td colspan="${COLS.length}" class="muted">无数据</td></tr>`}</tbody>`;
+
+            // bind click for detail modal
+            tbl.querySelectorAll("td.clickable-cell").forEach(td => {
+                td.addEventListener("click", () => {
+                    const href = td.getAttribute("data-href");
+                    if (href) window.jqajOpenDetail(href);
+                });
+            });
         }
 
         async function query() {
@@ -202,6 +284,7 @@
                 const data = await resp.json();
                 if (!data.success) throw new Error(data.message || "查询失败");
                 statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}`;
+                lastMeta = data.meta || null;
                 renderTable(data.rows || [], data.meta || {});
             } catch (e) {
                 errEl.textContent = e.message || String(e);
@@ -218,8 +301,68 @@
             window.location.href = href;
         }
 
+        async function exportReport() {
+            errEl.textContent = "";
+            const kssj = formatDateTime(startEl.value);
+            const jssj = formatDateTime(endEl.value);
+            const hbkssj = formatDateTime(hbStartEl.value);
+            const hbjssj = formatDateTime(hbEndEl.value);
+            if (!kssj || !jssj || !hbkssj || !hbjssj) {
+                errEl.textContent = "请填写开始/结束/环比开始/环比结束时间";
+                return;
+            }
+            reportBtn.disabled = true;
+            statusEl.textContent = "正在导出报表...";
+            try {
+                const resp = await fetch(`{{ url_for('zfba_jq_aj.report_export') }}`, {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json"},
+                    body: JSON.stringify({kssj, jssj, hbkssj, hbjssj})
+                });
+                if (!resp.ok) {
+                    let msg = "导出报表失败";
+                    try { const js = await resp.json(); msg = (js && js.message) ? js.message : msg; } catch (e) {}
+                    throw new Error(msg);
+                }
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                const cd = resp.headers.get("content-disposition") || "";
+                const m = cd.match(/filename\\*=UTF-8''([^;]+)/i) || cd.match(/filename=\"?([^;\"]+)\"?/i);
+                a.download = m ? decodeURIComponent(m[1]) : `警情案件统计报表_${new Date().getTime()}.xls`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                statusEl.textContent = "导出成功";
+            } catch (e) {
+                errEl.textContent = e.message || String(e);
+                statusEl.textContent = "";
+            } finally {
+                reportBtn.disabled = false;
+            }
+        }
+
+        reportBtn.addEventListener("click", (e) => { e.preventDefault(); exportReport(); });
         queryBtn.addEventListener("click", (e) => { e.preventDefault(); query(); });
 
+        // detail modal helpers (iframe)
+        window.jqajOpenDetail = function(href) {
+            const modal = document.getElementById("jqajDetailModal");
+            const frame = document.getElementById("jqajDetailFrame");
+            frame.src = href;
+            modal.style.display = "flex";
+        };
+        window.jqajCloseModal = function(event) {
+            if (event && event.target && event.target.id !== "jqajDetailModal") return;
+            const modal = document.getElementById("jqajDetailModal");
+            const frame = document.getElementById("jqajDetailFrame");
+            modal.style.display = "none";
+            frame.src = "about:blank";
+        };
+
+        setDefaultTimeRange();
         loadTypes().then(() => query()).catch(e => { errEl.textContent = e.message || String(e); msDisplay.textContent = "加载失败"; });
     })();
 </script>
