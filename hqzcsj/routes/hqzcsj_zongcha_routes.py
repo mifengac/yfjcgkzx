@@ -18,6 +18,7 @@ from flask import Blueprint, abort, jsonify, redirect, render_template, request,
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.service.zongcha_service import start_zongcha_job, get_zongcha_job_status
+from hqzcsj.service.zfba_jq_aj_service import default_time_range_for_page as jqaj_default_range
 
 
 hqzcsj_bp = Blueprint("hqzcsj", __name__, template_folder="../templates")
@@ -46,10 +47,13 @@ def _check_access() -> None:
 def zongcha_index() -> str:
     default_start = "2024-01-01 00:00:00"
     default_end = datetime.now().strftime("%Y-%m-%d 00:00:00")
+    jqaj_default_start, jqaj_default_end = jqaj_default_range()
     return render_template(
         "hqzcsj_zongcha.html",
         default_start=default_start,
         default_end=default_end,
+        jqaj_default_start=jqaj_default_start,
+        jqaj_default_end=jqaj_default_end,
     )
 
 

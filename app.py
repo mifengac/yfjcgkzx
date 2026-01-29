@@ -47,6 +47,7 @@ from gzrzdd.routes.gzrzdd_routes import gzrzdd_bp  # noqa: E402
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp  # noqa: E402
 from mdjfxsyj.routes.mdjfxsyj_mdj_xsyj_routes import mdjfxsyj_bp  # noqa: E402
 from hqzcsj.routes.hqzcsj_zongcha_routes import hqzcsj_bp  # noqa: E402
+from hqzcsj.routes.zfba_jq_aj_routes import zfba_jq_aj_bp  # noqa: E402
 try:
     from wcnr_djdo import wcnr_djdo_bp  # type: ignore  # noqa: E402
 except Exception:
@@ -360,6 +361,7 @@ app.register_blueprint(gzrzdd_bp, url_prefix="/gzrzdd")
 app.register_blueprint(jszahzyj_bp, url_prefix="/jszahzyj")
 app.register_blueprint(mdjfxsyj_bp, url_prefix="/mdjfxsyj")
 app.register_blueprint(hqzcsj_bp, url_prefix="/hqzcsj")
+app.register_blueprint(zfba_jq_aj_bp, url_prefix="/hqzcsj")
 if wcnr_djdo_bp is not None:
     app.register_blueprint(wcnr_djdo_bp, url_prefix="/weichengnianren-djdo")
 try:

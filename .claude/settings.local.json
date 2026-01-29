@@ -8,7 +8,8 @@
       "Bash(git push:*)",
       "Bash(git checkout:*)",
       "Bash(git pull:*)",
-      "Bash(git merge 0126 --no-ff -m \"$\\(cat <<''EOF''\nmerge: 将0126分支合并到master\n\n- 未成年人\\(打架斗殴\\)模块功能增强\n- 新增案件类型多选过滤\n- 重构短信发送功能\\(领导/责任人模式\\)\n- 新增数据脱敏和手机号过滤\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git merge 0126 --no-ff -m \"$\\(cat <<''EOF''\nmerge: 将0126分支合并到master\n\n- 未成年人\\(打架斗殴\\)模块功能增强\n- 新增案件类型多选过滤\n- 重构短信发送功能\\(领导/责任人模式\\)\n- 新增数据脱敏和手机号过滤\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git config:*)"
     ]
   }
 }

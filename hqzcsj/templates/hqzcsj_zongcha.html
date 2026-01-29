@@ -17,10 +17,20 @@
         .muted { color:#666; font-size:12px; }
         .err { color:#b42318; font-size:13px; white-space:pre-wrap; }
         .ok { color:#067647; font-size:13px; white-space:pre-wrap; }
+        .tabs { display:flex; gap:8px; margin-bottom: 12px; }
+        .tab-btn { height: 34px; border: 1px solid #d7dbe7; border-radius: 999px; background:#fff; padding: 0 14px; cursor:pointer; font-weight: 800; color:#333; }
+        .tab-btn.active { background:#1976d2; color:#fff; border-color:#1976d2; }
+        .tab-panel { display:none; }
+        .tab-panel.active { display:block; }
         .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
         table { border-collapse: collapse; width: 100%; min-width: 720px; }
         th, td { border-bottom:1px solid #eef0f6; padding:10px 12px; font-size:13px; text-align:left; white-space:nowrap; }
         th { position: sticky; top: 0; background: #fbfcff; z-index: 2; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display:none; position:absolute; right:0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; min-width:140px; box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index: 20; }
+        .dropdown-menu a { display:block; padding:10px 12px; color:#111; text-decoration:none; font-size:13px; }
+        .dropdown-menu a:hover { background:#f3f5fb; }
+        .dropdown.open .dropdown-menu { display:block; }
         .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index: 50; }
         .modal { display:none; position:fixed; inset:0; z-index: 60; align-items:center; justify-content:center; padding: 18px; }
         .modal .panel { width: min(860px, 96vw); background:#fff; border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.18); border:1px solid #e6e8ef; overflow:hidden; }
@@ -54,62 +64,73 @@
 </header>
 
 <main class="container" style="max-width:1200px;">
-    <section class="card">
-        <div class="row" style="justify-content:space-between;">
-            <div class="row">
-                <button class="btn" id="openModalBtn">获取数据</button>
-                <label style="display:flex; align-items:center; gap:8px;">
-                    <span class="muted">数据源</span>
-                    <div class="multi-select" id="sourceMs">
-                        <div class="multi-select-display" id="sourceMsDisplay">全部</div>
-                        <div class="multi-select-dropdown" id="sourceMsDropdown">
-                            <label class="multi-select-option">
-                                <input type="checkbox" value="_all" checked>
-                                <span>全选</span>
-                            </label>
-                            <label class="multi-select-option"><input type="checkbox" value="训诫书" checked><span>训诫书</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="加强监督教育/责令接受家庭教育指导通知书" checked><span>家庭教育指导通知书</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="责令未成年人遵守特定行为规范通知书" checked><span>责令未成年人遵守特定行为规范通知书</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="未成年人(嫌疑人)" checked><span>未成年人(嫌疑人)</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="未成年人案件" checked><span>未成年人案件</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="案件信息" checked><span>案件信息</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="行政处罚决定书" checked><span>行政处罚决定书</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="拘留证" checked><span>拘留证</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="逮捕证" checked><span>逮捕证</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="移送案件通知书" checked><span>移送案件通知书</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="起诉人员信息" checked><span>起诉人员信息</span></label>
-                            <label class="multi-select-option"><input type="checkbox" value="嫌疑人信息" checked><span>嫌疑人信息</span></label>
-                        </div>
-                    </div>
-                </label>
-                <span class="muted">默认开始：{{ default_start }}；默认结束：{{ default_end }}</span>
-            </div>
-            <div class="muted" id="statusText"></div>
-        </div>
-        <div id="errBox" class="err" style="margin-top:10px;"></div>
-        <div id="okBox" class="ok" style="margin-top:10px;"></div>
-    </section>
+    <div class="tabs" id="hqzcsjTabs">
+        <button class="tab-btn" data-tab="fetch">获取综查数据</button>
+        <button class="tab-btn active" data-tab="jqaj">警情案件统计</button>
+    </div>
 
-    <section class="card">
-        <div class="table-wrap">
-            <table>
-                <thead>
-                <tr>
-                    <th>类型</th>
-                    <th>表</th>
-                    <th>拉取条数</th>
-                    <th>入库处理</th>
-                </tr>
-                </thead>
-                <tbody id="resultBody">
-                <tr><td colspan="4" class="muted">暂无任务</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="muted" style="margin-top:10px;">
-            说明：单位编码列表从环境变量读取（`ZFBA_ORG_CODES`，英文逗号分隔）；未配置时默认使用 `445300000000`。
-        </div>
-    </section>
+    <div class="tab-panel" id="tab-fetch">
+        <section class="card">
+            <div class="row" style="justify-content:space-between;">
+                <div class="row">
+                    <button class="btn" id="openModalBtn">获取数据</button>
+                    <label style="display:flex; align-items:center; gap:8px;">
+                        <span class="muted">数据源</span>
+                        <div class="multi-select" id="sourceMs">
+                            <div class="multi-select-display" id="sourceMsDisplay">全部</div>
+                            <div class="multi-select-dropdown" id="sourceMsDropdown">
+                                <label class="multi-select-option">
+                                    <input type="checkbox" value="_all" checked>
+                                    <span>全选</span>
+                                </label>
+                                <label class="multi-select-option"><input type="checkbox" value="训诫书" checked><span>训诫书</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="加强监督教育/责令接受家庭教育指导通知书" checked><span>家庭教育指导通知书</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="责令未成年人遵守特定行为规范通知书" checked><span>责令未成年人遵守特定行为规范通知书</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="未成年人(嫌疑人)" checked><span>未成年人(嫌疑人)</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="未成年人案件" checked><span>未成年人案件</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="案件信息" checked><span>案件信息</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="行政处罚决定书" checked><span>行政处罚决定书</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="拘留证" checked><span>拘留证</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="逮捕证" checked><span>逮捕证</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="移送案件通知书" checked><span>移送案件通知书</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="起诉人员信息" checked><span>起诉人员信息</span></label>
+                                <label class="multi-select-option"><input type="checkbox" value="嫌疑人信息" checked><span>嫌疑人信息</span></label>
+                            </div>
+                        </div>
+                    </label>
+                    <span class="muted">默认开始：{{ default_start }}；默认结束：{{ default_end }}</span>
+                </div>
+                <div class="muted" id="statusText"></div>
+            </div>
+            <div id="errBox" class="err" style="margin-top:10px;"></div>
+            <div id="okBox" class="ok" style="margin-top:10px;"></div>
+        </section>
+
+        <section class="card">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>类型</th>
+                        <th>表</th>
+                        <th>拉取条数</th>
+                        <th>入库处理</th>
+                    </tr>
+                    </thead>
+                    <tbody id="resultBody">
+                    <tr><td colspan="4" class="muted">暂无任务</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="muted" style="margin-top:10px;">
+                说明：单位编码列表从环境变量读取（`ZFBA_ORG_CODES`，英文逗号分隔）；未配置时默认使用 `445300000000`。
+            </div>
+        </section>
+    </div>
+
+    <div class="tab-panel active" id="tab-jqaj">
+        {% include "zfba_jq_aj_tab.html" %}
+    </div>
 </main>
 
 <div class="modal-backdrop" id="modalBackdrop"></div>
@@ -303,6 +324,21 @@
             startBtn.disabled = false;
         }
     });
+
+    // Tabs
+    (function() {
+        const tabs = document.getElementById("hqzcsjTabs");
+        if (!tabs) return;
+        tabs.querySelectorAll(".tab-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+                tabs.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                const t = btn.getAttribute("data-tab");
+                document.getElementById("tab-fetch").classList.toggle("active", t === "fetch");
+                document.getElementById("tab-jqaj").classList.toggle("active", t === "jqaj");
+            });
+        });
+    })();
 </script>
 </body>
 </html>
