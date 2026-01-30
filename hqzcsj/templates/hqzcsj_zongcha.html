@@ -67,6 +67,7 @@
     <div class="tabs" id="hqzcsjTabs">
         <button class="tab-btn" data-tab="fetch">获取综查数据</button>
         <button class="tab-btn active" data-tab="jqaj">警情案件统计</button>
+        <button class="tab-btn" data-tab="wcnr">未成年人统计</button>
     </div>
 
     <div class="tab-panel" id="tab-fetch">
@@ -130,6 +131,10 @@
 
     <div class="tab-panel active" id="tab-jqaj">
         {% include "zfba_jq_aj_tab.html" %}
+    </div>
+
+    <div class="tab-panel" id="tab-wcnr">
+        {% include "zfba_wcnr_jqaj_tab.html" %}
     </div>
 </main>
 
@@ -336,6 +341,7 @@
                 const t = btn.getAttribute("data-tab");
                 document.getElementById("tab-fetch").classList.toggle("active", t === "fetch");
                 document.getElementById("tab-jqaj").classList.toggle("active", t === "jqaj");
+                document.getElementById("tab-wcnr").classList.toggle("active", t === "wcnr");
             });
         });
     })();

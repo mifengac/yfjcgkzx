@@ -99,6 +99,7 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
             SELECT LEFT(vjo."cmdid", 6) AS diqu, COUNT(1) AS cnt
             FROM "ywdata"."v_jq_optimized" vjo
             WHERE vjo."calltime" BETWEEN %s AND %s
+            AND 1=1
             """
         )
         + where_leixing
@@ -117,7 +118,7 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
 
 def count_ajxx_by_diqu_and_ajlx(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, Dict[str, int]]:
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
-    diqu_expr = _left6(_text("aj", "ajxx_cbqy_bh_dm", has_data=has_data))
+    diqu_expr = _left6(_text("aj", "ajxx_cbdw_bh_dm", has_data=has_data))
     ajlx_expr = _text("aj", "ajxx_ajlx", has_data=has_data)
     aymc_expr = _text("aj", "ajxx_aymc", has_data=has_data)
     time_expr = _ts("aj", "ajxx_lasj", has_data=has_data)
@@ -129,6 +130,7 @@ def count_ajxx_by_diqu_and_ajlx(conn, *, start_time: str, end_time: str, pattern
             "FROM {schema}.zq_zfba_ajxx aj "
             "WHERE {t} BETWEEN %s AND %s "
             "AND {ajlx} IN ('行政','刑事') "
+            "AND 1=1 "
         ).format(diqu=diqu_expr, ajlx=ajlx_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
         + pat_sql
         + sql.SQL(" GROUP BY diqu, ajlx")
@@ -149,7 +151,7 @@ def count_ajxx_by_diqu_and_ajlx(conn, *, start_time: str, end_time: str, pattern
 def count_xzcfjds_zhiju_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_xzcfjds")
     aj_has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
-    diqu_expr = _left6(_text("xz", "xzcfjds_cbqy_bh_dm", has_data=has_data))
+    diqu_expr = _left6(_text("xz", "xzcfjds_cbdw_bh_dm", has_data=has_data))
     time_expr = _ts("xz", "xzcfjds_spsj", has_data=has_data)
     cfzl_expr = _text("xz", "xzcfjds_cfzl", has_data=has_data)
     aymc_expr = _text("aj", "ajxx_aymc", has_data=aj_has_data)
@@ -161,6 +163,7 @@ def count_xzcfjds_zhiju_by_diqu(conn, *, start_time: str, end_time: str, pattern
             "LEFT JOIN {schema}.zq_zfba_ajxx aj ON aj.ajxx_ajbh = xz.ajxx_ajbh "
             "WHERE {t} BETWEEN %s AND %s "
             "AND {cfzl} ~ '拘留' "
+            "AND 1=1 "
         ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr, cfzl=cfzl_expr)
         + pat_sql
         + sql.SQL(" GROUP BY diqu")
@@ -178,7 +181,7 @@ def count_xzcfjds_zhiju_by_diqu(conn, *, start_time: str, end_time: str, pattern
 
 def count_jlz_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_jlz")
-    diqu_expr = _left6(_text("jlz", "jlz_cbqy_bh_dm", has_data=has_data))
+    diqu_expr = _left6(_text("jlz", "jlz_cbdw_bh_dm", has_data=has_data))
     time_expr = _ts("jlz", "jlz_pzsj", has_data=has_data)
     aymc_expr = _text("jlz", "jlz_ay_mc", has_data=has_data)
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
@@ -187,6 +190,7 @@ def count_jlz_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequenc
             "SELECT {diqu} AS diqu, COUNT(1) AS cnt "
             "FROM {schema}.zq_zfba_jlz jlz "
             "WHERE {t} BETWEEN %s AND %s "
+            "AND 1=1 "
         ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
         + pat_sql
         + sql.SQL(" GROUP BY diqu")
@@ -204,7 +208,7 @@ def count_jlz_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequenc
 
 def count_dbz_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_dbz")
-    diqu_expr = _left6(_text("dbz", "dbz_cbqy_bh_dm", has_data=has_data))
+    diqu_expr = _left6(_text("dbz", "dbz_cbdw_bh_dm", has_data=has_data))
     time_expr = _ts("dbz", "dbz_pzdbsj", has_data=has_data)
     dbyy_expr = _text("dbz", "dbz_dbyy", has_data=has_data)
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=dbyy_expr)
@@ -213,6 +217,7 @@ def count_dbz_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequenc
             "SELECT {diqu} AS diqu, COUNT(1) AS cnt "
             "FROM {schema}.zq_zfba_dbz dbz "
             "WHERE {t} BETWEEN %s AND %s "
+            "AND 1=1 "
         ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
         + pat_sql
         + sql.SQL(" GROUP BY diqu")
@@ -231,7 +236,7 @@ def count_dbz_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequenc
 def count_qsryxx_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_qsryxx")
     aj_has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
-    diqu_expr = _left6(_text("qs", "qsryxx_cbqy_bh", has_data=has_data))
+    diqu_expr = _left6(_text("aj", "ajxx_cbdw_bh_dm", has_data=aj_has_data))
     time_expr = _ts("qs", "qsryxx_tfsj", has_data=has_data)
     aymc_expr = _text("aj", "ajxx_aymc", has_data=aj_has_data)
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
@@ -241,6 +246,7 @@ def count_qsryxx_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequ
             "FROM {schema}.zq_zfba_qsryxx qs "
             "LEFT JOIN {schema}.zq_zfba_ajxx aj ON aj.ajxx_ajbh = qs.ajxx_ajbh "
             "WHERE {t} BETWEEN %s AND %s "
+            "AND 1=1 "
         ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
         + pat_sql
         + sql.SQL(" GROUP BY diqu")
@@ -259,7 +265,7 @@ def count_qsryxx_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequ
 def count_ysajtzs_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ysajtzs")
     aj_has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
-    diqu_expr = _left6(_text("ys", "ysajtzs_cbqy_bh_dm", has_data=has_data))
+    diqu_expr = _left6(_text("ys", "ysajtzs_cbdw_bh_dm", has_data=has_data))
     time_expr = _ts("ys", "ysajtzs_pzsj", has_data=has_data)
     aymc_expr = _text("aj", "ajxx_aymc", has_data=aj_has_data)
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
@@ -269,6 +275,7 @@ def count_ysajtzs_by_diqu(conn, *, start_time: str, end_time: str, patterns: Seq
             "FROM {schema}.zq_zfba_ysajtzs ys "
             "LEFT JOIN {schema}.zq_zfba_ajxx aj ON aj.ajxx_ajbh = ys.ajxx_ajbh "
             "WHERE {t} BETWEEN %s AND %s "
+            "AND 1=1 "
         ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
         + pat_sql
         + sql.SQL(" GROUP BY diqu")
@@ -335,6 +342,7 @@ def fetch_detail_rows(
                       LEFT(vjo."cmdid", 6) AS "地区"
                     FROM "ywdata"."v_jq_optimized" vjo
                     WHERE vjo."calltime" BETWEEN %s AND %s
+                    AND 1=1
                     """
                 )
                 + where_leixing
@@ -360,7 +368,7 @@ def fetch_detail_rows(
             params2 += pat_params
             where_diqu = sql.SQL("")
             if not is_all:
-                where_diqu = sql.SQL(" AND LEFT(ajxx_cbqy_bh_dm, 6) = %s")
+                where_diqu = sql.SQL(" AND LEFT(ajxx_cbdw_bh_dm, 6) = %s")
                 params2.append(diqu)
             q = (
                 sql.SQL(
@@ -377,12 +385,13 @@ def fetch_detail_rows(
                       ajxx_lasj AS "立案时间",
                       ajxx_sldw_mc AS "受理单位",
                       ajxx_cbdw_mc AS "承办单位",
-                      ajxx_cbqy_bh_dm AS "地区",
+                      LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
                       ajxx_zbbj AS "在办标记",
                       ajxx_ajly AS "案件来源"
                     FROM "ywdata"."zq_zfba_ajxx"
                     WHERE ajxx_lasj BETWEEN %s AND %s
                     AND ajxx_ajlx = %s
+                    AND 1=1
                     """
                 )
                 + where_pat
@@ -406,7 +415,7 @@ def fetch_detail_rows(
             params3 += pat_params
             where_diqu = sql.SQL("")
             if not is_all:
-                where_diqu = sql.SQL(" AND LEFT(xz.xzcfjds_cbqy_bh_dm,6)=%s")
+                where_diqu = sql.SQL(" AND LEFT(xz.xzcfjds_cbdw_bh_dm,6)=%s")
                 params3.append(diqu)
             q = (
                 sql.SQL(
@@ -421,12 +430,13 @@ def fetch_detail_rows(
                       xz.xzcfjds_spsj AS "审批时间",
                       xz.xzcfjds_wszt AS "文书状态",
                       xz.xzcfjds_cbdw_mc AS "承办单位",
-                      xz.xzcfjds_cbqy_bh_dm AS "地区",
+                      LEFT(xz.xzcfjds_cbdw_bh_dm, 6) AS "地区",
                       xz.xzcfjds_wsh AS "文书号"
                     FROM "ywdata"."zq_zfba_xzcfjds" xz
                     LEFT JOIN "ywdata"."zq_zfba_ajxx" aj ON aj.ajxx_ajbh = xz.ajxx_ajbh
                     WHERE xz.xzcfjds_spsj BETWEEN %s AND %s
                     AND xz.xzcfjds_cfzl ~ '拘留'
+                    AND 1=1
                     """
                 )
                 + where_pat
@@ -450,7 +460,7 @@ def fetch_detail_rows(
             params4 += pat_params
             where_diqu = sql.SQL("")
             if not is_all:
-                where_diqu = sql.SQL(" AND LEFT(jlz.jlz_cbqy_bh_dm,6)=%s")
+                where_diqu = sql.SQL(" AND LEFT(jlz.jlz_cbdw_bh_dm,6)=%s")
                 params4.append(diqu)
             q = (
                 sql.SQL(
@@ -468,10 +478,11 @@ def fetch_detail_rows(
                       jlz.jlz_pzsj AS "批准时间",
                       jlz.jlz_wszt AS "文书状态",
                       jlz.jlz_cbdw_mc AS "承办单位",
-                      jlz.jlz_cbqy_bh_dm AS "地区",
+                      LEFT(jlz.jlz_cbdw_bh_dm, 6) AS "地区",
                       jlz.jlz_wsh AS "文书号"
                     FROM "ywdata"."zq_zfba_jlz" jlz
                     WHERE jlz.jlz_pzsj BETWEEN %s AND %s
+                    AND 1=1
                     """
                 )
                 + where_pat
@@ -495,7 +506,7 @@ def fetch_detail_rows(
             params5 += pat_params
             where_diqu = sql.SQL("")
             if not is_all:
-                where_diqu = sql.SQL(" AND LEFT(dbz.dbz_cbqy_bh_dm,6)=%s")
+                where_diqu = sql.SQL(" AND LEFT(dbz.dbz_cbdw_bh_dm,6)=%s")
                 params5.append(diqu)
             q = (
                 sql.SQL(
@@ -512,10 +523,11 @@ def fetch_detail_rows(
                       dbz.dbz_pzdbsj AS "批准逮捕时间",
                       dbz.dbz_wszt AS "文书状态",
                       dbz.dbz_cbdw_mc AS "承办单位",
-                      dbz.dbz_cbqy_bh_dm AS "地区",
+                      LEFT(dbz.dbz_cbdw_bh_dm, 6) AS "地区",
                       dbz.dbz_wsh AS "文书号"
                     FROM "ywdata"."zq_zfba_dbz" dbz
                     WHERE dbz.dbz_pzdbsj BETWEEN %s AND %s
+                    AND 1=1
                     """
                 )
                 + where_pat
@@ -539,7 +551,7 @@ def fetch_detail_rows(
             params6 += pat_params
             where_diqu = sql.SQL("")
             if not is_all:
-                where_diqu = sql.SQL(" AND LEFT(qs.qsryxx_cbqy_bh,6)=%s")
+                where_diqu = sql.SQL(" AND LEFT(aj.ajxx_cbdw_bh_dm,6)=%s")
                 params6.append(diqu)
             q = (
                 sql.SQL(
@@ -557,11 +569,12 @@ def fetch_detail_rows(
                       qs.qsryxx_tfsj AS "提访时间",
                       qs.qsryxx_wszt AS "文书状态",
                       qs.qsryxx_cbdw_mc AS "承办单位",
-                      qs.qsryxx_cbqy_bh AS "地区",
+                      LEFT(aj.ajxx_cbdw_bh_dm, 6) AS "地区",
                       qs.qsryxx_wsh AS "文书号"
                     FROM "ywdata"."zq_zfba_qsryxx" qs
                     LEFT JOIN "ywdata"."zq_zfba_ajxx" aj ON aj.ajxx_ajbh = qs.ajxx_ajbh
                     WHERE qs.qsryxx_tfsj BETWEEN %s AND %s
+                    AND 1=1
                     """
                 )
                 + where_pat
@@ -585,7 +598,7 @@ def fetch_detail_rows(
             params7 += pat_params
             where_diqu = sql.SQL("")
             if not is_all:
-                where_diqu = sql.SQL(" AND LEFT(ys.ysajtzs_cbqy_bh_dm,6)=%s")
+                where_diqu = sql.SQL(" AND LEFT(ys.ysajtzs_cbdw_bh_dm,6)=%s")
                 params7.append(diqu)
             q = (
                 sql.SQL(
@@ -600,11 +613,12 @@ def fetch_detail_rows(
                       ys.ysajtzs_ysyy AS "移送原因",
                       ys.ysajtzs_swdw AS "受文单位",
                       ys.ysajtzs_swdwmc AS "受文单位名称",
-                      ys.ysajtzs_cbqy_bh_dm AS "地区",
+                      LEFT(ys.ysajtzs_cbdw_bh_dm, 6) AS "地区",
                       ys.ysajtzs_wsh AS "文书号"
                     FROM "ywdata"."zq_zfba_ysajtzs" ys
                     LEFT JOIN "ywdata"."zq_zfba_ajxx" aj ON aj.ajxx_ajbh = ys.ajxx_ajbh
                     WHERE ys.ysajtzs_pzsj BETWEEN %s AND %s
+                    AND 1=1
                     """
                 )
                 + where_pat

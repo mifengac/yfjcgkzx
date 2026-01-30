@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ region_name }} - {{ metric }} 详细数据</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .card { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow:0 6px 22px rgba(18,38,63,.06); border:1px solid #e6e8ef; }
+        .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+        .btn { height: 34px; border: 0; border-radius: 8px; background: #1976d2; color:#fff; padding: 0 14px; font-weight: 700; cursor: pointer; }
+        .btn.secondary { background:#555; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display:none; position:absolute; right:0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; min-width:140px; box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index: 20; }
+        .dropdown-menu a { display:block; padding:10px 12px; color:#111; text-decoration:none; font-size:13px; }
+        .dropdown-menu a:hover { background:#f3f5fb; }
+        .dropdown.open .dropdown-menu { display:block; }
+        .muted { color:#666; font-size: 12px; }
+        .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #eef0f6; padding: 10px 12px; font-size: 13px; text-align: left; white-space: nowrap; }
+        th { position: sticky; top: 0; background: #fbfcff; z-index: 2; }
+    </style>
+</head>
+<body>
+<header class="header">
+    <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+        <div>
+            <h1 style="margin:0;">{{ region_name }} - {{ metric }} 详细数据</h1>
+            <p style="margin:6px 0 0 0;">时间：{{ start_time }} ~ {{ end_time }}</p>
+        </div>
+        <div class="row">
+            <a class="btn secondary" href="{{ url_for('hqzcsj.zongcha_index') }}">返回</a>
+        </div>
+    </div>
+</header>
+
+<main class="container" style="max-width:1200px;">
+    {% if truncated %}
+    <div class="card">
+        <div class="muted">提示：页面最多展示 5000 条，导出可获取全量。</div>
+    </div>
+    {% endif %}
+
+    <section class="card">
+        <div class="row" style="justify-content:space-between; margin-bottom: 10px;">
+            <div class="muted">
+                {% if truncated %}页面最多展示 5000 条；导出可获取全量。{% endif %}
+            </div>
+            <div class="dropdown" id="detailExportDd">
+                <button class="btn" id="detailExportBtn">导出</button>
+                <div class="dropdown-menu">
+                    <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                    <a href="#" data-fmt="csv">导出 csv</a>
+                </div>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    {% if rows and rows[0] %}
+                        {% for k in rows[0].keys() %}
+                        <th>{{ k }}</th>
+                        {% endfor %}
+                    {% else %}
+                        <th>无数据</th>
+                    {% endif %}
+                </tr>
+                </thead>
+                <tbody>
+                {% if rows %}
+                    {% for r in rows %}
+                    <tr>
+                        {% for v in r.values() %}
+                        <td>{{ v }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td class="muted">无数据</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script>
+    (function() {
+        const dd = document.getElementById("detailExportDd");
+        const btn = document.getElementById("detailExportBtn");
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            dd.classList.toggle("open");
+        });
+        dd.querySelectorAll(".dropdown-menu a").forEach(a => {
+            a.addEventListener("click", (e) => {
+                e.preventDefault();
+                const fmt = a.getAttribute("data-fmt") || "xlsx";
+                const usp = new URLSearchParams();
+                usp.set("fmt", fmt);
+                usp.set("metric", "{{ metric }}");
+                usp.set("diqu", "{{ diqu }}");
+                usp.set("start_time", "{{ start_time }}");
+                usp.set("end_time", "{{ end_time }}");
+                {% for t in leixing_list %}
+                usp.append("leixing", "{{ t }}");
+                {% endfor %}
+                {% for z in za_types %}
+                usp.append("za_type", "{{ z }}");
+                {% endfor %}
+                window.location.href = `{{ url_for('zfba_wcnr_jqaj.export_detail') }}?` + usp.toString();
+                dd.classList.remove("open");
+            });
+        });
+        document.addEventListener("click", (e) => { if (!dd.contains(e.target)) dd.classList.remove("open"); });
+    })();
+</script>
+</body>
+</html>
+

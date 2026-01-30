@@ -107,14 +107,15 @@ target_aj AS (
     SELECT DISTINCT "案件编号"
     FROM minor_fight
 ),
-doc_hit_raw AS (
-    SELECT
-        xjs_ajbh AS "案件编号",
-        xjs_rybh AS "人员编号",
-        '训诫书'  AS "文书名称",
-        xjs_xjyy AS "训诫原因"
+    doc_hit_raw AS (
+        SELECT
+            xjs_ajbh AS "案件编号",
+            xjs_rybh AS "人员编号",
+            '训诫书'  AS "文书名称",
+            xjs_xjyy AS "训诫原因"
     FROM "ywdata"."zq_zfba_xjs"
     WHERE xjs_ajbh IS NOT NULL AND xjs_rybh IS NOT NULL
+    AND xjs_wszt = '审批通过' AND xjs_isdel = '0'
     UNION ALL
     SELECT
         zltzs_ajbh AS "案件编号",
@@ -123,6 +124,7 @@ doc_hit_raw AS (
         zltzs_blxw AS "训诫原因"
     FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs"
     WHERE zltzs_ajbh IS NOT NULL AND zltzs_rybh IS NOT NULL
+    AND zltzs_wszt = '审批通过' AND zltzs_isdel = '0'
 ),
 doc_hit AS (
     SELECT
@@ -302,6 +304,7 @@ jtjyzdtzs_hit AS (
     FROM "ywdata"."zq_zfba_jtjyzdtzs"
     WHERE jqjhjyzljsjtjyzdtzs_ajbh IS NOT NULL
     AND jqjhjyzljsjtjyzdtzs_rybh IS NOT NULL
+    AND jqjhjyzljsjtjyzdtzs_wszt = '审批通过' AND jqjhjyzljsjtjyzdtzs_isdel_dm = '0'
 ),
 baxgry_distinct AS (
     SELECT DISTINCT

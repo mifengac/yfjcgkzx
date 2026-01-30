@@ -24,29 +24,55 @@
             2. 行政:```SELECT * FROM "ywdata"."zq_zfba_ajxx" WHERE "ajxx_ajlx"='行政'```
                 1. 时间段:ajxx_lasj
                 2. 类型:ajxx_aymc similar to (SELECT ctc.ay_pattern FROM "ywdata"."case_type_config" ctc WHERE ctc."leixing" IN ({类型}))
-                3. 地区:通过"ajxx_cbqy_bh_dm"判断,值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
+                3. 地区:通过"ajxx_cbdw_bh_dm"判断(LEFT(...,6)),值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
             3. 刑事:```SELECT * FROM "ywdata"."zq_zfba_ajxx" WHERE "ajxx_ajlx"='刑事'```
                 1. 时间段:ajxx_lasj
                 2. 类型:ajxx_aymc similar to (SELECT ctc.ay_pattern FROM "ywdata"."case_type_config" ctc WHERE ctc."leixing" IN ({类型}))
-                3. 地区:通过"ajxx_cbqy_bh_dm"判断,值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
+                3. 地区:通过"ajxx_cbdw_bh_dm"判断(LEFT(...,6)),值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
             4. 治拘:```SELECT * FROM "ywdata"."zq_zfba_xzcfjds" WHERE xzcfjds_cfzl ~ '拘留'```
                 1. 时间段:xzcfjds_spsj
                 2. "ajxx_ajbh"与"ywdata"."zq_zfba_ajxx"表的"ajxx_ajbh"关联后通过"ywdata"."zq_zfba_ajxx"表的ajxx_aymc similar to (SELECT ctc.ay_pattern FROM "ywdata"."case_type_config" ctc WHERE ctc."leixing" IN ({类型}))过滤
-                3. 地区:通过"xzcfjds_cbqy_bh_dm"判断,值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
+                3. 地区:通过"xzcfjds_cbdw_bh_dm"判断(LEFT(...,6)),值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
             5. 刑拘:```SELECT * FROM "ywdata"."zq_zfba_jlz"```
                 1. 时间段:jlz_pzsj
                 2. 类型:jlz_ay_mc similar to (SELECT ctc.ay_pattern FROM "ywdata"."case_type_config" ctc WHERE ctc."leixing" IN ({类型}))
-                3. 通过"jlz_cbqy_bh_dm"判断,值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
+                3. 通过"jlz_cbdw_bh_dm"判断(LEFT(...,6)),值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
             6. 逮捕:```SELECT * FROM "ywdata"."zq_zfba_dbz"```
                 1. 时间段:dbz_pzdbsj
                 2. 类型:dbz_dbyy similar to (SELECT ctc.ay_pattern FROM "ywdata"."case_type_config" ctc WHERE ctc."leixing" IN ({类型}))
-                3. 地区:通过"dbz_cbqy_bh_dm"判断,值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
+                3. 地区:通过"dbz_cbdw_bh_dm"判断(LEFT(...,6)),值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
             7. 起诉(人员):```SELECT  * FROM "ywdata"."zq_zfba_qsryxx"```
                 1. 时间段:ysajtzs_pzsj
                 2. 类型:"ajxx_ajbh"与"ywdata"."zq_zfba_ajxx"表的"ajxx_ajbh"关联后通过"ywdata"."zq_zfba_ajxx"表的ajxx_aymc similar to (SELECT ctc.ay_pattern FROM "ywdata"."case_type_config" ctc WHERE ctc."leixing" IN ({类型}))过滤
-                3. 地区:通过"qsryxx_cbqy_bh"判断,值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
+                3. 地区:关联案件表后通过"ajxx_cbdw_bh_dm"判断(LEFT(...,6)),值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
             8. 移送(案件):```SELECT * FROM "ywdata"."zq_zfba_ysajtzs"```
                 1. 时间段:qsryxx_tfsj
                 2. 类型:"ajxx_ajbh"与"ywdata"."zq_zfba_ajxx"表的"ajxx_ajbh"关联后通过"ywdata"."zq_zfba_ajxx"表的ajxx_aymc similar to (SELECT ctc.ay_pattern FROM "ywdata"."case_type_config" ctc WHERE ctc."leixing" IN ({类型}))过滤
-                3. 地区:通过"ysajtzs_cbqy_bh_dm"判断,值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
+                3. 地区:通过"ysajtzs_cbdw_bh_dm"判断(LEFT(...,6)),值为'445302'='云城',值为'445303'='云安',值为'445381'='罗定',值为'445321'='新兴',值为'445322'='郁南',值为'445300'='市局',{所有}='全市'
     2. 目录结构:相关代码文件在hqzcsj中新建,前缀全部为zfba_jq_aj_*,包含html,route,service,dao等文件全部新建
+===
+# 任务:根据以下要求生成开放清单,如有疑问则向我提问,如有更好的提议则向我提出
+## 1. 当hqzcsj\templates\zfba_jq_aj_tab.html页面初始化时,类型什么都不选择时，所有数据源后台查询条件不加类型的过滤条件,即把类型相关的过滤条件删除,在所有数据源查询的where条件后面加1=1,如果类型有值则将'AND leixing =ANY(...)'拼接上去,如果类型没值则不拼接
+## 地区的统计字段修改:
+### 警情不变,行政、刑事改为LEFT("ajxx_cbdw_bh_dm",6),治拘改为LEFT("xzcfjds_cbdw_bh_dm",6),刑拘改为LEFT("jlz_cbdw_bh_dm",6),逮捕改为LEFT("dbz_cbdw_bh_dm",6),起诉改为LEFT("ajxx_cbdw_bh_dm",6),移送改为LEFT("ysajtzs_cbdw_bh_dm",6)
+
+## 开放清单（2026-01-30）
+
+### 已完成
+- [x] 类型未选择时：后端不追加类型过滤；仅当 `leixing_list` 有值时拼接 `AND vjo."leixing" = ANY(%s)`（警情数据源）。
+- [x] 所有数据源：在 SQL 的 `WHERE ...` 后追加 `AND 1=1`，保证后续动态条件统一以 `AND ...` 拼接。
+- [x] 地区统计字段口径调整（汇总 + 明细）：
+  - 警情：不变（`LEFT(vjo."cmdid", 6)`）
+  - 行政/刑事：`LEFT(ajxx_cbdw_bh_dm, 6)`
+  - 治拘：`LEFT(xzcfjds_cbdw_bh_dm, 6)`
+  - 刑拘：`LEFT(jlz_cbdw_bh_dm, 6)`
+  - 逮捕：`LEFT(dbz_cbdw_bh_dm, 6)`
+  - 起诉：`LEFT(ajxx_cbdw_bh_dm, 6)`（通过关联案件表取地区口径）
+  - 移送：`LEFT(ysajtzs_cbdw_bh_dm, 6)`
+
+### 待你确认
+- [ ] 以上新增/改用字段在当前库表/宽表里是否都存在：`ajxx_cbdw_bh_dm`、`xzcfjds_cbdw_bh_dm`、`jlz_cbdw_bh_dm`、`dbz_cbdw_bh_dm`、`ysajtzs_cbdw_bh_dm`。
+- [ ] “起诉”地区口径：确认是否必须按案件 `ajxx_cbdw_bh_dm` 统计（而不是起诉表自身的 `qsryxx_cbqy_bh`）。
+
+### 建议（可选）
+- [ ] 前端多选框目前默认“全选”；如果你希望“初始化全不选但默认全量”，我可以把默认勾选改为不勾选（UI 文案保持“未选择(默认全量)”）。

@@ -37,7 +37,13 @@ def default_time_range_for_page() -> Tuple[str, str]:
 
 
 def parse_dt(s: str) -> datetime:
-    return datetime.strptime((s or "").strip(), "%Y-%m-%d %H:%M:%S")
+    s = (s or "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception:
+            pass
+    raise ValueError(f"时间格式错误: {s}（期望 YYYY-MM-DD HH:MM:SS）")
 
 
 def fmt_dt(dt: datetime) -> str:
@@ -71,27 +77,75 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
         yoy_end_time=fmt_dt(yoy_end),
     )
 
+    def _call(stage: str, fn):
+        try:
+            return fn()
+        except Exception as exc:
+            raise RuntimeError(f"{stage}查询失败: {exc}") from exc
+
     conn = get_database_connection()
     try:
-        patterns = zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing_list)
+        patterns = _call("类型映射(案由)", lambda: zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing_list))
 
         # 当前
-        jq_now = zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, leixing_list=leixing_list)
-        ajxx_now = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns)
-        zhiju_now = zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns)
-        xingju_now = zfba_jq_aj_dao.count_jlz_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns)
-        daibu_now = zfba_jq_aj_dao.count_dbz_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns)
-        qisu_now = zfba_jq_aj_dao.count_qsryxx_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns)
-        yisong_now = zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns)
+        jq_now = _call(
+            "当前-警情",
+            lambda: zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, leixing_list=leixing_list),
+        )
+        ajxx_now = _call(
+            "当前-案件(行政/刑事)",
+            lambda: zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
+        zhiju_now = _call(
+            "当前-行政处罚(治拘)",
+            lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
+        xingju_now = _call(
+            "当前-刑拘",
+            lambda: zfba_jq_aj_dao.count_jlz_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
+        daibu_now = _call(
+            "当前-逮捕",
+            lambda: zfba_jq_aj_dao.count_dbz_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
+        qisu_now = _call(
+            "当前-起诉",
+            lambda: zfba_jq_aj_dao.count_qsryxx_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
+        yisong_now = _call(
+            "当前-移送案件",
+            lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
 
         # 同比（上一年同周期）
-        jq_yoy = zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, leixing_list=leixing_list)
-        ajxx_yoy = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns)
-        zhiju_yoy = zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns)
-        xingju_yoy = zfba_jq_aj_dao.count_jlz_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns)
-        daibu_yoy = zfba_jq_aj_dao.count_dbz_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns)
-        qisu_yoy = zfba_jq_aj_dao.count_qsryxx_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns)
-        yisong_yoy = zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns)
+        jq_yoy = _call(
+            "同比-警情",
+            lambda: zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, leixing_list=leixing_list),
+        )
+        ajxx_yoy = _call(
+            "同比-案件(行政/刑事)",
+            lambda: zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
+        zhiju_yoy = _call(
+            "同比-行政处罚(治拘)",
+            lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
+        xingju_yoy = _call(
+            "同比-刑拘",
+            lambda: zfba_jq_aj_dao.count_jlz_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
+        daibu_yoy = _call(
+            "同比-逮捕",
+            lambda: zfba_jq_aj_dao.count_dbz_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
+        qisu_yoy = _call(
+            "同比-起诉",
+            lambda: zfba_jq_aj_dao.count_qsryxx_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
+        yisong_yoy = _call(
+            "同比-移送案件",
+            lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
 
         def g(m: Dict[str, int], code: str) -> int:
             return int(m.get(code) or 0)
