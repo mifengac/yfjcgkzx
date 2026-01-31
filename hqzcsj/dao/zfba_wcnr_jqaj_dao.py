@@ -493,7 +493,7 @@ def fetch_detail_rows(
                       jq."lngofcriterion" AS "经度",
                       jq."latofcriterion" AS "纬度",
                       LEFT(jq."cmdid", 6) AS "地区"
-                    FROM "zq_kshddpt_dsjfx_jq" jq
+                    FROM ywdata."zq_kshddpt_dsjfx_jq" jq
                     WHERE jq."calltime" BETWEEN %s AND %s
                       AND jq."casemarkok" ~ '未成年'
                       AND LEFT(jq."neworicharasubclass", 2) IN ('01','02')

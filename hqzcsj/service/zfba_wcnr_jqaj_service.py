@@ -296,6 +296,15 @@ def build_summary(
                 }
             )
 
+        # 全市：按 6 个地区（含市局 445300）合计，放在最后一行
+        if rows:
+            total: Dict[str, Any] = {"地区": "全市", "地区代码": "__ALL__"}
+            for k in rows[0].keys():
+                if k in ("地区", "地区代码"):
+                    continue
+                total[k] = sum(int(r.get(k) or 0) for r in rows)
+            rows.append(total)
+
         return meta, rows
     finally:
         try:

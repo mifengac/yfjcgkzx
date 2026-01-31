@@ -46,6 +46,8 @@
     #wcnrTbl th { text-align: center; }
     #wcnrTbl td.num-cell { text-align: center; font-variant-numeric: tabular-nums; }
     #wcnrTbl td.rowh { text-align: left; }
+    #wcnrTbl tr.total-row td { background: #fff7e6; font-weight: 800; }
+    #wcnrTbl tr.total-row td { border-top: 2px solid #ffe0b2; }
 </style>
 
 <div id="wcnrDetailModal" class="modal" onclick="wcnrCloseModal(event)" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index: 80; align-items:center; justify-content:center; padding: 16px;">
@@ -299,6 +301,7 @@
             const tbodyRows = (rows || []).map(r => {
                 const diquName = r["地区"] || "";
                 const diquCode = r["地区代码"] || "__ALL__";
+                const rowClass = (diquName === "全市" || diquCode === "__ALL__") ? "total-row" : "";
                 const tds = COLS.map(c => {
                     if (c === REGION_COL) return `<td class="rowh">${diquName}</td>`;
                     const v = (r[c] == null) ? 0 : r[c];
@@ -313,7 +316,7 @@
                     const href = `{{ url_for('zfba_wcnr_jqaj.detail_page') }}?` + usp.toString();
                     return `<td class="num-cell clickable-cell" data-href="${href}" style="cursor:pointer; color:#1976d2; font-weight:800;">${v}</td>`;
                 });
-                return `<tr>${tds.join("")}</tr>`;
+                return `<tr class="${rowClass}">${tds.join("")}</tr>`;
             }).join("");
             tbl.innerHTML = thead + `<tbody>${tbodyRows || `<tr><td colspan="${COLS.length}" class="muted">无数据</td></tr>`}</tbody>`;
 

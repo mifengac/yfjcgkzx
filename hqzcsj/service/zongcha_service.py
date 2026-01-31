@@ -39,9 +39,9 @@ DEFAULT_BASE_HEADERS: Dict[str, str] = {
 
 def _page_size() -> int:
     try:
-        v = int(os.getenv("ZFBA_PAGE_SIZE", "5000") or "5000")
+        v = int(os.getenv("ZFBA_PAGE_SIZE", "1000") or "1000")
     except Exception:
-        v = 5000
+        v = 1000
     if v < 10:
         v = 10
     if v > 5000:
@@ -459,6 +459,13 @@ def _build_job_defs(*, base_forms: Dict[str, Dict[str, str]], start_time: str, e
                 time_field_codes=["xyrxx_lrsj"],
             ),
             ZongchaJobDef(
+                name="未成年人(受害人)案件",
+                table="zq_zfba_wcnr_shr_ajxx",
+                pk_fields=["ajxx_ajbh"],
+                base_form=_make_form_wcnr_shr_ajxx(start_time=start_time, end_time=end_time),
+                time_field_codes=["ajxx_lasj"],
+            ),
+            ZongchaJobDef(
                 name="未成年人案件",
                 table="zq_zfba_wcnr_ajxx",
                 pk_fields=["ajxx_ajbh"],
@@ -717,6 +724,64 @@ def _make_form_wcnr_ajxx(*, start_time: str, end_time: str) -> Dict[str, str]:
             "operateSign": "10",
             "values": [1, 18],
             "rangeIncludeType": "2",
+        },
+    ]
+    json_obj = {"paramArray": [{"conditions": conds, "tabId": "16", "tabCode": "ajxx_join", "domainId": "11"}]}
+    return _make_form_base(
+        json_obj=json_obj,
+        domain_id="11",
+        result_tab_id="16",
+        result_tab_code="ajxx_join",
+        result_table_name="案件信息",
+        tab_id="16",
+        tab_code="ajxx_join",
+    )
+
+
+def _make_form_wcnr_shr_ajxx(*, start_time: str, end_time: str) -> Dict[str, str]:
+    conds = [
+        {
+            "tabId": "16",
+            "tabCode": "ajxx_join",
+            "fieldCode": "ajxx_lasj",
+            "tabType": "1",
+            "isPub": False,
+            "operateSign": "10",
+            "values": [start_time, end_time],
+            "excludeDays": [],
+            "rangeIncludeType": "0",
+        },
+        {
+            "tabId": "51",
+            "tabCode": "saryxx",
+            "fieldCode": "saryxx_rylx",
+            "tabType": "1",
+            "isPub": False,
+            "operateSign": "7",
+            "values": ["0502"],
+            "isIncludeChilds": False,
+            "dicCode": "ZD_CASE_RYLX",
+        },
+        {
+            "tabId": "51",
+            "tabCode": "saryxx",
+            "fieldCode": "saryxx_nl",
+            "tabType": "1",
+            "isPub": False,
+            "operateSign": "10",
+            "values": [1, 17],
+            "rangeIncludeType": "2",
+        },
+        {
+            "tabId": "16",
+            "tabCode": "ajxx_join",
+            "fieldCode": "ajxx_isdel",
+            "tabType": "1",
+            "isPub": False,
+            "operateSign": "7",
+            "values": ["0"],
+            "isIncludeChilds": False,
+            "dicCode": "00",
         },
     ]
     json_obj = {"paramArray": [{"conditions": conds, "tabId": "16", "tabCode": "ajxx_join", "domainId": "11"}]}
