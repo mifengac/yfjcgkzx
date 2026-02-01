@@ -17,9 +17,10 @@
     7. 柱状图使用weichengnianren-djdo\static\chart.min.js,版本是4.4.1
 # 数据源:
     1.警情转案率:
-        1. ```SELECT jq."caseno" 警情编号,jq."calltime" 报警时间,jq."cmdname" 分局,jq."dutydeptname" 管辖单位,jq."casecontents" 报警内容,jq."replies" 处警情况,mza."案件编号" ,mza."案件名称" ,mza."地区" ,mza."办案单位名称" 
-        FROM "zq_kshddpt_dsjfx_jq" jq LEFT JOIN "mv_zfba_ajxx" mza ON jq."caseno" =mza."警情编号" 
-        WHERE jq."newcharasubclass" IN (SELECT UNNEST (ctc."newcharasubclass_list") FROM "case_type_config" ctc WHERE ctc."leixing"='打架斗殴')
+        1. ```SELECT jq."caseno" 警情编号,jq."calltime" 报警时间,jq."cmdname" 分局,jq."dutydeptname" 管辖单位,jq."casecontents" 报警内容,jq."replies" 处警情况,mza."ajxx_ajbh" "案件编号" ,mza."ajxx_ajmc" "案件名称"
+        ,LEFT(mza."ajxx_cbdw_bh_dm",6) "地区" ,mza."ajxx_cbdw_mc" "办案单位名称"
+        FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq LEFT JOIN "ywdata"."zq_zfba_wcnr_ajxx" mza ON jq."caseno" = mza."ajxx_jqbh"
+        WHERE jq."newcharasubclass" IN (SELECT UNNEST (ctc."newcharasubclass_list") FROM "ywdata"."case_type_config" ctc WHERE ctc."leixing"='打架斗殴')
         AND jq."calltime" BETWEEN {开始时间} AND {结束时间} AND jq."casemarkok" ~'未成年'```
         2. 其中"地区"通过:jq."cmdname" 分局,字段进行判断
             1. 所有数据为'全市'
@@ -34,114 +35,21 @@
             3. "转案率",通过"案件"/"警情"*100%(取2位小数)
     2. 采取矫治教育措施率
         1. ```
-        WITH minor_fight AS (
-            SELECT
-                mzaa."案件编号",
-                mzaa."案件名称",
-                mzaa."立案日期",
-                CASE
-                    WHEN mzaa."地区" ='445302' THEN '云城'
-                    WHEN mzaa."地区" ='445303' THEN '云安'
-                    WHEN mzaa."地区" ='445381' THEN '罗定'
-                    WHEN mzaa."地区" ='445321' THEN '新兴'
-                    WHEN mzaa."地区" ='445322' THEN '郁南'
-                END AS "地区",
-                mzaa."办案单位名称",
-                mmp."xm"         AS "姓名",
-                mmp."zjhm"       AS "证件号码",
-                mmp."role_names" AS "人员类型",
-                mmp."age_years"  AS "年龄",
-                mmp."anjxgrybh"  AS "人员编号"
-            FROM "mv_zfba_all_ajxx" mzaa
-            INNER JOIN "mv_minor_person" mmp
-                ON mzaa."案件编号" = mmp."asjbh"
-            WHERE mzaa."案由" SIMILAR TO (
-                SELECT ctc."ay_pattern"
-                FROM "case_type_config" ctc
-                WHERE ctc."leixing" = '打架斗殴'
-            )
-            AND mzaa."立案日期" >= '2026-01-01'
-            AND mzaa."立案日期" < NOW()
-            AND mmp."role_names" = '嫌疑人'
-        ),
-
-        /* ✅ 关键：收敛案件编号集合 */
-        target_aj AS (
-            SELECT DISTINCT "案件编号"
-            FROM minor_fight
-        ),
-
-        doc_hit_raw AS (
-            SELECT
-                xjs_ajbh AS "案件编号",
-                xjs_rybh AS "人员编号",
-                '训诫书'  AS "文书名称",
-                xjs_xjyy AS "训诫原因"
-            FROM "ywdata"."zq_zfba_xjs"
-            WHERE xjs_ajbh IS NOT NULL AND xjs_rybh IS NOT NULL
-
-            UNION ALL
-
-            SELECT
-                zltzs_ajbh AS "案件编号",
-                zltzs_rybh AS "人员编号",
-                '加强监督教育/责令接受家庭教育指导通知书' AS "文书名称",
-                zltzs_blxw AS "训诫原因"
-            FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs"
-            WHERE zltzs_ajbh IS NOT NULL AND zltzs_rybh IS NOT NULL
-        ),
-
-        doc_hit AS (
-            SELECT
-                "案件编号",
-                "人员编号",
-                string_agg(DISTINCT "文书名称", ',' ORDER BY "文书名称") AS "文书名称",
-                string_agg(DISTINCT "训诫原因", ',' ORDER BY "训诫原因") AS "训诫原因"
-            FROM doc_hit_raw
-            GROUP BY "案件编号", "人员编号"
-        ),
-
-        /* ✅ 只对 target_aj 范围内的案件去重清洗 */
-        baxgry_distinct AS (
-            SELECT DISTINCT
-                r.asjbh AS "案件编号",
-                NULLIF(TRIM(r.baxgry_xm), '') AS "name",
-                NULLIF(TRIM(r.lxdh), '')      AS "phone"
-            FROM "zfba_ry_001" r
-            INNER JOIN target_aj t
-                ON r.asjbh = t."案件编号"
-            WHERE NULLIF(TRIM(r.baxgry_xm), '') IS NOT NULL
-            AND NULLIF(TRIM(r.lxdh), '') IS NOT NULL
-        ),
-
-        baxgry_json AS (
-            SELECT
-                d."案件编号",
-                jsonb_agg(
-                    jsonb_build_object('name', d."name", 'phone', d."phone")
-                    ORDER BY d."name", d."phone"
-                ) AS "办案联系人_json",
-                jsonb_agg(
-                    d."phone"
-                    ORDER BY d."phone"
-                ) AS "联系电话_json"
-            FROM baxgry_distinct d
-            GROUP BY d."案件编号"
-        )
-
+        -- 更新：嫌疑人信息直接取 "ywdata"."zq_zfba_wcnr_xyr"（不再使用 mv_minor_person / mv_zfba_all_ajxx）
+        -- 案件信息如需补充，可按 zzwx."ajxx_ajbhs" = aj."ajxx_ajbh" 关联 "ywdata"."zq_zfba_wcnr_ajxx"
+        -- 文书命中仍按（案件编号 + 人员编号）与 zq_zfba_xjs / zq_zfba_zlwcnrzstdxwgftzs 做匹配（详见 dao.py）
         SELECT
-            mf.*,
-            dh."训诫原因",
-            dh."文书名称",
-            CASE WHEN dh."案件编号" IS NOT NULL THEN '是' ELSE '否' END AS "是否开具文书",
-            bx."办案联系人_json",
-            bx."联系电话_json"
-        FROM minor_fight mf
-        LEFT JOIN doc_hit dh
-            ON mf."案件编号" = dh."案件编号"
-        AND mf."人员编号" = dh."人员编号"
-        LEFT JOIN baxgry_json bx
-            ON mf."案件编号" = bx."案件编号";
+            zzwx."ajxx_ajbhs" AS "案件编号",
+            zzwx."ajxx_join_ajxx_ajmc" AS "案件名称",
+            zzwx."ajxx_join_ajxx_lasj" AS "立案日期",
+            zzwx."xyrxx_xm" AS "姓名",
+            zzwx."xyrxx_sfzh" AS "证件号码",
+            zzwx."xyrxx_nl" AS "年龄",
+            zzwx."xyrxx_rybh" AS "人员编号",
+            zzwx."xyrxx_ay_mc" AS "案由名称",
+            LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) AS "地区代码"
+        FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
+        WHERE zzwx."ajxx_join_ajxx_lasj" BETWEEN {开始时间} AND {结束时间};
         ```
         2. 其中"地区"通过"地区"字段判断,所有数据即为"全市"
         3. 三个"柱子"分别为:
@@ -150,73 +58,22 @@
             3. "采取矫治教育措施率",通过"已采取矫治教育措施人数"/"应采取矫治教育措施人数"*100%,取2位小数
     3. 涉刑人员送学率
         1. ```
+            -- 更新：嫌疑人信息直接取 "ywdata"."zq_zfba_wcnr_xyr"
+            -- 是否送校：用 "ywdata"."zq_wcnr_sfzxx" 按 sfzhm=身份证号、且 rx_time > 立案时间 判定
             SELECT
-                mmp."anjxgrybh" AS 人员编号,
-                mmp."xm" AS 姓名,
-                mmp."zjhm" AS 证件号码,
-                mmp."hjd_xz" AS 户籍地,
-                mmp."xzd_xz" AS 现住地,
-                mmp."age_years" AS 年龄,
-                mmp."role_names" AS 人员类型,
-                mzaa."案件编号",
-                CASE
-                    WHEN mzaa."地区" ='445302' THEN '云城'
-                    WHEN mzaa."地区" ='445303' THEN '云安'
-                    WHEN mzaa."地区" ='445381' THEN '罗定'
-                    WHEN mzaa."地区" ='445321' THEN '新兴'
-                    WHEN mzaa."地区" ='445322' THEN '郁南'
-                END AS "地区",
-                mzaa."案件名称",
-                mzaa."简要案情",
-                mzaa."立案日期",
-                mzaa."办案单位名称",
-                bx."办案联系人_json",
-                bx."联系电话_json",
-
-                /* ✅ 新增：是否送校 */
-                CASE
-                    WHEN sx.is_match = 1 THEN '是'
-                    ELSE '否'
-                END AS "是否送校"
-
-            FROM "mv_minor_person" mmp
-            INNER JOIN "mv_zfba_all_ajxx" mzaa
-                ON mmp."asjbh" = mzaa."案件编号"
-
-            /* 办案联系人聚合 */
-            LEFT JOIN LATERAL (
-                WITH d AS (
-                    SELECT DISTINCT
-                        NULLIF(TRIM(r.baxgry_xm), '') AS name,
-                        NULLIF(TRIM(r.lxdh), '')      AS phone
-                    FROM "zfba_ry_001" r
-                    WHERE r.asjbh = mzaa."案件编号"
-                    AND NULLIF(TRIM(r.baxgry_xm), '') IS NOT NULL
-                    AND NULLIF(TRIM(r.lxdh), '') IS NOT NULL
-                )
-                SELECT
-                    jsonb_agg(jsonb_build_object('name', d.name, 'phone', d.phone) ORDER BY d.name, d.phone) AS "办案联系人_json",
-                    jsonb_agg(d.phone ORDER BY d.phone) AS "联系电话_json"
-                FROM d
-            ) bx ON TRUE
-
-            /* ✅ 是否送校：存在 rx_time > 立案日期 即命中（不扩行） */
-            LEFT JOIN LATERAL (
-                SELECT 1 AS is_match
-                FROM zq_wcnr_sfzxx z
-                WHERE z."sfzhm" = mmp."zjhm"
-                AND z.rx_time > mzaa."立案日期"
-                LIMIT 1
-            ) sx ON TRUE
-
-            WHERE mmp."role_names" = '嫌疑人'
-            AND mzaa."立案日期" BETWEEN '2026-01-01' AND NOW()
-            AND mzaa."案由" SIMILAR TO (
-                SELECT ctc."ay_pattern"
-                FROM "case_type_config" ctc
-                WHERE ctc."leixing" = '打架斗殴'
-            )
-            AND mzaa."案件类型" = '刑事';
+                zzwx."xyrxx_rybh" AS "人员编号",
+                zzwx."xyrxx_xm" AS "姓名",
+                zzwx."xyrxx_sfzh" AS "证件号码",
+                zzwx."xyrxx_hjdxz" AS "户籍地",
+                zzwx."xyrxx_xzdxz" AS "现住地",
+                zzwx."xyrxx_nl" AS "年龄",
+                zzwx."ajxx_ajbhs" AS "案件编号",
+                zzwx."ajxx_join_ajxx_ajmc" AS "案件名称",
+                zzwx."ajxx_join_ajxx_lasj" AS "立案日期",
+                LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) AS "地区代码"
+            FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
+            WHERE zzwx."ajxx_join_ajxx_ajlx" = '刑事'
+              AND zzwx."ajxx_join_ajxx_lasj" BETWEEN {开始时间} AND {结束时间};
         ```
     2. 其中"地区"通过"地区"列分类,"全市"则为所有数据
     3. 三个"柱子"分别为:
@@ -225,94 +82,18 @@
         3. "涉刑人员送学率","实际送学人身"/"符合涉刑人员送学人数"*100%取2位小数
     4. 责令加强监护率
         1. ```
-            WITH minor_fight AS (
-                SELECT
-                    mzaa."案件编号",
-                    mzaa."案件名称",
-                    mzaa."立案日期",
-                    mzaa."办案单位名称",
-                    CASE
-                        WHEN mzaa."地区" ='445302' THEN '云城'
-                        WHEN mzaa."地区" ='445303' THEN '云安'
-                        WHEN mzaa."地区" ='445381' THEN '罗定'
-                        WHEN mzaa."地区" ='445321' THEN '新兴'
-                        WHEN mzaa."地区" ='445322' THEN '郁南'
-                    END AS "地区",
-                    mmp."xm"         AS "姓名",
-                    mmp."zjhm"       AS "证件号码",
-                    mmp."role_names" AS "人员类型",
-                    mmp."age_years"  AS "年龄",
-                    mmp."anjxgrybh"  AS "人员编号"
-                FROM "mv_zfba_all_ajxx" mzaa
-                INNER JOIN "mv_minor_person" mmp
-                    ON mzaa."案件编号" = mmp."asjbh"
-                WHERE mzaa."案由" SIMILAR TO (
-                    SELECT ctc."ay_pattern"
-                    FROM "case_type_config" ctc
-                    WHERE ctc."leixing" = '打架斗殴'
-                )
-                AND mzaa."立案日期" >= '2026-01-01'
-                AND mzaa."立案日期" < NOW()
-                AND mmp."role_names" = '嫌疑人'
-            ),
-
-            /* ✅ 关键：把本次结果涉及的案件编号先收敛出来 */
-            target_aj AS (
-                SELECT DISTINCT "案件编号"
-                FROM minor_fight
-            ),
-
-            jtjyzdtzs_hit AS (
-                SELECT DISTINCT
-                    jqjhjyzljsjtjyzdtzs_ajbh AS "案件编号",
-                    jqjhjyzljsjtjyzdtzs_rybh AS "人员编号"
-                FROM "ywdata"."zq_zfba_jtjyzdtzs"
-                WHERE jqjhjyzljsjtjyzdtzs_ajbh IS NOT NULL
-                AND jqjhjyzljsjtjyzdtzs_rybh IS NOT NULL
-            ),
-
-            /* ✅ 只在 target_aj 范围内做去重清洗（不再扫全表） */
-            baxgry_distinct AS (
-                SELECT DISTINCT
-                    r.asjbh AS "案件编号",
-                    NULLIF(TRIM(r.baxgry_xm), '') AS "name",
-                    NULLIF(TRIM(r.lxdh), '')      AS "phone"
-                FROM "zfba_ry_001" r
-                INNER JOIN target_aj t
-                    ON r.asjbh = t."案件编号"
-                WHERE NULLIF(TRIM(r.baxgry_xm), '') IS NOT NULL
-                AND NULLIF(TRIM(r.lxdh), '') IS NOT NULL
-            ),
-
-            baxgry_json AS (
-                SELECT
-                    d."案件编号",
-                    jsonb_agg(
-                        jsonb_build_object('name', d."name", 'phone', d."phone")
-                        ORDER BY d."name", d."phone"
-                    ) AS "办案联系人_json",
-                    jsonb_agg(
-                        d."phone"
-                        ORDER BY d."phone"
-                    ) AS "联系电话_json"
-                FROM baxgry_distinct d
-                GROUP BY d."案件编号"
-            )
-
+            -- 更新：嫌疑人信息直接取 "ywdata"."zq_zfba_wcnr_xyr"
+            -- 文书命中按（案件编号 + 人员编号）与 "ywdata"."zq_zfba_jtjyzdtzs" 匹配（详见 dao.py）
             SELECT
-                mf.*,
-                CASE
-                    WHEN jh."案件编号" IS NOT NULL THEN '是'
-                    ELSE '否'
-                END AS "是否开具文书",
-                bx."办案联系人_json",
-                bx."联系电话_json"
-            FROM minor_fight mf
-            LEFT JOIN jtjyzdtzs_hit jh
-                ON mf."案件编号" = jh."案件编号"
-            AND mf."人员编号" = jh."人员编号"
-            LEFT JOIN baxgry_json bx
-                ON mf."案件编号" = bx."案件编号";
+                zzwx."ajxx_ajbhs" AS "案件编号",
+                zzwx."xyrxx_rybh" AS "人员编号",
+                zzwx."xyrxx_xm" AS "姓名",
+                zzwx."xyrxx_sfzh" AS "证件号码",
+                zzwx."ajxx_join_ajxx_ajmc" AS "案件名称",
+                zzwx."ajxx_join_ajxx_lasj" AS "立案日期",
+                LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) AS "地区代码"
+            FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
+            WHERE zzwx."ajxx_join_ajxx_lasj" BETWEEN {开始时间} AND {结束时间};
         ```
             2. 其中"地区"通过"地区"字段判断,所有数据即为"全市"
             3. 三个"柱子"分别为:
@@ -320,40 +101,19 @@
                 2. "已责令加强监护人数",对"是否开具文书"的值为'是'进行计数
                 3. "责令加强监护率",通过"已责令加强监护人数"/"应责令加强监护人数"*100%,取2位小数
     5. 场所发案率
-        1. ```WITH aj_list AS (
-            SELECT DISTINCT
-                mza.*
-            FROM "mv_zfba_all_ajxx" mza
-            INNER JOIN "mv_minor_person" mmp
-                ON mza."案件编号" = mmp."asjbh"
-            WHERE mza."案由" SIMILAR TO (
-                SELECT ctc."ay_pattern"
-                FROM "case_type_config" ctc
-                WHERE ctc."leixing" = '打架斗殴'
-            )
-            AND mza."立案日期" BETWEEN '2026-01-01' AND NOW()
-            AND mmp."role_names" = '嫌疑人'
-        )
-        SELECT
-            a.*,
-            bx."办案联系人_json",
-            bx."联系电话_json"
-        FROM aj_list a
-        LEFT JOIN LATERAL (
-            WITH d AS (
-                SELECT DISTINCT
-                    NULLIF(TRIM(r.baxgry_xm), '') AS name,
-                    NULLIF(TRIM(r.lxdh), '')      AS phone
-                FROM "zfba_ry_001" r
-                WHERE r.asjbh = a."案件编号"
-                AND NULLIF(TRIM(r.baxgry_xm), '') IS NOT NULL
-                AND NULLIF(TRIM(r.lxdh), '') IS NOT NULL
-            )
+        1. ```
+            -- 更新：案源取 "ywdata"."zq_zfba_wcnr_ajxx"
             SELECT
-                jsonb_agg(jsonb_build_object('name', d.name, 'phone', d.phone) ORDER BY d.name, d.phone) AS "办案联系人_json",
-                jsonb_agg(d.phone ORDER BY d.phone) AS "联系电话_json"
-            FROM d
-        ) bx ON TRUE;
+                aj."ajxx_ajbh" AS "案件编号",
+                aj."ajxx_lasj" AS "立案时间",
+                LEFT(aj."ajxx_cbdw_bh_dm", 6) AS "地区",
+                aj."ajxx_cbdw_mc" AS "办案单位",
+                aj."ajxx_jyaq" AS "简要案情",
+                aj."ajxx_fadd" AS "发案地点",
+                aj."ajxx_fasj" AS "发案时间",
+                aj."ajxx_ajzt" AS "案件状态"
+            FROM "ywdata"."zq_zfba_wcnr_ajxx" aj
+            WHERE aj."ajxx_lasj" BETWEEN {开始时间} AND {结束时间};
         ```
         2. 查询到的数据需要再次通过xungfang/5lei_dizhi_model中的模型对"案件发生地址名称"进行分类,该模型是通过macbert训练的,其中新增一列"分类结果"
         3. 其中"地区"通过"地区"列分类,"全市"则为所有数据
@@ -363,23 +123,15 @@
             3. "场所发案率",通过"娱乐场所案件数"/"案件数"*100%取2位小时
     6. 纳管人员再犯率
         1. ```
+            -- 更新：比对基数（涉案嫌疑人）来自 "ywdata"."zq_zfba_wcnr_xyr"
             WITH fight_suspect AS (
                 SELECT
-                    mmp."zjhm" AS zjhm,
-                    mzaa."立案日期" AS larq
-                FROM "mv_minor_person" mmp
-                INNER JOIN "mv_zfba_all_ajxx" mzaa
-                    ON mmp."asjbh" = mzaa."案件编号"
-                WHERE mzaa."案由" SIMILAR TO (
-                    SELECT ctc."ay_pattern"
-                    FROM "case_type_config" ctc
-                    WHERE ctc."leixing" = '打架斗殴'
-                )
-                AND mzaa."立案日期" BETWEEN '2026-01-01' AND NOW()
-                AND mmp."role_names" = '嫌疑人'
-                AND mmp."zjhm" IS NOT NULL
+                    zzwx."xyrxx_sfzh" AS zjhm,
+                    zzwx."ajxx_join_ajxx_lasj" AS larq
+                FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
+                WHERE zzwx."ajxx_join_ajxx_lasj" BETWEEN {开始时间} AND {结束时间}
+                  AND zzwx."xyrxx_sfzh" IS NOT NULL
             )
-
             SELECT
                 bzr.*,
                 CASE
@@ -394,14 +146,11 @@
                         SELECT 1
                         FROM fight_suspect fs
                         WHERE fs.zjhm = bzr.zjhm
-                        AND bzr.lgsj < fs.larq   -- ✅ 列管时间在立案日期之前才算再犯
-                    )
-                    THEN '是'
-                    ELSE '否'
-                END AS "是否再犯"
+                          AND bzr.lgsj < fs.larq
+                    ) THEN '是' ELSE '否' END AS "是否再犯"
             FROM "stdata"."b_zdry_ryxx" bzr
             WHERE bzr.sflg = '1'
-            AND bzr."deleteflag" = '0';
+              AND bzr."deleteflag" = '0';
         ```
         2. 其中"地区"通过"地区"列分类,"全市"则为所有数据
         3. 三个柱子分别为:
@@ -431,10 +180,11 @@
         FROM ywdata."case_type_config" ctc
         WHERE ctc."leixing" = '打架斗殴'
     )```
-    2. ```mzaa."案由" SIMILAR TO (
-            SELECT ctc."ay_pattern"
+    2. ```EXISTS (
+            SELECT 1
             FROM ywdata."case_type_config" ctc
-            WHERE ctc."leixing" = '打架斗殴'
+            WHERE ctc."leixing" = ANY({类型})
+            AND COALESCE(字段值,'') SIMILAR TO ctc."ay_pattern"
         )```
 3. 在"发送给责任人"功能的弹出框中新增"一键清除"功能,点击"一键清除"删除弹出框中所有可编辑的内容
 4. query_ng_zf_details的SQL我已修改,请你在帮我加上start_time和end_time参数,参数放在AND mzaa."立案日期" BETWEEN '2026-01-01' AND NOW()

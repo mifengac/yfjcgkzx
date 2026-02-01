@@ -53,7 +53,15 @@ SELECT
         ELSE '其他'
     END AS "地区"
 FROM ywdata."zq_kshddpt_dsjfx_jq" jq
-LEFT JOIN ywdata."mv_zfba_all_ajxx" mza
+LEFT JOIN (
+    SELECT
+        aj."ajxx_jqbh" AS "警情编号",
+        aj."ajxx_ajbh" AS "案件编号",
+        aj."ajxx_ajmc" AS "案件名称",
+        LEFT(aj."ajxx_cbdw_bh_dm", 6) AS "地区",
+        aj."ajxx_cbdw_mc" AS "办案单位名称"
+    FROM ywdata."zq_zfba_wcnr_ajxx" aj
+) mza
     ON jq."caseno" = mza."警情编号"
 WHERE jq."calltime" BETWEEN %s AND %s
 AND jq."casemarkok" ~ '未成年'
@@ -67,10 +75,11 @@ def query_jzjy_details(start_time: datetime, end_time: datetime, case_types: Lis
     # 构建类型过滤条件
     if case_types and len(case_types) > 0:
         type_condition = """
-    AND mzaa."案由" SIMILAR TO (
-        SELECT ctc."ay_pattern"
+    AND EXISTS (
+        SELECT 1
         FROM ywdata."case_type_config" ctc
         WHERE ctc."leixing" = ANY(%s)
+          AND COALESCE(zzwx."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
     )"""
         params = (start_time, end_time, case_types)
     else:
@@ -80,27 +89,27 @@ def query_jzjy_details(start_time: datetime, end_time: datetime, case_types: Lis
     sql = f"""
 WITH minor_fight AS (
     SELECT
-        mzaa."案件编号",
-        mzaa."案件名称",
-        mzaa."立案日期",
+        zzwx."ajxx_ajbhs" AS "案件编号",
+        zzwx."ajxx_join_ajxx_ajmc" AS "案件名称",
+        zzwx."ajxx_join_ajxx_lasj" AS "立案日期",
         CASE
-            WHEN mzaa."地区" ='445302' THEN '云城'
-            WHEN mzaa."地区" ='445303' THEN '云安'
-            WHEN mzaa."地区" ='445381' THEN '罗定'
-            WHEN mzaa."地区" ='445321' THEN '新兴'
-            WHEN mzaa."地区" ='445322' THEN '郁南'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445302' THEN '云城'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445303' THEN '云安'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445381' THEN '罗定'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445321' THEN '新兴'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445322' THEN '郁南'
+            ELSE '其他'
         END AS "地区",
-        mzaa."办案单位名称",
-        mmp."xm"         AS "姓名",
-        mmp."zjhm"       AS "证件号码",
-        mmp."role_names" AS "人员类型",
-        mmp."age_years"  AS "年龄",
-        mmp."anjxgrybh"  AS "人员编号"
-    FROM ywdata."mv_zfba_all_ajxx" mzaa
-    INNER JOIN ywdata."mv_minor_person" mmp
-        ON mzaa."案件编号" = mmp."asjbh"
-    WHERE mzaa."立案日期"::timestamp BETWEEN %s AND %s
-    AND mmp."role_names" = '嫌疑人'
+        aj."ajxx_cbdw_mc" AS "办案单位名称",
+        zzwx."xyrxx_xm" AS "姓名",
+        zzwx."xyrxx_sfzh" AS "证件号码",
+        '嫌疑人' AS "人员类型",
+        zzwx."xyrxx_nl" AS "年龄",
+        zzwx."xyrxx_rybh" AS "人员编号"
+    FROM ywdata."zq_zfba_wcnr_xyr" zzwx
+    LEFT JOIN ywdata."zq_zfba_wcnr_ajxx" aj
+        ON zzwx."ajxx_ajbhs" = aj."ajxx_ajbh"
+    WHERE zzwx."ajxx_join_ajxx_lasj"::timestamp BETWEEN %s AND %s
 {type_condition}
 ),
 target_aj AS (
@@ -182,10 +191,11 @@ def query_sx_sx_details(start_time: datetime, end_time: datetime, case_types: Li
     # 构建类型过滤条件
     if case_types and len(case_types) > 0:
         type_condition = """
-AND mzaa."案由" SIMILAR TO (
-    SELECT ctc."ay_pattern"
+AND EXISTS (
+    SELECT 1
     FROM ywdata."case_type_config" ctc
     WHERE ctc."leixing" = ANY(%s)
+      AND COALESCE(zzwx."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
 )"""
         params = (start_time, end_time, case_types)
     else:
@@ -194,41 +204,42 @@ AND mzaa."案由" SIMILAR TO (
 
     sql = f"""
 SELECT
-    mmp."anjxgrybh" AS "人员编号",
-    mmp."xm" AS "姓名",
-    mmp."zjhm" AS "证件号码",
-    mmp."hjd_xz" AS "户籍地",
-    mmp."xzd_xz" AS "现住地",
-    mmp."age_years" AS "年龄",
-    mmp."role_names" AS "人员类型",
-    mzaa."案件编号" AS "案件编号",
+    zzwx."xyrxx_rybh" AS "人员编号",
+    zzwx."xyrxx_xm" AS "姓名",
+    zzwx."xyrxx_sfzh" AS "证件号码",
+    zzwx."xyrxx_hjdxz" AS "户籍地",
+    zzwx."xyrxx_xzdxz" AS "现住地",
+    zzwx."xyrxx_nl" AS "年龄",
+    '嫌疑人' AS "人员类型",
+    zzwx."ajxx_ajbhs" AS "案件编号",
     CASE
-        WHEN mzaa."地区" ='445302' THEN '云城'
-        WHEN mzaa."地区" ='445303' THEN '云安'
-        WHEN mzaa."地区" ='445381' THEN '罗定'
-        WHEN mzaa."地区" ='445321' THEN '新兴'
-        WHEN mzaa."地区" ='445322' THEN '郁南'
+        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445302' THEN '云城'
+        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445303' THEN '云安'
+        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445381' THEN '罗定'
+        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445321' THEN '新兴'
+        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445322' THEN '郁南'
+        ELSE '其他'
     END AS "地区",
-    mzaa."案件名称" AS "案件名称",
-    mzaa."简要案情" AS "简要案情",
-    mzaa."立案日期" AS "立案日期",
-    mzaa."办案单位名称" AS "办案单位名称",
+    zzwx."ajxx_join_ajxx_ajmc" AS "案件名称",
+    aj."ajxx_jyaq" AS "简要案情",
+    zzwx."ajxx_join_ajxx_lasj" AS "立案日期",
+    aj."ajxx_cbdw_mc" AS "办案单位名称",
     bx."办案联系人_json",
     bx."联系电话_json",
     CASE
         WHEN sx.is_match = 1 THEN '是'
         ELSE '否'
     END AS "是否送校"
-FROM ywdata."mv_minor_person" mmp
-INNER JOIN ywdata."mv_zfba_all_ajxx" mzaa
-    ON mmp."asjbh" = mzaa."案件编号"
+FROM ywdata."zq_zfba_wcnr_xyr" zzwx
+LEFT JOIN ywdata."zq_zfba_wcnr_ajxx" aj
+    ON zzwx."ajxx_ajbhs" = aj."ajxx_ajbh"
 LEFT JOIN LATERAL (
     WITH d AS (
         SELECT DISTINCT
             NULLIF(TRIM(r.baxgry_xm), '') AS name,
             NULLIF(TRIM(r.lxdh), '')      AS phone
         FROM ywdata."zfba_ry_001" r
-        WHERE r.asjbh = mzaa."案件编号"
+        WHERE r.asjbh = zzwx."ajxx_ajbhs"
         AND NULLIF(TRIM(r.baxgry_xm), '') IS NOT NULL
         AND NULLIF(TRIM(r.lxdh), '') IS NOT NULL
     )
@@ -240,14 +251,13 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
     SELECT 1 AS is_match
     FROM "ywdata"."zq_wcnr_sfzxx" z
-    WHERE z."sfzhm" = mmp."zjhm"
-    AND z.rx_time::timestamp > mzaa."立案日期"::timestamp
+    WHERE z."sfzhm" = zzwx."xyrxx_sfzh"
+    AND z.rx_time::timestamp > zzwx."ajxx_join_ajxx_lasj"::timestamp
     LIMIT 1
 ) sx ON TRUE
-WHERE mmp."role_names" = '嫌疑人'
-AND mzaa."立案日期"::timestamp BETWEEN %s AND %s
+WHERE zzwx."ajxx_join_ajxx_lasj"::timestamp BETWEEN %s AND %s
 {type_condition}
-AND mzaa."案件类型" = '刑事'
+AND zzwx."ajxx_join_ajxx_ajlx" = '刑事'
 ;
 """
     return _fetch_all(sql, params)
@@ -257,10 +267,11 @@ def query_zljqjh_details(start_time: datetime, end_time: datetime, case_types: L
     # 构建类型过滤条件
     if case_types and len(case_types) > 0:
         type_condition = """
-    AND mzaa."案由" SIMILAR TO (
-        SELECT ctc."ay_pattern"
+    AND EXISTS (
+        SELECT 1
         FROM ywdata."case_type_config" ctc
         WHERE ctc."leixing" = ANY(%s)
+          AND COALESCE(zzwx."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
     )"""
         params = (start_time, end_time, case_types)
     else:
@@ -270,27 +281,27 @@ def query_zljqjh_details(start_time: datetime, end_time: datetime, case_types: L
     sql = f"""
 WITH minor_fight AS (
     SELECT
-        mzaa."案件编号",
-        mzaa."案件名称",
-        mzaa."立案日期",
-        mzaa."办案单位名称",
+        zzwx."ajxx_ajbhs" AS "案件编号",
+        zzwx."ajxx_join_ajxx_ajmc" AS "案件名称",
+        zzwx."ajxx_join_ajxx_lasj" AS "立案日期",
+        aj."ajxx_cbdw_mc" AS "办案单位名称",
         CASE
-            WHEN mzaa."地区" ='445302' THEN '云城'
-            WHEN mzaa."地区" ='445303' THEN '云安'
-            WHEN mzaa."地区" ='445381' THEN '罗定'
-            WHEN mzaa."地区" ='445321' THEN '新兴'
-            WHEN mzaa."地区" ='445322' THEN '郁南'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445302' THEN '云城'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445303' THEN '云安'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445381' THEN '罗定'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445321' THEN '新兴'
+            WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445322' THEN '郁南'
+            ELSE '其他'
         END AS "地区",
-        mmp."xm"         AS "姓名",
-        mmp."zjhm"       AS "证件号码",
-        mmp."role_names" AS "人员类型",
-        mmp."age_years"  AS "年龄",
-        mmp."anjxgrybh"  AS "人员编号"
-    FROM ywdata."mv_zfba_all_ajxx" mzaa
-    INNER JOIN ywdata."mv_minor_person" mmp
-        ON mzaa."案件编号" = mmp."asjbh"
-    WHERE mzaa."立案日期"::timestamp BETWEEN %s AND %s
-    AND mmp."role_names" = '嫌疑人'
+        zzwx."xyrxx_xm" AS "姓名",
+        zzwx."xyrxx_sfzh" AS "证件号码",
+        '嫌疑人' AS "人员类型",
+        zzwx."xyrxx_nl" AS "年龄",
+        zzwx."xyrxx_rybh" AS "人员编号"
+    FROM ywdata."zq_zfba_wcnr_xyr" zzwx
+    LEFT JOIN ywdata."zq_zfba_wcnr_ajxx" aj
+        ON zzwx."ajxx_ajbhs" = aj."ajxx_ajbh"
+    WHERE zzwx."ajxx_join_ajxx_lasj"::timestamp BETWEEN %s AND %s
 {type_condition}
 ),
 target_aj AS (
@@ -353,10 +364,11 @@ def query_cs_fa_details(start_time: datetime, end_time: datetime, case_types: Li
     # 构建类型过滤条件
     if case_types and len(case_types) > 0:
         type_condition = """
-    AND mza."案由" SIMILAR TO (
-        SELECT ctc."ay_pattern"
+    AND EXISTS (
+        SELECT 1
         FROM ywdata."case_type_config" ctc
         WHERE ctc."leixing" = ANY(%s)
+          AND COALESCE(aj."ajxx_aymc", '') SIMILAR TO ctc."ay_pattern"
     )"""
         params = (start_time, end_time, case_types)
     else:
@@ -366,12 +378,26 @@ def query_cs_fa_details(start_time: datetime, end_time: datetime, case_types: Li
     sql = f"""
 WITH aj_list AS (
     SELECT DISTINCT
-        mza.*
-    FROM ywdata."mv_zfba_all_ajxx" mza
-    INNER JOIN ywdata."mv_minor_person" mmp
-        ON mza."案件编号" = mmp."asjbh"
-    WHERE mza."立案日期" BETWEEN %s AND %s
-    AND mmp."role_names" = '嫌疑人'
+        aj."ajxx_ajbh" AS "案件编号",
+        aj."ajxx_ajmc" AS "案件名称",
+        aj."ajxx_lasj" AS "立案日期",
+        aj."ajxx_cbdw_mc" AS "办案单位名称",
+        aj."ajxx_jyaq" AS "简要案情",
+        aj."ajxx_fadd" AS "案件发生地址名称",
+        aj."ajxx_fadd" AS "发案地点",
+        aj."ajxx_fasj" AS "发案时间",
+        aj."ajxx_ajzt" AS "案件状态",
+        LEFT(aj."ajxx_cbdw_bh_dm", 6) AS "地区代码",
+        CASE
+            WHEN LEFT(aj."ajxx_cbdw_bh_dm", 6) = '445302' THEN '云城'
+            WHEN LEFT(aj."ajxx_cbdw_bh_dm", 6) = '445303' THEN '云安'
+            WHEN LEFT(aj."ajxx_cbdw_bh_dm", 6) = '445381' THEN '罗定'
+            WHEN LEFT(aj."ajxx_cbdw_bh_dm", 6) = '445321' THEN '新兴'
+            WHEN LEFT(aj."ajxx_cbdw_bh_dm", 6) = '445322' THEN '郁南'
+            ELSE '其他'
+        END AS "地区"
+    FROM ywdata."zq_zfba_wcnr_ajxx" aj
+    WHERE aj."ajxx_lasj" BETWEEN %s AND %s
 {type_condition}
 ),
 
@@ -409,13 +435,6 @@ baxgry_json AS (
 
 SELECT
     a.*,
-    CASE
-        WHEN a."地区" ='445302' THEN '云城'
-        WHEN a."地区" ='445303' THEN '云安'
-        WHEN a."地区" ='445381' THEN '罗定'
-        WHEN a."地区" ='445321' THEN '新兴'
-        WHEN a."地区" ='445322' THEN '郁南'
-    END AS "地区",    
     bx."办案联系人_json",
     bx."联系电话_json"
 FROM aj_list a
@@ -429,10 +448,11 @@ def query_ng_zf_details(start_time: datetime, end_time: datetime, case_types: Li
     # 构建类型过滤条件
     if case_types and len(case_types) > 0:
         type_condition = """
-                AND mzaa."案由" SIMILAR TO (
-                    SELECT ctc."ay_pattern"
+                AND EXISTS (
+                    SELECT 1
                     FROM ywdata."case_type_config" ctc
                     WHERE ctc."leixing" = ANY(%s)
+                      AND COALESCE(zzwx."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
                 )"""
         params = (start_time, end_time, case_types)
     else:
@@ -442,14 +462,11 @@ def query_ng_zf_details(start_time: datetime, end_time: datetime, case_types: Li
     sql = f"""
             WITH fight_suspect AS (
                 SELECT
-                    mmp."zjhm" AS zjhm,
-                    mzaa."立案日期" AS larq
-                FROM ywdata."mv_minor_person" mmp
-                INNER JOIN ywdata."mv_zfba_all_ajxx" mzaa
-                    ON mmp."asjbh" = mzaa."案件编号"
-                WHERE mzaa."立案日期" BETWEEN %s AND %s
-                AND mmp."role_names" = '嫌疑人'
-                AND mmp."zjhm" IS NOT NULL
+                    zzwx."xyrxx_sfzh" AS zjhm,
+                    zzwx."ajxx_join_ajxx_lasj" AS larq
+                FROM ywdata."zq_zfba_wcnr_xyr" zzwx
+                WHERE zzwx."ajxx_join_ajxx_lasj" BETWEEN %s AND %s
+                AND zzwx."xyrxx_sfzh" IS NOT NULL
 {type_condition}
             )
 
