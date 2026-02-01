@@ -104,6 +104,10 @@
                 </div>
                 <div class="muted" id="statusText"></div>
             </div>
+            <div class="row" style="margin-top:10px; align-items:center; gap:12px;">
+                <button class="btn" id="openTqwsModalBtn" style="background:#6a1b9a;">获取提请文书</button>
+                <div class="muted">说明：该数据源使用 access_token 拉取并写入数据库（不需要 Cookie）。</div>
+            </div>
             <div id="errBox" class="err" style="margin-top:10px;"></div>
             <div id="okBox" class="ok" style="margin-top:10px;"></div>
         </section>
@@ -168,10 +172,45 @@
     </div>
 </div>
 
+<div class="modal" id="tqwsModal">
+    <div class="panel">
+        <div class="hd">
+            <div style="font-weight:800;">获取提请文书</div>
+            <button class="btn secondary" id="closeTqwsModalBtn">关闭</button>
+        </div>
+        <div class="bd">
+            <div class="grid">
+                <label>access_token</label>
+                <input type="text" id="tqwsTokenInput" placeholder="例如：f040e7bc-...">
+
+                <label>请求 URL</label>
+                <input type="text" id="tqwsUrlInput" value="http://68.26.7.47:1999/com/api/v1/com/model/getQueryPageData">
+
+                <label>pagesize</label>
+                <input type="text" id="tqwsPageSizeInput" value="1000">
+
+                <label>where(JSON)</label>
+                <textarea id="tqwsWhereInput" rows="7" style="width:100%; border:1px solid #d7dbe7; border-radius:8px; padding:10px; font-size:13px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, &quot;Liberation Mono&quot;, &quot;Courier New&quot;, monospace;">{"rules":[{"field":"AJBH","op":"like","value":"","type":"string","format":""},{"field":"WS_ID","op":"like","value":"E232953F755A49DF90F73295347FEECA,A00A6FF90C9E423C960D7FE4224970CD","type":"string","format":"","linkOp":"or"},{"field":"WSZH","op":"like","value":"","type":"string","format":""},{"field":"XGRY_XM","op":"like","value":"","type":"string","format":""},{"field":"DYCS","op":"between","value":"0|999","type":"number","format":""},{"field":"DYSJ","op":"between","value":"|","type":"date","format":"yyyy/MM/dd HH:mm:ss"},{"field":"CBDW_MC","op":"like","value":"","type":"string","format":"","linkOp":"or"},{"field":"CBDW_BH_1","op":"like","value":"","type":"string","format":""},{"field":"CBR_XM","op":"like","value":"","type":"string","format":""},{"field":"KJSJ","op":"between","value":"2025/12/01 00:00:00|","type":"date","format":"yyyy/MM/dd HH:mm:ss"},{"field":"SPSJ","op":"between","value":"|","type":"date","format":"yyyy/MM/dd HH:mm:ss"},{"field":"WSZT","op":"like","value":"03","type":"string","format":"","linkOp":"or"}],"op":"and"}</textarea>
+
+                <label>其它参数(JSON)</label>
+                <textarea id="tqwsOtherInput" rows="6" style="width:100%; border:1px solid #d7dbe7; border-radius:8px; padding:10px; font-size:13px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, &quot;Liberation Mono&quot;, &quot;Courier New&quot;, monospace;">{"quickFilter":"C75050E4832B4F5C882B7AE04B11FAC3","modelId":"3014B3FB4791461998A87D794ED94077","mark":"yshdws","modelName":"已审核的文书SZ","pkName":"ID","modelMark":"yshdws","resType":"02","funcMark":"yshdws","funcId":"6CDD88E5222140A1B66E608814697B84","resId":"17CF516331DE4DF6800761D9452BAAEF","sortname":"KJSJ,LRSJ,SPSJ,DYSJ","sortorder":"desc,desc,asc,asc"}</textarea>
+            </div>
+            <div class="muted" style="margin-top:10px;">
+                说明：where/其它参数会按原样作为 x-www-form-urlencoded 发送（where 为 JSON 字符串）。
+            </div>
+        </div>
+        <div class="ft">
+            <button class="btn secondary" id="cancelTqwsBtn">取消</button>
+            <button class="btn" id="startTqwsBtn" style="background:#6a1b9a;">开始获取</button>
+        </div>
+    </div>
+</div>
+
 <script>
     const modal = document.getElementById('modal');
     const backdrop = document.getElementById('modalBackdrop');
     const openBtn = document.getElementById('openModalBtn');
+    const openTqwsBtn = document.getElementById('openTqwsModalBtn');
     const closeBtn = document.getElementById('closeModalBtn');
     const cancelBtn = document.getElementById('cancelBtn');
     const startBtn = document.getElementById('startBtn');
@@ -179,6 +218,11 @@
     const okBox = document.getElementById('okBox');
     const statusText = document.getElementById('statusText');
     const resultBody = document.getElementById('resultBody');
+
+    const tqwsModal = document.getElementById('tqwsModal');
+    const closeTqwsBtn = document.getElementById('closeTqwsModalBtn');
+    const cancelTqwsBtn = document.getElementById('cancelTqwsBtn');
+    const startTqwsBtn = document.getElementById('startTqwsBtn');
 
     // 数据源多选
     const sourceMs = document.getElementById('sourceMs');
@@ -252,11 +296,24 @@
         backdrop.style.display = 'none';
         modal.style.display = 'none';
     }
+    function openTqwsModal() {
+        backdrop.style.display = 'block';
+        tqwsModal.style.display = 'flex';
+        errBox.textContent = '';
+        okBox.textContent = '';
+    }
+    function closeTqwsModal() {
+        backdrop.style.display = 'none';
+        tqwsModal.style.display = 'none';
+    }
 
     openBtn.addEventListener('click', openModal);
+    openTqwsBtn.addEventListener('click', openTqwsModal);
     closeBtn.addEventListener('click', closeModal);
     cancelBtn.addEventListener('click', closeModal);
-    backdrop.addEventListener('click', closeModal);
+    closeTqwsBtn.addEventListener('click', closeTqwsModal);
+    cancelTqwsBtn.addEventListener('click', closeTqwsModal);
+    backdrop.addEventListener('click', () => { closeModal(); closeTqwsModal(); });
 
     function renderResults(results) {
         if (!results || results.length === 0) {
@@ -297,6 +354,31 @@
         setTimeout(() => poll(jobId).catch(e => { errBox.textContent = e.message; }), 1500);
     }
 
+    async function pollTqws(jobId) {
+        const resp = await fetch(`{{ url_for('hqzcsj.tqws_status', job_id='__JOB__') }}`.replace('__JOB__', jobId), {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            throw new Error(data.message || '查询任务失败');
+        }
+        const st = data.data;
+        const prog = st.progress || {};
+        const totalText = (prog.total && prog.total > 0) ? `${prog.current ?? 0}/${prog.total}` : `${prog.current ?? 0}`;
+        statusText.textContent = `${st.state || ''} ${totalText} ${st.message || ''}`;
+        renderResults(st.results || []);
+        if (st.state === 'success') {
+            okBox.textContent = '任务完成';
+            return;
+        }
+        if (st.state === 'failed') {
+            errBox.textContent = st.message || '任务失败';
+            return;
+        }
+        setTimeout(() => pollTqws(jobId).catch(e => { errBox.textContent = e.message; }), 1500);
+    }
+
     startBtn.addEventListener('click', async () => {
         errBox.textContent = '';
         okBox.textContent = '';
@@ -328,6 +410,57 @@
             errBox.textContent = e.message || String(e);
         } finally {
             startBtn.disabled = false;
+        }
+    });
+
+    startTqwsBtn.addEventListener('click', async () => {
+        errBox.textContent = '';
+        okBox.textContent = '';
+        startTqwsBtn.disabled = true;
+        try {
+            const access_token = document.getElementById('tqwsTokenInput').value.trim();
+            const url = document.getElementById('tqwsUrlInput').value.trim();
+            const pagesize = document.getElementById('tqwsPageSizeInput').value.trim();
+            const whereText = document.getElementById('tqwsWhereInput').value.trim();
+            const otherText = document.getElementById('tqwsOtherInput').value.trim();
+
+            if (!access_token) throw new Error('access_token 不能为空');
+            if (!whereText) throw new Error('where 不能为空');
+            if (!otherText) throw new Error('其它参数 不能为空');
+
+            let whereObj = null;
+            try { whereObj = JSON.parse(whereText); } catch (e) { throw new Error('where 不是合法 JSON'); }
+            if (!whereObj || typeof whereObj !== 'object') throw new Error('where 必须是 JSON 对象');
+
+            let otherObj = null;
+            try { otherObj = JSON.parse(otherText); } catch (e) { throw new Error('其它参数不是合法 JSON'); }
+            if (!otherObj || typeof otherObj !== 'object') throw new Error('其它参数必须是 JSON 对象');
+
+            const params = Object.assign({}, otherObj, {
+                where: JSON.stringify(whereObj),
+                page: 1,
+                pagesize: pagesize || '1000',
+            });
+
+            const resp = await fetch(`{{ url_for('hqzcsj.tqws_start') }}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ access_token, url, params })
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                throw new Error(data.message || '启动失败');
+            }
+            closeTqwsModal();
+            const jobId = data.job_id;
+            okBox.textContent = `任务已启动：${jobId}`;
+            statusText.textContent = 'running';
+            resultBody.innerHTML = '<tr><td colspan="4" class="muted">执行中...</td></tr>';
+            pollTqws(jobId).catch(e => { errBox.textContent = e.message; });
+        } catch (e) {
+            errBox.textContent = e.message || String(e);
+        } finally {
+            startTqwsBtn.disabled = false;
         }
     });
 

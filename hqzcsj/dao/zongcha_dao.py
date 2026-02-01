@@ -31,7 +31,9 @@ def infer_col_types(rows: Sequence[Dict[str, Any]]) -> Dict[str, str]:
         for k, v in (r or {}).items():
             if not k:
                 continue
-            cur = state.get(k, "UNKNOWN")
+            # 即使值全为空/占位符，也要把列名纳入推断集合；
+            # 否则 ensure_table_and_columns 不会补列，但 upsert 时仍会在 INSERT 列表中出现，导致“column does not exist”。
+            cur = state.setdefault(k, "UNKNOWN")
             if cur == "TEXT":
                 continue
             if v in (None, "", "-", "无数据"):

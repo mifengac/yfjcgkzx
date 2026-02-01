@@ -18,6 +18,7 @@ from flask import Blueprint, abort, jsonify, redirect, render_template, request,
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.service.zongcha_service import start_zongcha_job, get_zongcha_job_status
+from hqzcsj.service.tqws_service import get_tqws_job_status, start_tqws_job
 from hqzcsj.service.zfba_jq_aj_service import default_time_range_for_page as jqaj_default_range
 
 
@@ -98,6 +99,37 @@ def zongcha_start() -> Any:
 def zongcha_status(job_id: str) -> Any:
     username = session.get("username") or ""
     status = get_zongcha_job_status(username=username, job_id=job_id)
+    if not status:
+        return jsonify({"success": False, "message": "任务不存在或已过期"}), 404
+    return jsonify({"success": True, "data": status})
+
+
+@hqzcsj_bp.route("/zongcha/tqws/api/start", methods=["POST"])
+def tqws_start() -> Any:
+    payload: Dict[str, Any] = request.get_json(silent=True) or {}
+    access_token = (payload.get("access_token") or "").strip()
+    url = (payload.get("url") or "").strip()
+    params = payload.get("params") or {}
+    if not isinstance(params, dict):
+        params = {}
+
+    if not access_token:
+        return jsonify({"success": False, "message": "access_token 不能为空"}), 400
+
+    username = session.get("username") or ""
+    job_id = start_tqws_job(
+        username=username,
+        access_token=access_token,
+        url=url,
+        params=params,
+    )
+    return jsonify({"success": True, "job_id": job_id})
+
+
+@hqzcsj_bp.route("/zongcha/tqws/api/status/<job_id>")
+def tqws_status(job_id: str) -> Any:
+    username = session.get("username") or ""
+    status = get_tqws_job_status(username=username, job_id=job_id)
     if not status:
         return jsonify({"success": False, "message": "任务不存在或已过期"}), 404
     return jsonify({"success": True, "data": status})
