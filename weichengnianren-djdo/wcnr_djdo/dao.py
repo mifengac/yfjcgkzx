@@ -60,7 +60,7 @@ LEFT JOIN (
         aj."ajxx_ajmc" AS "案件名称",
         LEFT(aj."ajxx_cbdw_bh_dm", 6) AS "地区",
         aj."ajxx_cbdw_mc" AS "办案单位名称"
-    FROM ywdata."zq_zfba_wcnr_ajxx" aj
+    FROM ywdata."zq_zfba_ajxx" aj
 ) mza
     ON jq."caseno" = mza."警情编号"
 WHERE jq."calltime" BETWEEN %s AND %s
@@ -255,7 +255,7 @@ LEFT JOIN LATERAL (
     AND z.rx_time::timestamp > zzwx."ajxx_join_ajxx_lasj"::timestamp
     LIMIT 1
 ) sx ON TRUE
-WHERE zzwx."ajxx_join_ajxx_lasj"::timestamp BETWEEN %s AND %s
+WHERE 人员编号<>'R4453816500002026013043' AND zzwx."ajxx_join_ajxx_lasj"::timestamp BETWEEN %s AND %s
 {type_condition}
 AND zzwx."ajxx_join_ajxx_ajlx" = '刑事'
 ;
@@ -299,7 +299,7 @@ WITH minor_fight AS (
         zzwx."xyrxx_nl" AS "年龄",
         zzwx."xyrxx_rybh" AS "人员编号"
     FROM ywdata."zq_zfba_wcnr_xyr" zzwx
-    LEFT JOIN ywdata."zq_zfba_wcnr_ajxx" aj
+    LEFT JOIN ywdata."zq_zfba_ajxx" aj
         ON zzwx."ajxx_ajbhs" = aj."ajxx_ajbh"
     WHERE zzwx."ajxx_join_ajxx_lasj"::timestamp BETWEEN %s AND %s
 {type_condition}
@@ -311,10 +311,10 @@ target_aj AS (
 jtjyzdtzs_hit AS (
     SELECT DISTINCT
         jqjhjyzljsjtjyzdtzs_ajbh AS "案件编号",
-        jqjhjyzljsjtjyzdtzs_rybh AS "人员编号"
+        jqjhjyzljsjtjyzdtzs_wcnrrybh  AS "人员编号"
     FROM "ywdata"."zq_zfba_jtjyzdtzs"
     WHERE jqjhjyzljsjtjyzdtzs_ajbh IS NOT NULL
-    AND jqjhjyzljsjtjyzdtzs_rybh IS NOT NULL
+    AND jqjhjyzljsjtjyzdtzs_wcnrrybh IS NOT NULL
     AND jqjhjyzljsjtjyzdtzs_wszt = '审批通过' AND jqjhjyzljsjtjyzdtzs_isdel_dm = '0'
 ),
 baxgry_distinct AS (
