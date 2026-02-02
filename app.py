@@ -49,6 +49,7 @@ from mdjfxsyj.routes.mdjfxsyj_mdj_xsyj_routes import mdjfxsyj_bp  # noqa: E402
 from hqzcsj.routes.hqzcsj_zongcha_routes import hqzcsj_bp  # noqa: E402
 from hqzcsj.routes.zfba_jq_aj_routes import zfba_jq_aj_bp  # noqa: E402
 from hqzcsj.routes.zfba_wcnr_jqaj_routes import zfba_wcnr_jqaj_bp  # noqa: E402
+from shuju_tiqu.routes.shuju_tiqu_routes import shuju_tiqu_bp  # noqa: E402
 try:
     from wcnr_djdo import wcnr_djdo_bp  # type: ignore  # noqa: E402
 except Exception:
@@ -166,6 +167,7 @@ def main():
                 "精神障碍": {"endpoint": "jszahzyj.index", "label": "精神障碍患者预警"},
                 "矛盾纠纷线索移交": {"endpoint": "mdjfxsyj.index", "label": "矛盾纠纷线索移交"},
                 "获取综查数据": {"endpoint": "hqzcsj.zongcha_index", "label": "获取综查数据"},
+                "数据提取": {"endpoint": "shuju_tiqu.index", "label": "数据提取"},
             }
             if wcnr_djdo_bp is not None:
                 conf_map["未成年人(打架斗殴)"] = {"endpoint": "wcnr_djdo.index", "label": "未成年人(打架斗殴)"}
@@ -364,6 +366,7 @@ app.register_blueprint(mdjfxsyj_bp, url_prefix="/mdjfxsyj")
 app.register_blueprint(hqzcsj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(zfba_jq_aj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(zfba_wcnr_jqaj_bp, url_prefix="/hqzcsj")
+app.register_blueprint(shuju_tiqu_bp, url_prefix="/shuju_tiqu")
 if wcnr_djdo_bp is not None:
     app.register_blueprint(wcnr_djdo_bp, url_prefix="/weichengnianren-djdo")
 try:

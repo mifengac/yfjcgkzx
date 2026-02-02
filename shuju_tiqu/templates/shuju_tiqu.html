@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>数据提取</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .row > * { margin: 2px 0; }
+    .hint { color:#666; font-size: 12px; }
+    .err { color:#d32f2f; white-space: pre-wrap; }
+    .ok { color:#2e7d32; white-space: pre-wrap; }
+    select[multiple] { min-width: 280px; min-height: 180px; }
+    textarea { width: 100%; min-height: 140px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #eee; padding: 6px 8px; font-size: 12px; }
+    th { background: #fafafa; position: sticky; top: 0; }
+    .preview { max-height: 320px; overflow: auto; border: 1px solid #eee; border-radius: 6px; }
+    .targets { width: 100%; }
+    .targets input { width: 220px; }
+    .targets td:nth-child(2) input { width: 360px; }
+    .btn { padding: 10px 14px; border: none; border-radius: 6px; cursor: pointer; color: #fff; background: #1976d2; }
+    .btn:disabled { background: #9bbbe0; cursor: not-allowed; }
+    .btn2 { background:#455a64; }
+    .btnDanger { background:#e53935; }
+    .pill { display:inline-block; padding:2px 8px; border-radius: 999px; background:#eef5ff; color:#1565c0; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+      <div>
+        <h1>数据提取</h1>
+        <p>上传 xlsx/csv → 选择输入列 → 配置输出字段与提示词 → LLM 抽取 → 导出</p>
+      </div>
+      <div class="row">
+        <a href="{{ url_for('main') }}" style="background:#1976d2; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">返回首页</a>
+        <a href="{{ url_for('logout') }}" style="background:#e53935; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">退出登录</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="row">
+        <input type="file" id="file" accept=".xlsx,.csv" />
+        <button class="btn" id="uploadBtn">上传并解析</button>
+        <span class="pill" id="fileInfo" style="display:none;"></span>
+      </div>
+      <div class="hint">说明：xlsx 永远读取第 1 个 sheet；csv 自动尝试 UTF-8/GBK/GB18030 与分隔符。</div>
+      <div class="err" id="err"></div>
+      <div class="ok" id="status"></div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h3>输入字段</h3>
+        <div class="row">
+          <select id="sourceColumns" multiple></select>
+        </div>
+        <div class="hint">按住 Ctrl/Shift 多选；仅会把所选列送入模型。</div>
+      </section>
+
+      <section class="card">
+        <h3>运行参数</h3>
+        <div class="row">
+          <label>并发</label>
+          <input type="number" id="concurrency" min="1" max="4" value="2" />
+          <label>批大小(行/次)</label>
+          <input type="number" id="batchSize" min="1" max="50" value="10" />
+          <label>输出格式</label>
+          <select id="outFormat">
+            <option value="xlsx" selected>xlsx</option>
+            <option value="csv">csv</option>
+          </select>
+        </div>
+        <div class="hint">建议：并发≤4（与你的 llama.cpp --parallel 4 对齐）。小文件可把批大小改为 1。</div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h3>输出字段（N 个）</h3>
+      <div class="row">
+        <button class="btn btn2" id="addTargetBtn">新增字段</button>
+        <button class="btn btnDanger" id="clearTargetsBtn">清空</button>
+      </div>
+      <table class="targets" id="targetsTbl">
+        <thead>
+          <tr>
+            <th style="width:260px;">字段名（name）</th>
+            <th>说明/提取规则（desc，可选）</th>
+            <th style="width:90px;">操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="hint">字段名会作为导出表格的新列名；建议使用稳定的中文字段名。</div>
+    </section>
+
+    <section class="card">
+      <h3>提示词（用户自定义）</h3>
+      <div class="row">
+        <button class="btn btn2" id="useDefaultPromptBtn">使用默认模板</button>
+      </div>
+      <textarea id="prompt" placeholder="在这里填写你希望模型怎么提取。示例：从输入字段中提取人员姓名、身份证号、地址，并尽量规范化；不确定时留空。"></textarea>
+      <div class="hint">系统会强制模型仅输出 JSON，并按你定义的字段名回写到表格。</div>
+    </section>
+
+    <section class="card">
+      <h3>预览</h3>
+      <div class="preview">
+        <table id="previewTbl"></table>
+      </div>
+      <div class="row" style="margin-top: 12px;">
+        <button class="btn" id="runBtn" disabled>开始提取并下载</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='js/shuju_tiqu.js') }}"></script>
+</body>
+</html>
+
