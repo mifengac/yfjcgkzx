@@ -10,7 +10,7 @@ from __future__ import annotations
 - POST /zidingyi_baobiao/api/module       module 管理与查询/导出
 """
 
-from flask import Blueprint, abort, current_app, jsonify, redirect, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 from flask import session as flask_session
 
 from gonggong.config.database import get_database_connection
@@ -19,7 +19,7 @@ from zidingyi_baobiao.api.dataset import dataset_bp
 from zidingyi_baobiao.api.module import module_bp
 
 
-zdybb_bp = Blueprint("zdybb", __name__)
+zdybb_bp = Blueprint("zdybb", __name__, template_folder="templates")
 
 
 @zdybb_bp.before_request
@@ -57,38 +57,10 @@ def _ensure_access():  # type: ignore[no-untyped-def]
 @zdybb_bp.get("/")
 def index():  # type: ignore[no-untyped-def]
     """
-    子模块入口（仅返回接口指引，前端由外部系统/后续页面实现）。
+    子模块入口（最简管理页）。
     """
-    base = request.script_root.rstrip("/") or ""
-    prefix = f"{base}/zidingyi_baobiao/api"
-    return jsonify(
-        {
-            "success": True,
-            "module": "zidingyi_baobiao",
-            "api_prefix": prefix,
-            "endpoints": {
-                "datasource": {
-                    "create": f"{prefix}/datasource",
-                    "update": f"{prefix}/datasource/<id>",
-                    "list": f"{prefix}/datasource",
-                    "test": f"{prefix}/datasource/<id>/test",
-                },
-                "dataset": {
-                    "create": f"{prefix}/dataset",
-                    "update": f"{prefix}/dataset/<id>",
-                    "list": f"{prefix}/dataset",
-                    "preview": f"{prefix}/dataset/<id>/preview",
-                },
-                "module": {
-                    "create": f"{prefix}/module",
-                    "update": f"{prefix}/module/<id>",
-                    "list": f"{prefix}/module",
-                    "query": f"{prefix}/module/<tab_key>/query",
-                    "export": f"{prefix}/module/<tab_key>/export",
-                },
-            },
-        }
-    )
+    api_prefix = f"{request.script_root.rstrip('/')}/zidingyi_baobiao/api".rstrip("/")
+    return render_template("zdybb_admin.html", api_prefix=api_prefix)
 
 
 @zdybb_bp.errorhandler(403)
@@ -105,4 +77,3 @@ def _handle_500(_exc):  # type: ignore[no-untyped-def]
 zdybb_bp.register_blueprint(datasource_bp, url_prefix="/api")
 zdybb_bp.register_blueprint(dataset_bp, url_prefix="/api")
 zdybb_bp.register_blueprint(module_bp, url_prefix="/api")
-
