@@ -169,8 +169,6 @@ def _run_job(
                         continue
 
                     fetched_total += len(window_rows)
-                    if job.table in {"zq_zfba_wcnr_xyr", "zq_zfba_xyrxx"}:
-                        window_rows = _expand_rows_by_ajxx_ajbhs(window_rows)
                     if fast_mode:
                         processed_total += upsert_rows_jsonb(
                             conn=conn,
@@ -557,37 +555,6 @@ def _merge_inferred_types(base: Dict[str, str], inc: Dict[str, str]) -> Dict[str
     return out
 
 
-def _expand_rows_by_ajxx_ajbhs(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    若 ajxx_ajbhs 含空格（多个案件编号），按空格拆分为多条记录，其它字段不变。
-
-    例：{"ajxx_ajbhs": "A1 A2", ...} -> [{"ajxx_ajbhs": "A1", ...}, {"ajxx_ajbhs": "A2", ...}]
-    """
-    expanded: List[Dict[str, Any]] = []
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        raw = row.get("ajxx_ajbhs")
-        if not isinstance(raw, str):
-            expanded.append(row)
-            continue
-        cleaned = raw.strip()
-        parts = [p for p in cleaned.split() if p]
-        if len(parts) <= 1:
-            if cleaned != raw:
-                new_row = dict(row)
-                new_row["ajxx_ajbhs"] = cleaned
-                expanded.append(new_row)
-            else:
-                expanded.append(row)
-            continue
-        for part in parts:
-            new_row = dict(row)
-            new_row["ajxx_ajbhs"] = part
-            expanded.append(new_row)
-    return expanded
-
-
 def _fetch_all_pages(
     *, url: str, headers: Dict[str, str], base_form: Dict[str, str], max_pages: int, stop_after_rows: Optional[int]
 ) -> Tuple[List[Dict[str, Any]], bool]:
@@ -603,6 +570,8 @@ def _fetch_all_pages(
     for page in range(1, max_pages + 1):
         form = dict(base_form)
         form["pageNumber"] = str(page)
+        # 兼容部分环境使用 pageNum
+        form["pageNum"] = str(page)
 
         resp = requests.post(url, headers=headers, data=form, timeout=60)
         resp.raise_for_status()
@@ -739,18 +708,8 @@ def _make_form_wcnr_ajxx(*, start_time: str, end_time: str) -> Dict[str, str]:
 
 
 def _make_form_wcnr_shr_ajxx(*, start_time: str, end_time: str) -> Dict[str, str]:
+    # 按最新口径：rylx=0501/0502，minfasnl=[1,18]，按 ajxx_lasj 时间范围筛选（固定2026-01）
     conds = [
-        {
-            "tabId": "16",
-            "tabCode": "ajxx_join",
-            "fieldCode": "ajxx_lasj",
-            "tabType": "1",
-            "isPub": False,
-            "operateSign": "10",
-            "values": [start_time, end_time],
-            "excludeDays": [],
-            "rangeIncludeType": "0",
-        },
         {
             "tabId": "51",
             "tabCode": "saryxx",
@@ -758,30 +717,30 @@ def _make_form_wcnr_shr_ajxx(*, start_time: str, end_time: str) -> Dict[str, str
             "tabType": "1",
             "isPub": False,
             "operateSign": "7",
-            "values": ["0502"],
+            "values": ["0501", "0502"],
             "isIncludeChilds": False,
             "dicCode": "ZD_CASE_RYLX",
         },
         {
             "tabId": "51",
             "tabCode": "saryxx",
-            "fieldCode": "saryxx_nl",
+            "fieldCode": "saryxx_minfasnl",
             "tabType": "1",
             "isPub": False,
             "operateSign": "10",
-            "values": [1, 17],
+            "values": [1, 18],
             "rangeIncludeType": "2",
         },
         {
             "tabId": "16",
             "tabCode": "ajxx_join",
-            "fieldCode": "ajxx_isdel",
+            "fieldCode": "ajxx_lasj",
             "tabType": "1",
             "isPub": False,
-            "operateSign": "7",
-            "values": ["0"],
-            "isIncludeChilds": False,
-            "dicCode": "00",
+            "operateSign": "10",
+            "values": ["2026-01-01 00:00:00", "2026-01-31 23:59:59"],
+            "excludeDays": [],
+            "rangeIncludeType": "0",
         },
     ]
     json_obj = {"paramArray": [{"conditions": conds, "tabId": "16", "tabCode": "ajxx_join", "domainId": "11"}]}

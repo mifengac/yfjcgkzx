@@ -180,6 +180,12 @@
         </div>
         <div class="bd">
             <div class="grid">
+                <label>数据源</label>
+                <select id="tqwsSourceSel" style="height:34px; border:1px solid #d7dbe7; border-radius:8px; padding:0 10px; font-size:14px; background:#fff;">
+                    <option value="tqws">提请文书（入库：zq_zfba_tqzmjy）</option>
+                    <option value="xjs2">训诫书（未成年人）（入库：zq_zfba_xjs2）</option>
+                </select>
+
                 <label>access_token</label>
                 <input type="text" id="tqwsTokenInput" placeholder="例如：f040e7bc-...">
 
@@ -223,6 +229,7 @@
     const closeTqwsBtn = document.getElementById('closeTqwsModalBtn');
     const cancelTqwsBtn = document.getElementById('cancelTqwsBtn');
     const startTqwsBtn = document.getElementById('startTqwsBtn');
+    const tqwsSourceSel = document.getElementById('tqwsSourceSel');
 
     // 数据源多选
     const sourceMs = document.getElementById('sourceMs');
@@ -379,6 +386,36 @@
         setTimeout(() => pollTqws(jobId).catch(e => { errBox.textContent = e.message; }), 1500);
     }
 
+    const TQWS_PRESETS = {
+        tqws: {
+            where: {"rules":[{"field":"AJBH","op":"like","value":"","type":"string","format":""},{"field":"WS_ID","op":"like","value":"E232953F755A49DF90F73295347FEECA,A00A6FF90C9E423C960D7FE4224970CD","type":"string","format":"","linkOp":"or"},{"field":"WSZH","op":"like","value":"","type":"string","format":""},{"field":"XGRY_XM","op":"like","value":"","type":"string","format":""},{"field":"DYCS","op":"between","value":"0|999","type":"number","format":""},{"field":"DYSJ","op":"between","value":"|","type":"date","format":"yyyy/MM/dd HH:mm:ss"},{"field":"CBDW_MC","op":"like","value":"","type":"string","format":"","linkOp":"or"},{"field":"CBDW_BH_1","op":"like","value":"","type":"string","format":""},{"field":"CBR_XM","op":"like","value":"","type":"string","format":""},{"field":"KJSJ","op":"between","value":"2025/12/01 00:00:00|","type":"date","format":"yyyy/MM/dd HH:mm:ss"},{"field":"SPSJ","op":"between","value":"|","type":"date","format":"yyyy/MM/dd HH:mm:ss"},{"field":"WSZT","op":"like","value":"03","type":"string","format":"","linkOp":"or"}],"op":"and"},
+            other: {"quickFilter":"C75050E4832B4F5C882B7AE04B11FAC3","modelId":"3014B3FB4791461998A87D794ED94077","mark":"yshdws","modelName":"已审核的文书SZ","pkName":"ID","modelMark":"yshdws","resType":"02","funcMark":"yshdws","funcId":"6CDD88E5222140A1B66E608814697B84","resId":"17CF516331DE4DF6800761D9452BAAEF","sortname":"KJSJ,LRSJ,SPSJ,DYSJ","sortorder":"desc,desc,asc,asc"}
+        },
+        xjs2: {
+            where: {"rules":[{"field":"AJBH","op":"like","value":"","type":"string","format":""},{"field":"WS_ID","op":"like","value":"16D4504F3D143E95E06307E21D44D3E7,3D87947C9AAC4533B62C0905806D78F8,F9C5ECF4DC7A42D699749F81140E1E9B","type":"string","format":"","linkOp":"or"},{"field":"WSZH","op":"like","value":"","type":"string","format":""},{"field":"XGRY_XM","op":"like","value":"","type":"string","format":""},{"field":"DYCS","op":"between","value":"0|999","type":"number","format":""},{"field":"DYSJ","op":"between","value":"|","type":"date","format":"yyyy/MM/dd+HH:mm:ss"},{"field":"CBDW_MC","op":"like","value":"","type":"string","format":"","linkOp":"or"},{"field":"CBDW_BH_1","op":"like","value":"","type":"string","format":""},{"field":"CBR_XM","op":"like","value":"","type":"string","format":""},{"field":"KJSJ","op":"between","value":"|","type":"date","format":"yyyy/MM/dd+HH:mm:ss"},{"field":"SPSJ","op":"between","value":"|","type":"date","format":"yyyy/MM/dd+HH:mm:ss"},{"field":"WSZT","op":"like","value":"03","type":"string","format":"","linkOp":"or"}],"op":"and"},
+            other: {"quickFilter":"C75050E4832B4F5C882B7AE04B11FAC3","modelId":"3014B3FB4791461998A87D794ED94077","mark":"yshdws","modelName":"已审核的文书SZ","pkName":"ID","modelMark":"yshdws","resType":"02","funcMark":"yshdws","funcId":"6CDD88E5222140A1B66E608814697B84","resId":"17CF516331DE4DF6800761D9452BAAEF","sortname":"KJSJ,LRSJ,SPSJ,DYSJ","sortorder":"desc,desc,asc,asc"}
+        }
+    };
+
+    function applyTqwsPreset(key) {
+        const whereEl = document.getElementById('tqwsWhereInput');
+        const otherEl = document.getElementById('tqwsOtherInput');
+        const preset = TQWS_PRESETS[key];
+        if (!preset) return;
+        try {
+            whereEl.value = JSON.stringify(preset.where, null, 0);
+            otherEl.value = JSON.stringify(preset.other, null, 0);
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    if (tqwsSourceSel) {
+        tqwsSourceSel.addEventListener('change', () => {
+            applyTqwsPreset(tqwsSourceSel.value);
+        });
+    }
+
     startBtn.addEventListener('click', async () => {
         errBox.textContent = '';
         okBox.textContent = '';
@@ -421,6 +458,7 @@
             const access_token = document.getElementById('tqwsTokenInput').value.trim();
             const url = document.getElementById('tqwsUrlInput').value.trim();
             const pagesize = document.getElementById('tqwsPageSizeInput').value.trim();
+            const source = (tqwsSourceSel && tqwsSourceSel.value) ? tqwsSourceSel.value : 'tqws';
             const whereText = document.getElementById('tqwsWhereInput').value.trim();
             const otherText = document.getElementById('tqwsOtherInput').value.trim();
 
@@ -445,7 +483,7 @@
             const resp = await fetch(`{{ url_for('hqzcsj.tqws_start') }}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({ access_token, url, params })
+                body: JSON.stringify({ access_token, url, source, params })
             });
             const data = await resp.json();
             if (!data.success) {

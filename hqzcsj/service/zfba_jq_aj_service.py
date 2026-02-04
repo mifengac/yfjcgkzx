@@ -62,7 +62,7 @@ def shift_year(dt: datetime, years: int = -1) -> datetime:
         raise
 
 
-def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]) -> Tuple[SummaryMeta, List[Dict[str, Any]]]:
+def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str], za_types: Sequence[str] = None) -> Tuple[SummaryMeta, List[Dict[str, Any]]]:
     start_dt = parse_dt(start_time)
     end_dt = parse_dt(end_time)
     if end_dt < start_dt:
@@ -87,18 +87,27 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
     try:
         patterns = _call("类型映射(案由)", lambda: zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing_list))
 
+        leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
+        za_types = [str(x).strip() for x in (za_types or []) if str(x).strip()]
+
         # 当前
         jq_now = _call(
             "当前-警情",
             lambda: zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, leixing_list=leixing_list),
         )
+        # 新增：案件数（不区分行政/刑事）
+        ajxx_all_now = _call(
+            "当前-案件数",
+            lambda: zfba_jq_aj_dao.count_ajxx_all_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
         ajxx_now = _call(
             "当前-案件(行政/刑事)",
             lambda: zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
         )
+        # 治拘改为治安处罚，支持 za_types 过滤
         zhiju_now = _call(
-            "当前-行政处罚(治拘)",
-            lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+            "当前-治安处罚",
+            lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, za_types=za_types),
         )
         xingju_now = _call(
             "当前-刑拘",
@@ -116,19 +125,35 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
             "当前-移送案件",
             lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
         )
+        # 新增：办结
+        banjie_now = _call(
+            "当前-办结",
+            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
+        # 新增：高质量
+        gaozhiliang_now = _call(
+            "当前-高质量",
+            lambda: zfba_jq_aj_dao.count_gaozhiliang_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        )
 
         # 同比（上一年同周期）
         jq_yoy = _call(
             "同比-警情",
             lambda: zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, leixing_list=leixing_list),
         )
+        # 新增：案件数同比
+        ajxx_all_yoy = _call(
+            "同比-案件数",
+            lambda: zfba_jq_aj_dao.count_ajxx_all_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
         ajxx_yoy = _call(
             "同比-案件(行政/刑事)",
             lambda: zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
         )
+        # 治安处罚同比
         zhiju_yoy = _call(
-            "同比-行政处罚(治拘)",
-            lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+            "同比-治安处罚",
+            lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns, za_types=za_types),
         )
         xingju_yoy = _call(
             "同比-刑拘",
@@ -146,6 +171,16 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
             "同比-移送案件",
             lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
         )
+        # 新增：办结同比
+        banjie_yoy = _call(
+            "同比-办结",
+            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
+        # 新增：高质量同比
+        gaozhiliang_yoy = _call(
+            "同比-高质量",
+            lambda: zfba_jq_aj_dao.count_gaozhiliang_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        )
 
         def g(m: Dict[str, int], code: str) -> int:
             return int(m.get(code) or 0)
@@ -158,12 +193,14 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
                     "地区代码": code,
                     "警情": g(jq_now, code),
                     "同比警情": g(jq_yoy, code),
+                    "案件数": g(ajxx_all_now, code),
+                    "同比案件数": g(ajxx_all_yoy, code),
                     "行政": g(ajxx_now.get("行政", {}), code),
                     "同比行政": g(ajxx_yoy.get("行政", {}), code),
                     "刑事": g(ajxx_now.get("刑事", {}), code),
                     "同比刑事": g(ajxx_yoy.get("刑事", {}), code),
-                    "治拘": g(zhiju_now, code),
-                    "同比治拘": g(zhiju_yoy, code),
+                    "治安处罚": g(zhiju_now, code),
+                    "同比治安处罚": g(zhiju_yoy, code),
                     "刑拘": g(xingju_now, code),
                     "同比刑拘": g(xingju_yoy, code),
                     "逮捕": g(daibu_now, code),
@@ -172,6 +209,10 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
                     "同比起诉": g(qisu_yoy, code),
                     "移送案件": g(yisong_now, code),
                     "同比移送案件": g(yisong_yoy, code),
+                    "未办结": g(banjie_now, code),
+                    "同比未办结": g(banjie_yoy, code),
+                    "高质量": g(gaozhiliang_now, code),
+                    "同比高质量": g(gaozhiliang_yoy, code),
                 }
             )
 
@@ -180,12 +221,14 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
         for k in [
             "警情",
             "同比警情",
+            "案件数",
+            "同比案件数",
             "行政",
             "同比行政",
             "刑事",
             "同比刑事",
-            "治拘",
-            "同比治拘",
+            "治安处罚",
+            "同比治安处罚",
             "刑拘",
             "同比刑拘",
             "逮捕",
@@ -194,6 +237,10 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
             "同比起诉",
             "移送案件",
             "同比移送案件",
+            "未办结",
+            "同比未办结",
+            "高质量",
+            "同比高质量",
         ]:
             total[k] = sum(int(r.get(k) or 0) for r in rows)
         rows.append(total)
@@ -213,6 +260,7 @@ def fetch_detail(
     start_time: str,
     end_time: str,
     leixing_list: Sequence[str],
+    za_types: Sequence[str] = None,
     limit: int = 5000,
 ) -> Tuple[List[Dict[str, Any]], bool]:
     conn = get_database_connection()
@@ -224,6 +272,7 @@ def fetch_detail(
             start_time=start_time,
             end_time=end_time,
             leixing_list=leixing_list,
+            za_types=za_types,
             limit=limit,
         )
     finally:

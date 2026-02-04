@@ -109,6 +109,7 @@ def tqws_start() -> Any:
     payload: Dict[str, Any] = request.get_json(silent=True) or {}
     access_token = (payload.get("access_token") or "").strip()
     url = (payload.get("url") or "").strip()
+    source = (payload.get("source") or "tqws").strip()
     params = payload.get("params") or {}
     if not isinstance(params, dict):
         params = {}
@@ -121,6 +122,7 @@ def tqws_start() -> Any:
         username=username,
         access_token=access_token,
         url=url,
+        source=source,
         params=params,
     )
     return jsonify({"success": True, "job_id": job_id})

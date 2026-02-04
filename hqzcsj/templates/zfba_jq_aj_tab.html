@@ -19,6 +19,12 @@
                     <div class="multi-select-dropdown" id="jqajTypesDropdown"></div>
                 </div>
             </label>
+            <label>治安处罚类型
+                <div class="multi-select" id="jqajZaMs">
+                    <div class="multi-select-display" id="jqajZaDisplay">未选择(默认全量)</div>
+                    <div class="multi-select-dropdown" id="jqajZaDropdown"></div>
+                </div>
+            </label>
             <button class="btn" id="jqajQueryBtn">查询</button>
         </div>
         <div class="row" style="gap:10px; align-items:center;">
@@ -66,31 +72,40 @@
         const COLS = [
             "地区",
             "警情","同比警情",
+            "案件数","同比案件数",
             "行政","同比行政",
             "刑事","同比刑事",
-            "治拘","同比治拘",
+            "治安处罚","同比治安处罚",
             "刑拘","同比刑拘",
             "逮捕","同比逮捕",
             "起诉","同比起诉",
-            "移送案件","同比移送案件"
+            "移送案件","同比移送案件",
+            "未办结","同比未办结",
+            "高质量","同比高质量"
         ];
         const METRIC_BY_COL = {
             "警情":"警情",
+            "案件数":"案件数",
             "行政":"行政",
             "刑事":"刑事",
-            "治拘":"治拘",
+            "治安处罚":"治安处罚",
             "刑拘":"刑拘",
             "逮捕":"逮捕",
             "起诉":"起诉",
             "移送案件":"移送案件",
+            "未办结":"办结",
+            "高质量":"高质量",
             "同比警情":"警情",
+            "同比案件数":"案件数",
             "同比行政":"行政",
             "同比刑事":"刑事",
-            "同比治拘":"治拘",
+            "同比治安处罚":"治安处罚",
             "同比刑拘":"刑拘",
             "同比逮捕":"逮捕",
             "同比起诉":"起诉",
             "同比移送案件":"移送案件",
+            "同比未办结":"办结",
+            "同比高质量":"高质量",
         };
 
         const startEl = document.getElementById("jqajStart");
@@ -231,14 +246,73 @@
             hbEndEl.value = formatDateTimeLocal(hbEnd);
         }
 
+        // za_types multiselect
+        const zaDisplay = document.getElementById("jqajZaDisplay");
+        const zaDropdown = document.getElementById("jqajZaDropdown");
+        const ZA_OPTS = ["警告","罚款","拘留"];
+
+        function selectedZaTypes() {
+            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]'));
+            return boxes.filter(b => b.value !== "_all" && b.checked).map(b => b.value);
+        }
+        function syncZaAllBox() {
+            const allBox = zaDropdown.querySelector('input[value="_all"]');
+            if (!allBox) return;
+            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
+            const allChecked = boxes.length > 0 && boxes.every(b => b.checked);
+            const noneChecked = boxes.length > 0 && boxes.every(b => !b.checked);
+            allBox.checked = allChecked;
+            allBox.indeterminate = !allChecked && !noneChecked;
+        }
+        function renderZaLabel() {
+            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
+            const sel = selectedZaTypes();
+            if (boxes.length === 0) { zaDisplay.textContent = "无选项"; return; }
+            if (sel.length === 0) { zaDisplay.textContent = "未选择(默认全量)"; return; }
+            if (sel.length === boxes.length) { zaDisplay.textContent = "全部"; return; }
+            zaDisplay.textContent = `已选 ${sel.length} 项`;
+        }
+        function openZa() { zaDropdown.classList.add("open"); }
+        function closeZa() { zaDropdown.classList.remove("open"); }
+        zaDisplay.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (zaDropdown.classList.contains("open")) closeZa(); else openZa();
+        });
+        zaDropdown.addEventListener("click", (e) => e.stopPropagation());
+        document.addEventListener("click", () => closeZa());
+        zaDropdown.addEventListener("change", (e) => {
+            const t = e.target;
+            if (!t || t.tagName !== "INPUT") return;
+            if (t.value === "_all") {
+                const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
+                boxes.forEach(b => b.checked = t.checked);
+            } else {
+                syncZaAllBox();
+            }
+            renderZaLabel();
+        });
+
+        function initZaOptions() {
+            const html = [];
+            html.push('<label class="multi-select-option"><input type="checkbox" value="_all"><span>全选</span></label>');
+            for (const s of ZA_OPTS) {
+                html.push(`<label class="multi-select-option"><input type="checkbox" value="${s}"><span>${s}</span></label>`);
+            }
+            zaDropdown.innerHTML = html.join("");
+            syncZaAllBox();
+            renderZaLabel();
+        }
+
         function buildQueryParams(metaOverride) {
             const st = (metaOverride && metaOverride.start_time) ? metaOverride.start_time : formatDateTime(startEl.value);
             const et = (metaOverride && metaOverride.end_time) ? metaOverride.end_time : formatDateTime(endEl.value);
             const types = selectedTypes();
+            const zaTypes = selectedZaTypes();
             const usp = new URLSearchParams();
             if (st) usp.set("start_time", st);
             if (et) usp.set("end_time", et);
             for (const t of types) usp.append("leixing", t);
+            for (const z of zaTypes) usp.append("za_type", z);
             return usp;
         }
 
@@ -363,6 +437,7 @@
         };
 
         setDefaultTimeRange();
+        initZaOptions();
         loadTypes().then(() => query()).catch(e => { errEl.textContent = e.message || String(e); msDisplay.textContent = "加载失败"; });
     })();
 </script>

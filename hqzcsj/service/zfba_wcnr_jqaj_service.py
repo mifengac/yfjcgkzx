@@ -153,6 +153,15 @@ def build_summary(
                 lambda: zfba_wcnr_jqaj_dao.count_wcnr_xjs_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
             )
         )
+        # 新增：案件数(被侵害)
+        shr_ajxx_now = (
+            {}
+            if typed_patterns_empty
+            else _call(
+                "当前-案件数(被侵害)",
+                lambda: zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+            )
+        )
         jtjyz_now = (
             {}
             if typed_patterns_empty
@@ -257,6 +266,15 @@ def build_summary(
                 lambda: zfba_wcnr_jqaj_dao.count_songxiao_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
             )
         )
+        # 新增：案件数(被侵害)同比
+        shr_ajxx_yoy = (
+            {}
+            if typed_patterns_empty
+            else _call(
+                "同比-案件数(被侵害)",
+                lambda: zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+            )
+        )
 
         def g(m: Dict[str, int], code: str) -> int:
             return int(m.get(code) or 0)
@@ -293,6 +311,8 @@ def build_summary(
                     "符合送校": g(fh_sx_now, code),
                     "送校": g(sx_now, code),
                     "同比送校": g(sx_yoy, code),
+                    "案件数(被侵害)": g(shr_ajxx_now, code),
+                    "同比案件数(被侵害)": g(shr_ajxx_yoy, code),
                 }
             )
 

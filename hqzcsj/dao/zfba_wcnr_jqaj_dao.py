@@ -391,6 +391,34 @@ def count_fuhe_songxiao_by_diqu(
     return out
 
 
+def count_wcnr_shr_ajxx_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
+    """案件数(被侵害)：查询 zq_zfba_wcnr_shr_ajxx 表"""
+    pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
+    q = (
+        sql.SQL(
+            """
+            SELECT
+              LEFT(ajxx_cbdw_bh_dm, 6) AS diqu,
+              COUNT(1) AS cnt
+            FROM {schema}.zq_zfba_wcnr_shr_ajxx
+            WHERE ajxx_lasj BETWEEN %s AND %s
+              AND 1=1
+            """
+        ).format(schema=sql.Identifier(SCHEMA))
+        + pat_sql
+        + sql.SQL(" GROUP BY diqu")
+    )
+    with conn.cursor() as cur:
+        cur.execute(q, [start_time, end_time] + pat_params)
+        rows = cur.fetchall()
+    out: Dict[str, int] = {}
+    for diqu, cnt in rows:
+        if not diqu:
+            continue
+        out[str(diqu)] = int(cnt or 0)
+    return out
+
+
 def count_songxiao_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.SQL("sfz.jzyy"))
     sfz_table = sql.SQL(".").join([sql.Identifier(SCHEMA), sql.Identifier("zq_wcnr_sfzxx")])
@@ -859,5 +887,43 @@ def fetch_detail_rows(
                 + sql.SQL(" ORDER BY sfz.rx_time DESC")
             )
             return _exec(cur, q, params9)
+
+        # 新增：案件数(被侵害)明细
+        if metric == "案件数(被侵害)":
+            params10: List[Any] = [start_time, end_time]
+            where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
+            params10 += pat_params
+            where_diqu = sql.SQL("")
+            if not is_all:
+                where_diqu = sql.SQL(" AND LEFT(ajxx_cbdw_bh_dm, 6) = %s")
+                params10.append(diqu)
+            q = (
+                sql.SQL(
+                    """
+                    SELECT
+                      ajxx_ajbh AS "案件编号",
+                      ajxx_jqbh AS "警情编号",
+                      ajxx_ajmc AS "案件名称",
+                      ajxx_ajlx AS "案件类型",
+                      ajxx_ajzt AS "案件状态",
+                      ajxx_ay AS "案由",
+                      ajxx_ay_dm AS "案由代码",
+                      ajxx_fasj AS "发案时间",
+                      ajxx_lasj AS "立案时间",
+                      ajxx_sldw_mc AS "受理单位",
+                      ajxx_cbdw_mc AS "承办单位",
+                      LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
+                      ajxx_zbbj AS "在办标记",
+                      ajxx_ajly AS "案件来源"
+                    FROM {schema}.zq_zfba_wcnr_shr_ajxx
+                    WHERE ajxx_lasj BETWEEN %s AND %s
+                    AND 1=1
+                    """
+                ).format(schema=sql.Identifier(SCHEMA))
+                + where_pat
+                + where_diqu
+                + sql.SQL(" ORDER BY ajxx_lasj DESC")
+            )
+            return _exec(cur, q, params10)
 
     raise ValueError(f"未知 metric: {metric}")

@@ -67,15 +67,17 @@ def api_summary() -> Any:
     if not start_time or not end_time:
         start_time, end_time = default_time_range_for_page()
     leixing_list = _parse_list_args("leixing")
+    za_types = _parse_list_args("za_type")
     try:
-        meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list)
+        meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list, za_types=za_types)
         return jsonify({"success": True, "meta": meta.__dict__, "rows": rows})
     except Exception as exc:
         logging.exception(
-            "zfba_jq_aj api_summary failed: start_time=%s end_time=%s leixing_list=%s",
+            "zfba_jq_aj api_summary failed: start_time=%s end_time=%s leixing_list=%s za_types=%s",
             start_time,
             end_time,
             leixing_list,
+            za_types,
         )
         return jsonify({"success": False, "message": str(exc)}), 400
 
@@ -88,8 +90,9 @@ def export_summary() -> Response:
     if not start_time or not end_time:
         start_time, end_time = default_time_range_for_page()
     leixing_list = _parse_list_args("leixing")
+    za_types = _parse_list_args("za_type")
 
-    meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list)
+    meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list, za_types=za_types)
     ts = datetime.now().strftime("%Y%m%d%H%M%S")
     filename = f"警情案件统计{ts}.{fmt}"
 
@@ -107,6 +110,7 @@ def detail_page() -> Any:
     if not start_time or not end_time:
         start_time, end_time = default_time_range_for_page()
     leixing_list = _parse_list_args("leixing")
+    za_types = _parse_list_args("za_type")
 
     region_name = "全市"
     if diqu and diqu not in ("__ALL__", "全市"):
@@ -118,6 +122,7 @@ def detail_page() -> Any:
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing_list,
+        za_types=za_types,
         limit=5000,
     )
     return render_template(
@@ -128,6 +133,7 @@ def detail_page() -> Any:
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing_list,
+        za_types=za_types,
         rows=rows,
         truncated=truncated,
     )
@@ -143,6 +149,7 @@ def export_detail() -> Response:
     if not start_time or not end_time:
         start_time, end_time = default_time_range_for_page()
     leixing_list = _parse_list_args("leixing")
+    za_types = _parse_list_args("za_type")
 
     region_name = "全市"
     if diqu and diqu not in ("__ALL__", "全市"):
@@ -154,6 +161,7 @@ def export_detail() -> Response:
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing_list,
+        za_types=za_types,
         limit=0,
     )
     ts = datetime.now().strftime("%Y%m%d%H%M%S")

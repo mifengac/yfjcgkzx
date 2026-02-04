@@ -148,7 +148,100 @@ def count_ajxx_by_diqu_and_ajlx(conn, *, start_time: str, end_time: str, pattern
     return out
 
 
-def count_xzcfjds_zhiju_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
+def count_ajxx_all_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
+    """案件数：不区分行政/刑事，统计所有案件"""
+    has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
+    diqu_expr = _left6(_text("aj", "ajxx_cbdw_bh_dm", has_data=has_data))
+    aymc_expr = _text("aj", "ajxx_aymc", has_data=has_data)
+    time_expr = _ts("aj", "ajxx_lasj", has_data=has_data)
+    pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
+
+    q = (
+        sql.SQL(
+            "SELECT {diqu} AS diqu, COUNT(1) AS cnt "
+            "FROM {schema}.zq_zfba_ajxx aj "
+            "WHERE {t} BETWEEN %s AND %s "
+            "AND 1=1 "
+        ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
+        + pat_sql
+        + sql.SQL(" GROUP BY diqu")
+    )
+    with conn.cursor() as cur:
+        cur.execute(q, [start_time, end_time] + pat_params)
+        rows = cur.fetchall()
+    out: Dict[str, int] = {}
+    for diqu, cnt in rows:
+        if not diqu:
+            continue
+        out[str(diqu)] = int(cnt or 0)
+    return out
+
+
+def count_ajxx_banjie_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
+    """办结：案件状态 IN ('已立案','已受案','已受理')"""
+    has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
+    diqu_expr = _left6(_text("aj", "ajxx_cbdw_bh_dm", has_data=has_data))
+    ajzt_expr = _text("aj", "ajxx_ajzt", has_data=has_data)
+    aymc_expr = _text("aj", "ajxx_aymc", has_data=has_data)
+    time_expr = _ts("aj", "ajxx_lasj", has_data=has_data)
+    pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
+
+    q = (
+        sql.SQL(
+            "SELECT {diqu} AS diqu, COUNT(1) AS cnt "
+            "FROM {schema}.zq_zfba_ajxx aj "
+            "WHERE {t} BETWEEN %s AND %s "
+            "AND {ajzt} IN ('已立案','已受案','已受理') "
+            "AND 1=1 "
+        ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr, ajzt=ajzt_expr)
+        + pat_sql
+        + sql.SQL(" GROUP BY diqu")
+    )
+    with conn.cursor() as cur:
+        cur.execute(q, [start_time, end_time] + pat_params)
+        rows = cur.fetchall()
+    out: Dict[str, int] = {}
+    for diqu, cnt in rows:
+        if not diqu:
+            continue
+        out[str(diqu)] = int(cnt or 0)
+    return out
+
+
+def count_gaozhiliang_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
+    """高质量：刑事案件关联拘留证（刑拘人数>2）"""
+    has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
+    aj_has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_jlz")
+    diqu_expr = _left6(_text("aj", "ajxx_cbdw_bh_dm", has_data=has_data))
+    aymc_expr = _text("aj", "ajxx_aymc", has_data=has_data)
+    time_expr = _ts("aj", "ajxx_lasj", has_data=has_data)
+    pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
+
+    q = (
+        sql.SQL(
+            "SELECT {diqu} AS diqu, COUNT(DISTINCT aj.ajxx_ajbh) AS cnt "
+            "FROM {schema}.zq_zfba_ajxx aj "
+            "LEFT JOIN {schema}.zq_zfba_jlz jlz ON aj.ajxx_ajbh = jlz.ajxx_ajbh "
+            "WHERE {t} BETWEEN %s AND %s "
+            "AND aj.ajxx_ajlx = '刑事' "
+            "AND 1=1 "
+        ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
+        + pat_sql
+        + sql.SQL(" GROUP BY diqu HAVING COUNT(jlz.jlz_id) > 2")
+    )
+    with conn.cursor() as cur:
+        cur.execute(q, [start_time, end_time] + pat_params)
+        rows = cur.fetchall()
+    out: Dict[str, int] = {}
+    for diqu, cnt in rows:
+        if not diqu:
+            continue
+        out[str(diqu)] = int(cnt or 0)
+    return out
+
+
+def count_xzcfjds_zhiju_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str], za_types: Sequence[str]) -> Dict[str, int]:
+    """治安处罚：支持按处罚种类过滤（警告、罚款、拘留）"""
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_xzcfjds")
     aj_has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
     diqu_expr = _left6(_text("xz", "xzcfjds_cbdw_bh_dm", has_data=has_data))
@@ -156,20 +249,35 @@ def count_xzcfjds_zhiju_by_diqu(conn, *, start_time: str, end_time: str, pattern
     cfzl_expr = _text("xz", "xzcfjds_cfzl", has_data=has_data)
     aymc_expr = _text("aj", "ajxx_aymc", has_data=aj_has_data)
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
+
+    # 构建处罚种类过滤条件
+    za_types = [str(x).strip() for x in (za_types or []) if str(x).strip()]
+    cfzl_conditions = []
+    cfzl_params: List[Any] = []
+    if za_types:
+        for zt in za_types:
+            cfzl_conditions.append(f"{cfzl_expr.as_string(conn)} ~ %s")
+            cfzl_params.append(zt)
+
+    if cfzl_conditions:
+        cfzl_where = " AND (" + " OR ".join(cfzl_conditions) + ")"
+    else:
+        # 默认只查拘留
+        cfzl_where = f" AND {cfzl_expr.as_string(conn)} ~ '拘留'"
+
     q = (
         sql.SQL(
             "SELECT {diqu} AS diqu, COUNT(1) AS cnt "
             "FROM {schema}.zq_zfba_xzcfjds xz "
             "LEFT JOIN {schema}.zq_zfba_ajxx aj ON aj.ajxx_ajbh = xz.ajxx_ajbh "
             "WHERE {t} BETWEEN %s AND %s "
-            "AND {cfzl} ~ '拘留' "
-            "AND 1=1 "
-        ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr, cfzl=cfzl_expr)
+        ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
+        + sql.SQL(cfzl_where)
         + pat_sql
         + sql.SQL(" GROUP BY diqu")
     )
     with conn.cursor() as cur:
-        cur.execute(q, [start_time, end_time] + pat_params)
+        cur.execute(q, [start_time, end_time] + cfzl_params + pat_params)
         rows = cur.fetchall()
     out: Dict[str, int] = {}
     for diqu, cnt in rows:
@@ -299,11 +407,12 @@ def fetch_detail_rows(
     start_time: str,
     end_time: str,
     leixing_list: Sequence[str],
+    za_types: Sequence[str],
     limit: Optional[int],
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """
-    返回 (rows, truncated)；rows 仅包含“常用字段”。
-    metric: 警情/行政/刑事/治拘/刑拘/逮捕/起诉/移送案件
+    返回 (rows, truncated)；rows 仅包含"常用字段"。
+    metric: 警情/案件数/行政/刑事/治安处罚/刑拘/逮捕/起诉/移送案件/办结/高质量
     diqu: 6位地区码 或 "__ALL__"(全市)
     """
     metric = (metric or "").strip()
@@ -409,7 +518,7 @@ def fetch_detail_rows(
                 rows = rows[:limit_n]
             return rows, truncated
 
-        if metric == "治拘":
+        if metric == "治安处罚":
             params3: List[Any] = [start_time, end_time]
             where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.SQL("aj.ajxx_aymc"))
             params3 += pat_params
@@ -417,9 +526,23 @@ def fetch_detail_rows(
             if not is_all:
                 where_diqu = sql.SQL(" AND LEFT(xz.xzcfjds_cbdw_bh_dm,6)=%s")
                 params3.append(diqu)
+
+            # 构建处罚种类过滤条件
+            za_types_list = [str(x).strip() for x in (za_types or []) if str(x).strip()]
+            cfzl_where = ""
+            if za_types_list:
+                cfzl_conditions = " OR ".join([f"xz.xzcfjds_cfzl ~ %s" for _ in za_types_list])
+                cfzl_where = f" AND ({cfzl_conditions})"
+                params3 = [start_time, end_time] + za_types_list + pat_params
+                if not is_all:
+                    params3.append(diqu)
+            else:
+                # 默认只查拘留
+                cfzl_where = " AND xz.xzcfjds_cfzl ~ '拘留'"
+
             q = (
                 sql.SQL(
-                    """
+                    f"""
                     SELECT
                       xz.xzcfjds_id AS "决定书ID",
                       xz.ajxx_ajbh AS "案件编号",
@@ -435,7 +558,7 @@ def fetch_detail_rows(
                     FROM "ywdata"."zq_zfba_xzcfjds" xz
                     LEFT JOIN "ywdata"."zq_zfba_ajxx" aj ON aj.ajxx_ajbh = xz.ajxx_ajbh
                     WHERE xz.xzcfjds_spsj BETWEEN %s AND %s
-                    AND xz.xzcfjds_cfzl ~ '拘留'
+                    {cfzl_where}
                     AND 1=1
                     """
                 )
@@ -629,6 +752,159 @@ def fetch_detail_rows(
                 q = q + sql.SQL(" LIMIT %s")
                 params7.append(limit_n + 1)
             cur.execute(q, params7)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            if limit_n and len(rows) > limit_n:
+                truncated = True
+                rows = rows[:limit_n]
+            return rows, truncated
+
+        # 新增指标：案件数（不区分行政/刑事）
+        if metric == "案件数":
+            params8: List[Any] = [start_time, end_time]
+            where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
+            params8 += pat_params
+            where_diqu = sql.SQL("")
+            if not is_all:
+                where_diqu = sql.SQL(" AND LEFT(ajxx_cbdw_bh_dm, 6) = %s")
+                params8.append(diqu)
+            q = (
+                sql.SQL(
+                    """
+                    SELECT
+                      ajxx_ajbh AS "案件编号",
+                      ajxx_jqbh AS "警情编号",
+                      ajxx_ajmc AS "案件名称",
+                      ajxx_ajlx AS "案件类型",
+                      ajxx_ajzt AS "案件状态",
+                      ajxx_ay AS "案由",
+                      ajxx_ay_dm AS "案由代码",
+                      ajxx_fasj AS "发案时间",
+                      ajxx_lasj AS "立案时间",
+                      ajxx_sldw_mc AS "受理单位",
+                      ajxx_cbdw_mc AS "承办单位",
+                      LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
+                      ajxx_zbbj AS "在办标记",
+                      ajxx_ajly AS "案件来源"
+                    FROM "ywdata"."zq_zfba_ajxx"
+                    WHERE ajxx_lasj BETWEEN %s AND %s
+                    AND 1=1
+                    """
+                )
+                + where_pat
+                + where_diqu
+                + sql.SQL(" ORDER BY ajxx_lasj DESC")
+            )
+            if limit_n:
+                q = q + sql.SQL(" LIMIT %s")
+                params8.append(limit_n + 1)
+            cur.execute(q, params8)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            if limit_n and len(rows) > limit_n:
+                truncated = True
+                rows = rows[:limit_n]
+            return rows, truncated
+
+        # 新增指标：办结（案件状态 IN ('已立案','已受案','已受理')）
+        if metric == "办结":
+            params9: List[Any] = [start_time, end_time]
+            where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
+            params9 += pat_params
+            where_diqu = sql.SQL("")
+            if not is_all:
+                where_diqu = sql.SQL(" AND LEFT(ajxx_cbdw_bh_dm, 6) = %s")
+                params9.append(diqu)
+            q = (
+                sql.SQL(
+                    """
+                    SELECT
+                      ajxx_ajbh AS "案件编号",
+                      ajxx_jqbh AS "警情编号",
+                      ajxx_ajmc AS "案件名称",
+                      ajxx_ajlx AS "案件类型",
+                      ajxx_ajzt AS "案件状态",
+                      ajxx_ay AS "案由",
+                      ajxx_ay_dm AS "案由代码",
+                      ajxx_fasj AS "发案时间",
+                      ajxx_lasj AS "立案时间",
+                      ajxx_sldw_mc AS "受理单位",
+                      ajxx_cbdw_mc AS "承办单位",
+                      LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
+                      ajxx_zbbj AS "在办标记",
+                      ajxx_ajly AS "案件来源"
+                    FROM "ywdata"."zq_zfba_ajxx"
+                    WHERE ajxx_lasj BETWEEN %s AND %s
+                    AND ajxx_ajzt IN ('已立案','已受案','已受理')
+                    AND 1=1
+                    """
+                )
+                + where_pat
+                + where_diqu
+                + sql.SQL(" ORDER BY ajxx_lasj DESC")
+            )
+            if limit_n:
+                q = q + sql.SQL(" LIMIT %s")
+                params9.append(limit_n + 1)
+            cur.execute(q, params9)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            if limit_n and len(rows) > limit_n:
+                truncated = True
+                rows = rows[:limit_n]
+            return rows, truncated
+
+        # 新增指标：高质量（刑事案件关联拘留证）
+        if metric == "高质量":
+            params10: List[Any] = [start_time, end_time]
+            where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.SQL("aj.ajxx_aymc"))
+            params10 += pat_params
+            where_diqu = sql.SQL("")
+            if not is_all:
+                where_diqu = sql.SQL(" AND LEFT(aj.ajxx_cbdw_bh_dm,6)=%s")
+                params10.append(diqu)
+            q = (
+                sql.SQL(
+                    """
+                    SELECT
+                      aj.ajxx_ajbh AS "案件编号",
+                      aj.ajxx_jqbh AS "警情编号",
+                      aj.ajxx_ajmc AS "案件名称",
+                      aj.ajxx_ajlx AS "案件类型",
+                      aj.ajxx_ajzt AS "案件状态",
+                      aj.ajxx_ay AS "案由",
+                      aj.ajxx_ay_dm AS "案由代码",
+                      aj.ajxx_fasj AS "发案时间",
+                      aj.ajxx_lasj AS "立案时间",
+                      aj.ajxx_sldw_mc AS "受理单位",
+                      aj.ajxx_cbdw_mc AS "承办单位",
+                      LEFT(aj.ajxx_cbdw_bh_dm, 6) AS "地区",
+                      aj.ajxx_zbbj AS "在办标记",
+                      aj.ajxx_ajly AS "案件来源",
+                      COUNT(jlz.jlz_id) AS "刑拘人数"
+                    FROM "ywdata"."zq_zfba_ajxx" aj
+                    LEFT JOIN "ywdata"."zq_zfba_jlz" jlz ON aj.ajxx_ajbh = jlz.ajxx_ajbh
+                    WHERE aj.ajxx_lasj BETWEEN %s AND %s
+                    AND aj.ajxx_ajlx = '刑事'
+                    AND 1=1
+                    """
+                )
+                + where_pat
+                + where_diqu
+                + sql.SQL("""
+                    GROUP BY
+                      aj.ajxx_ajbh, aj.ajxx_jqbh, aj.ajxx_ajmc, aj.ajxx_ajlx,
+                      aj.ajxx_ajzt, aj.ajxx_ay, aj.ajxx_ay_dm, aj.ajxx_fasj,
+                      aj.ajxx_lasj, aj.ajxx_sldw_mc, aj.ajxx_cbdw_mc,
+                      LEFT(aj.ajxx_cbdw_bh_dm, 6), aj.ajxx_zbbj, aj.ajxx_ajly
+                    HAVING COUNT(jlz.jlz_id) > 2
+                    ORDER BY aj.ajxx_lasj DESC
+                """)
+            )
+            if limit_n:
+                q = q + sql.SQL(" LIMIT %s")
+                params10.append(limit_n + 1)
+            cur.execute(q, params10)
             cols = [d[0] for d in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
             if limit_n and len(rows) > limit_n:

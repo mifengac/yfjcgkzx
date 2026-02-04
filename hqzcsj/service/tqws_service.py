@@ -34,6 +34,7 @@ def start_tqws_job(
     username: str,
     access_token: str,
     url: str,
+    source: str,
     params: Dict[str, Any],
 ) -> str:
     job_id = uuid.uuid4().hex
@@ -56,6 +57,7 @@ def start_tqws_job(
             "job_id": job_id,
             "access_token": access_token,
             "url": url,
+            "source": source,
             "params": dict(params or {}),
         },
         daemon=True,
@@ -108,7 +110,19 @@ def _post_page(*, url: str, headers: Dict[str, str], form: Dict[str, Any], timeo
     return payload
 
 
-def _run_job(*, username: str, job_id: str, access_token: str, url: str, params: Dict[str, Any]) -> None:
+def _resolve_source(source: str) -> Tuple[str, str]:
+    """
+    返回 (source_name, table)。
+    """
+    s = (source or "").strip()
+    if s in ("tqws", "提请文书", "提请"):
+        return "提请文书", "zq_zfba_tqzmjy"
+    if s in ("xjs2", "训诫书（未成年人）", "训诫书(未成年人)", "训诫书2", "训诫书"):
+        return "训诫书（未成年人）", "zq_zfba_xjs2"
+    raise RuntimeError(f"未知数据源: {s}")
+
+
+def _run_job(*, username: str, job_id: str, access_token: str, url: str, source: str, params: Dict[str, Any]) -> None:
     key = (username or "", job_id)
     try:
         _update_status(key, state="running", message="任务执行中...")
@@ -134,8 +148,7 @@ def _run_job(*, username: str, job_id: str, access_token: str, url: str, params:
         base_form["pagesize"] = str(page_size)
 
         schema = DB_CONFIG.get("schema") or "ywdata"
-        # 固定写入表（按需求）：zq_zfba_tqzmjy
-        table = "zq_zfba_tqzmjy"
+        source_name, table = _resolve_source(source)
         pk_name = str(base_form.get("pkName") or "ID").strip() or "ID"
 
         conn = get_database_connection()
@@ -223,7 +236,7 @@ def _run_job(*, username: str, job_id: str, access_token: str, url: str, params:
 
             results = [
                 {
-                    "name": "提请文书",
+                    "name": source_name,
                     "schema": schema,
                     "table": table,
                     "fetched": fetched_total,
