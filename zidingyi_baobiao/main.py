@@ -6,7 +6,6 @@ from typing import Any
 
 from flask import Flask, jsonify
 
-from zidingyi_baobiao.api.datasource import datasource_bp
 from zidingyi_baobiao.api.dataset import dataset_bp
 from zidingyi_baobiao.api.module import module_bp
 from zidingyi_baobiao.core.exceptions import AppError
@@ -25,7 +24,6 @@ def create_app() -> Flask:
     _configure_logging()
     _register_error_handlers(app)
 
-    app.register_blueprint(datasource_bp)
     app.register_blueprint(dataset_bp)
     app.register_blueprint(module_bp)
 

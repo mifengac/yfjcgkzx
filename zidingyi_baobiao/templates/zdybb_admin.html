@@ -30,53 +30,12 @@
     </div>
 
     <div class="card">
-      <h3 style="margin:0 0 8px 0;">DataSource</h3>
-      <div class="grid2">
-        <div>
-          <div class="muted">POST /datasource（示例 JSON）</div>
-          <textarea id="dsCreateBody">{
-  "db_type": "kingbase",
-  "host": "127.0.0.1",
-  "port": 54321,
-  "database": "yfywk",
-  "username": "yfywk",
-  "password": "ywkuser_2025",
-  "schema": "ywdata",
-  "name": "本地金仓"
-}</textarea>
-          <div class="actions" style="margin-top:8px;">
-            <button onclick="postJson('/datasource', 'dsCreateBody')">创建</button>
-            <button class="secondary" onclick="getJson('/datasource')">列表</button>
-          </div>
-        </div>
-        <div>
-          <div class="muted">POST /datasource/&lt;id&gt;/test</div>
-          <input id="dsTestId" placeholder="数据源 id，例如 1" />
-          <div class="actions" style="margin-top:8px;">
-            <button onclick="postNoBody(`/datasource/${val('dsTestId')}/test`)">测试连接</button>
-          </div>
-          <hr />
-          <div class="muted">PUT /datasource/&lt;id&gt;（可选：更新 host/port/... 或 password）</div>
-          <input id="dsUpdateId" placeholder="数据源 id，例如 1" />
-          <textarea id="dsUpdateBody">{
-  "name": "本地金仓-更新",
-  "password": "ywkuser_2025"
-}</textarea>
-          <div class="actions" style="margin-top:8px;">
-            <button onclick="putJson(`/datasource/${val('dsUpdateId')}`, 'dsUpdateBody')">更新</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
       <h3 style="margin:0 0 8px 0;">Dataset</h3>
       <div class="grid2">
         <div>
           <div class="muted">POST /dataset（示例：SQL 必须 SELECT/WITH；时间范围参数建议 :alarm_time_start/:alarm_time_end）</div>
           <textarea id="datasetCreateBody">{
   "name": "110警情-示例",
-  "data_source_id": 1,
   "timeout_ms": 300000,
   "max_rows": 100000,
   "sql_template": "WITH t AS (SELECT alarm_type, alarm_time, dept_code FROM ywdata.some_table WHERE alarm_time BETWEEN :alarm_time_start AND :alarm_time_end) SELECT * FROM t"
@@ -274,4 +233,3 @@
   </script>
 </body>
 </html>
-

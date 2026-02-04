@@ -4,17 +4,18 @@ from __future__ import annotations
 将自定义驱动报表系统作为主项目的子模块挂载。
 
 路由约定（挂载到主应用 url_prefix="/zidingyi_baobiao" 后）：
-- GET  /zidingyi_baobiao/                 子模块入口（返回 JSON 指引）
-- POST /zidingyi_baobiao/api/datasource   数据源管理
-- POST /zidingyi_baobiao/api/dataset      dataset 管理
-- POST /zidingyi_baobiao/api/module       module 管理与查询/导出
+- GET  /zidingyi_baobiao/            子模块入口（最简管理页）
+- POST /zidingyi_baobiao/api/dataset dataset 管理
+- POST /zidingyi_baobiao/api/module  module 管理与查询/导出
+
+说明：
+- 当前版本默认使用主项目既有数据库连接执行查询，不再提供 data_source 管理 API。
 """
 
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 from flask import session as flask_session
 
 from gonggong.config.database import get_database_connection
-from zidingyi_baobiao.api.datasource import datasource_bp
 from zidingyi_baobiao.api.dataset import dataset_bp
 from zidingyi_baobiao.api.module import module_bp
 
@@ -74,6 +75,5 @@ def _handle_500(_exc):  # type: ignore[no-untyped-def]
 
 
 # 子模块 API：统一挂载在 /api 前缀下，避免与主项目其它接口冲突
-zdybb_bp.register_blueprint(datasource_bp, url_prefix="/api")
 zdybb_bp.register_blueprint(dataset_bp, url_prefix="/api")
 zdybb_bp.register_blueprint(module_bp, url_prefix="/api")

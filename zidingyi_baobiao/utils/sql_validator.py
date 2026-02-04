@@ -96,3 +96,101 @@ def wrap_limit(sql: str, *, limit_param: str) -> str:
         raise SqlSecurityError("limit 参数名非法")
     return f"SELECT * FROM ( {sql} ) AS t LIMIT :{limit_param}"
 
+
+def to_psycopg2_named_paramstyle(sql: str) -> str:
+    """
+    将 :param 风格的命名参数转换为 psycopg2 支持的 %(param)s 风格。
+
+    注意：
+    - 会跳过单引号字符串、双引号标识符、以及 dollar-quoted 字符串
+    - 会跳过 :: 类型转换（避免把 : 误判为参数）
+    """
+    validate_sql_template(sql)
+    s = sql
+    out: list[str] = []
+    i = 0
+    n = len(s)
+
+    in_single = False
+    in_double = False
+    dollar_tag: str | None = None
+
+    def startswith_at(prefix: str, pos: int) -> bool:
+        return s.startswith(prefix, pos)
+
+    while i < n:
+        ch = s[i]
+
+        # dollar quote start/end: $tag$
+        if not in_single and not in_double and ch == "$":
+            j = i + 1
+            while j < n and re.match(r"[a-zA-Z0-9_]", s[j]):
+                j += 1
+            if j < n and s[j] == "$":
+                tag = s[i : j + 1]  # includes ending $
+                if dollar_tag is None:
+                    dollar_tag = tag
+                    out.append(tag)
+                    i = j + 1
+                    continue
+                if dollar_tag == tag:
+                    dollar_tag = None
+                    out.append(tag)
+                    i = j + 1
+                    continue
+            # fallthrough if not a valid tag
+
+        if dollar_tag is not None:
+            out.append(ch)
+            i += 1
+            continue
+
+        # single-quoted string
+        if not in_double and ch == "'":
+            out.append(ch)
+            if in_single:
+                # handle escaped ''
+                if i + 1 < n and s[i + 1] == "'":
+                    out.append("'")
+                    i += 2
+                    continue
+                in_single = False
+            else:
+                in_single = True
+            i += 1
+            continue
+
+        # double-quoted identifier
+        if not in_single and ch == '"':
+            out.append(ch)
+            if in_double:
+                if i + 1 < n and s[i + 1] == '"':
+                    out.append('"')
+                    i += 2
+                    continue
+                in_double = False
+            else:
+                in_double = True
+            i += 1
+            continue
+
+        if in_single or in_double:
+            out.append(ch)
+            i += 1
+            continue
+
+        # parameter :name (not :: cast)
+        if ch == ":" and not startswith_at("::", i):
+            if i + 1 < n and re.match(r"[a-zA-Z_]", s[i + 1]):
+                j = i + 2
+                while j < n and re.match(r"[a-zA-Z0-9_]", s[j]):
+                    j += 1
+                name = s[i + 1 : j]
+                out.append(f"%({name})s")
+                i = j
+                continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out)

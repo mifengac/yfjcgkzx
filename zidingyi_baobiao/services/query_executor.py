@@ -4,22 +4,21 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from sqlalchemy import select
-from sqlalchemy.sql import text as sql_text
-
+from zidingyi_baobiao.core.db import fetch_one, get_conn, get_schema, get_table_pk, pick_existing_column
 from zidingyi_baobiao.core.exceptions import QueryExecutionError, ValidationError
-from zidingyi_baobiao.models.meta_tables import get_meta_tables
 from zidingyi_baobiao.schemas.module_config import ColumnDef, FilterDef, MetricDef, ModuleConfig, parse_module_config
 from zidingyi_baobiao.services._row_accessors import first_key, first_of
-from zidingyi_baobiao.services.datasource_service import get_datasource_row, get_engine_for_datasource_row
 from zidingyi_baobiao.services.module_service import get_module_by_tab_key
-from zidingyi_baobiao.utils.sql_validator import extract_named_params, validate_sql_template, wrap_limit
+from zidingyi_baobiao.utils.sql_validator import extract_named_params, to_psycopg2_named_paramstyle, validate_sql_template, wrap_limit
 
 
 DEFAULT_QUERY_LIMIT = 2000
 DEFAULT_TIMEOUT_MS = 300_000
 DEFAULT_MAX_ROWS = 100_000
 EXPORT_MAX_ROWS = 100_000
+
+DATASET_TABLE = "dataset"
+MODULE_TABLE = "module_def"
 
 
 @dataclass(frozen=True)
@@ -32,26 +31,21 @@ class QueryExecutor:
     """
     查询执行引擎（核心模块）。
 
-    职责：
-    - 解析 module_def.config_json
-    - 多 dataset 串行执行（便于控制超时与错误返回）
-    - 维度字段映射（语义维度 -> 统一字段）
-    - Python 层按维度聚合合并（merge_by_dimension）
+    说明：
+    - 默认使用主项目既有 psycopg2 连接执行查询（避免 Kingbase 版本字符串导致 SQLAlchemy 方言解析失败）。
+    - 多 dataset 串行执行（便于控制 statement_timeout 与错误定位）。
     """
 
     def execute(self, tab_key: str, raw_params: Mapping[str, Any], *, export: bool) -> QueryResult:
+        schema = get_schema()
         module_row = get_module_by_tab_key(tab_key)
-        cfg = parse_module_config(module_row.get(_config_col(get_meta_tables().module_def)))
+        cfg = parse_module_config(module_row.get(_config_col(schema)))
 
         rows_all: List[Dict[str, Any]] = []
         for ds_cfg in cfg.datasets:
-            dataset_row = _get_dataset_row(ds_cfg.dataset_id)
-            sql_template = _get_dataset_sql(dataset_row)
+            dataset_row = _get_dataset_row(schema, ds_cfg.dataset_id)
+            sql_template = _get_dataset_sql(schema, dataset_row)
             validate_sql_template(sql_template)
-
-            data_source_id = int(first_of(dataset_row, "data_source_id", default=0) or 0)
-            if not data_source_id:
-                raise ValidationError(f"dataset({ds_cfg.dataset_id}).data_source_id 为空")
 
             timeout_ms = int(first_of(dataset_row, "timeout_ms", default=DEFAULT_TIMEOUT_MS) or DEFAULT_TIMEOUT_MS)
             max_rows = int(first_of(dataset_row, "max_rows", default=DEFAULT_MAX_ROWS) or DEFAULT_MAX_ROWS)
@@ -60,10 +54,7 @@ class QueryExecutor:
             if max_rows <= 0:
                 max_rows = DEFAULT_MAX_ROWS
 
-            if export:
-                limit = min(max_rows, EXPORT_MAX_ROWS)
-            else:
-                limit = min(max_rows, DEFAULT_QUERY_LIMIT)
+            limit = min(max_rows, EXPORT_MAX_ROWS) if export else min(max_rows, DEFAULT_QUERY_LIMIT)
 
             named_params = extract_named_params(sql_template)
             bind_params = _build_dataset_bind_params(
@@ -73,23 +64,16 @@ class QueryExecutor:
                 named_params=named_params,
             )
 
-            # 强制 LIMIT（非导出必须；导出也用来兜底 max_rows）
             sql_to_run = wrap_limit(sql_template, limit_param="_limit")
+            sql_to_run = to_psycopg2_named_paramstyle(sql_to_run)
             bind_params["_limit"] = limit
 
-            ds_row = get_datasource_row(data_source_id)
-            engine = get_engine_for_datasource_row(ds_row)
-
             try:
-                with engine.begin() as conn:
-                    # 每次执行前设置 statement_timeout（毫秒），避免单条 SQL 拖垮服务
-                    conn.exec_driver_sql(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
-                    result_rows = conn.execute(sql_text(sql_to_run), bind_params).mappings().all()
+                result_rows = _run_query(sql_to_run, bind_params, timeout_ms=timeout_ms)
             except Exception as exc:
                 logging.exception("dataset query failed: dataset_id=%s tab_key=%s", ds_cfg.dataset_id, tab_key)
                 raise QueryExecutionError(f"dataset({ds_cfg.dataset_id}) 查询失败：{exc}") from None
 
-            # 维度字段映射：输出统一语义维度字段，同时保留原字段，便于指标计算
             for r in result_rows:
                 mapped = dict(r)
                 for dim, field in ds_cfg.dimension_mapping.items():
@@ -102,6 +86,20 @@ class QueryExecutor:
         columns = _build_output_columns(cfg.columns, cfg.metrics)
         output_rows = _project_columns(merged_rows, cfg.columns)
         return QueryResult(columns=columns, rows=output_rows)
+
+
+def _run_query(sql_text: str, params: Mapping[str, Any], *, timeout_ms: int) -> List[Mapping[str, Any]]:
+    conn = get_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
+                cur.execute(sql_text, dict(params))
+                rows = cur.fetchall()
+                cols = [d[0] for d in cur.description] if cur.description else []
+        return [dict(zip(cols, r)) for r in rows]
+    finally:
+        conn.close()
 
 
 def _merge_rows(cfg: ModuleConfig, rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
@@ -272,41 +270,18 @@ def _build_output_columns(columns: Sequence[ColumnDef], metrics: Sequence[Metric
     return out
 
 
-def _get_dataset_row(dataset_id: int) -> Mapping[str, Any]:
-    tables = get_meta_tables()
-    dt = tables.dataset
-    pk = _pk_column_name(dt)
-    if not pk:
-        raise ValidationError("dataset 缺少主键，无法查询")
-    with tables.engine.connect() as conn:
-        row = conn.execute(select(dt).where(dt.c[pk] == dataset_id)).mappings().first()
-    if not row:
-        raise ValidationError(f"dataset 不存在：{dataset_id}")
-    return row
+def _get_dataset_row(schema: str, dataset_id: int) -> Mapping[str, Any]:
+    return fetch_one(schema, DATASET_TABLE, dataset_id)
 
 
-def _get_dataset_sql(row: Mapping[str, Any]) -> str:
-    key = first_key(row, "sql_template", "sql_text", "sql", "template_sql")
-    if not key:
-        raise ValidationError("dataset 缺少 SQL 字段（sql_template/sql_text/sql）")
-    sql = str(row.get(key) or "").strip()
-    if not sql:
+def _get_dataset_sql(schema: str, row: Mapping[str, Any]) -> str:
+    key = pick_existing_column(schema, DATASET_TABLE, ["sql_template", "sql_text", "sql", "template_sql"])
+    sql_val = str(row.get(key) or "").strip()
+    if not sql_val:
         raise ValidationError("dataset SQL 为空")
-    return sql
+    return sql_val
 
 
-def _config_col(table) -> str:  # type: ignore[no-untyped-def]
-    key = first_key(table.c, "config_json", "config", "config_text")
-    if not key:
-        raise ValidationError("module_def 表缺少 config_json 字段")
-    return key
-
-
-def _pk_column_name(table) -> Optional[str]:  # type: ignore[no-untyped-def]
-    pks = list(table.primary_key.columns)
-    if pks:
-        return pks[0].name
-    if "id" in table.c:
-        return "id"
-    return None
+def _config_col(schema: str) -> str:
+    return pick_existing_column(schema, MODULE_TABLE, ["config_json", "config", "config_text"])
 
