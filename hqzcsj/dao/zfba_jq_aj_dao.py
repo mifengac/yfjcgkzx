@@ -217,9 +217,11 @@ def count_gaozhiliang_by_diqu(conn, *, start_time: str, end_time: str, patterns:
     time_expr = _ts("aj", "ajxx_lasj", has_data=has_data)
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
 
+    # 计数口径必须与“详情”一致：按案件编号聚合后 HAVING 刑拘人数>2，再按地区计数
     q = (
         sql.SQL(
-            "SELECT {diqu} AS diqu, COUNT(DISTINCT aj.ajxx_ajbh) AS cnt "
+            "SELECT diqu, COUNT(1) AS cnt FROM ("
+            "SELECT {diqu} AS diqu, aj.ajxx_ajbh AS ajbh "
             "FROM {schema}.zq_zfba_ajxx aj "
             "LEFT JOIN {schema}.zq_zfba_jlz jlz ON aj.ajxx_ajbh = jlz.ajxx_ajbh "
             "WHERE {t} BETWEEN %s AND %s "
@@ -227,7 +229,8 @@ def count_gaozhiliang_by_diqu(conn, *, start_time: str, end_time: str, patterns:
             "AND 1=1 "
         ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
         + pat_sql
-        + sql.SQL(" GROUP BY diqu HAVING COUNT(jlz.jlz_id) > 2")
+        + sql.SQL(" GROUP BY {diqu}, aj.ajxx_ajbh HAVING COUNT(jlz.jlz_id) > 2").format(diqu=diqu_expr)
+        + sql.SQL(") t GROUP BY diqu")
     )
     with conn.cursor() as cur:
         cur.execute(q, [start_time, end_time] + pat_params)

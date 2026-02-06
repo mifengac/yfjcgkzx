@@ -282,16 +282,22 @@ def calculate_summary_by_fenju(data_rows: List[Dict[str, Any]]) -> List[Dict[str
         ajlx = str(row.get("案件类型") or "")
         has_jzws = str(row.get("是否开具矫治文书") or "否")
         has_tqzmjy = str(row.get("是否提请专门教育") or "否")
+        is_fhss = str(row.get("是否符合送生") or "否")
+        is_songxiao = str(row.get("是否送校") or "否")
         is_wei_xingju = str(row.get("是否未刑拘") or "否")
 
         if fenju not in fenju_stats:
             fenju_stats[fenju] = {
                 "违法人数": 0,
+                "符合送生（行政）": 0,
                 "矫治教育文书开具数(行政)": 0,
                 "提请专门教育申请书数(行政)": 0,
+                "送生数（行政）": 0,
                 "犯罪人数": 0,
+                "符合送生（刑事）": 0,
                 "矫治教育文书开具数(刑事)": 0,
                 "提请专门教育申请书数(刑事)": 0,
+                "送生数（刑事）": 0,
                 "刑拘数": 0,
             }
 
@@ -299,16 +305,24 @@ def calculate_summary_by_fenju(data_rows: List[Dict[str, Any]]) -> List[Dict[str
 
         if ajlx == "行政":
             stats["违法人数"] += 1
+            if is_fhss == "是":
+                stats["符合送生（行政）"] += 1
             if has_jzws == "是":
                 stats["矫治教育文书开具数(行政)"] += 1
             if has_tqzmjy == "是":
                 stats["提请专门教育申请书数(行政)"] += 1
+            if is_songxiao == "是":
+                stats["送生数（行政）"] += 1
         elif ajlx == "刑事":
             stats["犯罪人数"] += 1
+            if is_fhss == "是":
+                stats["符合送生（刑事）"] += 1
             if has_jzws == "是":
                 stats["矫治教育文书开具数(刑事)"] += 1
             if has_tqzmjy == "是":
                 stats["提请专门教育申请书数(刑事)"] += 1
+            if is_songxiao == "是":
+                stats["送生数（刑事）"] += 1
             # 刑拘数：案件类型='刑事' 且 是否未刑拘='否'
             if is_wei_xingju == "否":
                 stats["刑拘数"] += 1
@@ -322,11 +336,15 @@ def calculate_summary_by_fenju(data_rows: List[Dict[str, Any]]) -> List[Dict[str
     total = {
         "分局": "全市",
         "违法人数": sum(s["违法人数"] for s in fenju_stats.values()),
+        "符合送生（行政）": sum(s["符合送生（行政）"] for s in fenju_stats.values()),
         "矫治教育文书开具数(行政)": sum(s["矫治教育文书开具数(行政)"] for s in fenju_stats.values()),
         "提请专门教育申请书数(行政)": sum(s["提请专门教育申请书数(行政)"] for s in fenju_stats.values()),
+        "送生数（行政）": sum(s["送生数（行政）"] for s in fenju_stats.values()),
         "犯罪人数": sum(s["犯罪人数"] for s in fenju_stats.values()),
+        "符合送生（刑事）": sum(s["符合送生（刑事）"] for s in fenju_stats.values()),
         "矫治教育文书开具数(刑事)": sum(s["矫治教育文书开具数(刑事)"] for s in fenju_stats.values()),
         "提请专门教育申请书数(刑事)": sum(s["提请专门教育申请书数(刑事)"] for s in fenju_stats.values()),
+        "送生数（刑事）": sum(s["送生数（刑事）"] for s in fenju_stats.values()),
         "刑拘数": sum(s["刑拘数"] for s in fenju_stats.values()),
     }
     result.append(total)

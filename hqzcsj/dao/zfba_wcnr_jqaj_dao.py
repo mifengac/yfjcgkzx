@@ -70,7 +70,7 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
             SELECT LEFT(jq."cmdid", 6) AS diqu, COUNT(1) AS cnt
             FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
             WHERE jq."calltime" BETWEEN %s AND %s
-              AND jq."casemarkok" ~ '未成年'
+              AND jq."casemark" ~ '未成年'
               AND LEFT(jq."neworicharasubclass", 2) IN ('01','02')
               AND 1=1
             """
@@ -517,13 +517,13 @@ def fetch_detail_rows(
                       jq."occuraddress" AS "警情地址",
                       jq."casecontents" AS "报警内容",
                       jq."replies" AS "处警情况",
-                      jq."casemarkok" AS "警情标注",
+                      jq."casemark" AS "警情标注",
                       jq."lngofcriterion" AS "经度",
                       jq."latofcriterion" AS "纬度",
                       LEFT(jq."cmdid", 6) AS "地区"
                     FROM ywdata."zq_kshddpt_dsjfx_jq" jq
                     WHERE jq."calltime" BETWEEN %s AND %s
-                      AND jq."casemarkok" ~ '未成年'
+                      AND jq."casemark" ~ '未成年'
                       AND LEFT(jq."neworicharasubclass", 2) IN ('01','02')
                       AND 1=1
                     """
