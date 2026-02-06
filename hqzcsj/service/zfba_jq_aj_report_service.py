@@ -4,6 +4,7 @@ import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
+from typing import Sequence
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao import zfba_jq_aj_dao
@@ -37,7 +38,9 @@ class ZfbaJqAjReportService:
 
     _EXCEL_COM_LOCK = threading.Lock()
 
-    def build_report_xls(self, kssj: str, jssj: str, hbkssj: str, hbjssj: str) -> bytes:
+    def build_report_xls(
+        self, kssj: str, jssj: str, hbkssj: str, hbjssj: str, *, za_types: Sequence[str] = ()
+    ) -> bytes:
         tbkssj, tbjssj = self.calculate_tb_dates(kssj, jssj)
 
         repo_root = Path(__file__).resolve().parent.parent.parent
@@ -54,6 +57,7 @@ class ZfbaJqAjReportService:
                 tbjssj=tbjssj,
                 hbkssj=hbkssj,
                 hbjssj=hbjssj,
+                za_types=za_types,
             )
 
     def calculate_tb_dates(self, kssj: str, jssj: str) -> tuple[str, str]:
@@ -94,6 +98,7 @@ class ZfbaJqAjReportService:
         tbjssj: str,
         hbkssj: str,
         hbjssj: str,
+        za_types: Sequence[str],
     ) -> bytes:
         """
         使用 Windows Excel COM 自动化写入模板。
@@ -162,7 +167,9 @@ class ZfbaJqAjReportService:
                 for pkey, (s, e) in periods.items():
                     jq = zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=s, end_time=e, leixing_list=[leixing])
                     ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=s, end_time=e, patterns=patterns)
-                    zhiju = zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=s, end_time=e, patterns=patterns)
+                    zhiju = zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(
+                        conn, start_time=s, end_time=e, patterns=patterns, za_types=za_types
+                    )
                     jlz = zfba_jq_aj_dao.count_jlz_by_diqu(conn, start_time=s, end_time=e, patterns=patterns)
                     data_by_period[pkey] = {"jq": jq, "ajxx": ajxx, "zhiju": zhiju, "jlz": jlz}
 
@@ -234,4 +241,3 @@ class ZfbaJqAjReportService:
                     tmp_path.unlink()
             except Exception:
                 pass
-

@@ -381,6 +381,7 @@
             const jssj = formatDateTime(endEl.value);
             const hbkssj = formatDateTime(hbStartEl.value);
             const hbjssj = formatDateTime(hbEndEl.value);
+            const zaTypes = selectedZaTypes();
             if (!kssj || !jssj || !hbkssj || !hbjssj) {
                 errEl.textContent = "请填写开始/结束/环比开始/环比结束时间";
                 return;
@@ -391,7 +392,7 @@
                 const resp = await fetch(`{{ url_for('zfba_jq_aj.report_export') }}`, {
                     method: "POST",
                     headers: {"Content-Type":"application/json"},
-                    body: JSON.stringify({kssj, jssj, hbkssj, hbjssj})
+                    body: JSON.stringify({kssj, jssj, hbkssj, hbjssj, za_types: zaTypes})
                 });
                 if (!resp.ok) {
                     let msg = "导出报表失败";

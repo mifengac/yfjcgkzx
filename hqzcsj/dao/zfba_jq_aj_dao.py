@@ -243,7 +243,9 @@ def count_gaozhiliang_by_diqu(conn, *, start_time: str, end_time: str, patterns:
     return out
 
 
-def count_xzcfjds_zhiju_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str], za_types: Sequence[str]) -> Dict[str, int]:
+def count_xzcfjds_zhiju_by_diqu(
+    conn, *, start_time: str, end_time: str, patterns: Sequence[str], za_types: Sequence[str] = ()
+) -> Dict[str, int]:
     """治安处罚：支持按处罚种类过滤（警告、罚款、拘留）"""
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_xzcfjds")
     aj_has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
@@ -265,8 +267,8 @@ def count_xzcfjds_zhiju_by_diqu(conn, *, start_time: str, end_time: str, pattern
     if cfzl_conditions:
         cfzl_where = " AND (" + " OR ".join(cfzl_conditions) + ")"
     else:
-        # 默认只查拘留
-        cfzl_where = f" AND {cfzl_expr.as_string(conn)} ~ '拘留'"
+        # 不选治安处罚类型：默认全量（不加过滤条件）
+        cfzl_where = ""
 
     q = (
         sql.SQL(
@@ -540,8 +542,8 @@ def fetch_detail_rows(
                 if not is_all:
                     params3.append(diqu)
             else:
-                # 默认只查拘留
-                cfzl_where = " AND xz.xzcfjds_cfzl ~ '拘留'"
+                # 不选治安处罚类型：默认全量（不加过滤条件）
+                cfzl_where = ""
 
             q = (
                 sql.SQL(

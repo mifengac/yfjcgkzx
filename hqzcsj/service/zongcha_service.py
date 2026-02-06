@@ -485,6 +485,13 @@ def _build_job_defs(*, base_forms: Dict[str, Dict[str, str]], start_time: str, e
                 time_field_codes=["xzcfjds_spsj"],
             ),
             ZongchaJobDef(
+                name="不予行政处罚决定书",
+                table="zq_zfba_byxzcfjds",
+                pk_fields=["byxzcfjds_id"],
+                base_form=_make_form_byxzcfjds(start_time=start_time, end_time=end_time),
+                time_field_codes=["byxzcfjds_tfsj"],
+            ),
+            ZongchaJobDef(
                 name="拘留证",
                 table="zq_zfba_jlz",
                 pk_fields=["jlz_id"],
@@ -859,6 +866,56 @@ def _make_form_xzcfjds(*, start_time: str, end_time: str, org_codes: Sequence[st
         result_table_name="行政-行政处罚决定书",
         tab_id="52",
         tab_code="xzcfjds",
+    )
+
+
+def _make_form_byxzcfjds(*, start_time: str, end_time: str) -> Dict[str, str]:
+    tab_id = "1751872828124209177"
+    tab_code = "byxzcfjds"
+    conds = [
+        {
+            "tabId": tab_id,
+            "tabCode": tab_code,
+            "fieldCode": "byxzcfjds_tfsj",
+            "tabType": "2",
+            "isPub": False,
+            "operateSign": "10",
+            "values": [start_time, end_time],
+            "excludeDays": [],
+            "rangeIncludeType": "0",
+        },
+        {
+            "tabId": tab_id,
+            "tabCode": tab_code,
+            "fieldCode": "byxzcfjds_isdel",
+            "tabType": "2",
+            "isPub": False,
+            "operateSign": "7",
+            "values": ["0"],
+            "isIncludeChilds": False,
+            "dicCode": "00",
+        },
+        {
+            "tabId": tab_id,
+            "tabCode": tab_code,
+            "fieldCode": "byxzcfjds_wszt",
+            "tabType": "2",
+            "isPub": False,
+            "operateSign": "7",
+            "values": ["03"],
+            "isIncludeChilds": False,
+            "dicCode": "ZD_CASE_WSZT",
+        },
+    ]
+    json_obj = {"paramArray": [{"conditions": conds, "tabId": tab_id, "tabCode": tab_code, "domainId": "11"}]}
+    return _make_form_base(
+        json_obj=json_obj,
+        domain_id="11",
+        result_tab_id=tab_id,
+        result_tab_code=tab_code,
+        result_table_name="行政-不予行政处罚决定书",
+        tab_id=tab_id,
+        tab_code=tab_code,
     )
 
 

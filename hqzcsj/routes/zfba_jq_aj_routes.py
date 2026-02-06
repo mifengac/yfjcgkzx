@@ -180,12 +180,16 @@ def report_export() -> Response:
         jssj = (params.get("jssj") or "").strip()
         hbkssj = (params.get("hbkssj") or "").strip()
         hbjssj = (params.get("hbjssj") or "").strip()
+        za_types = params.get("za_types") or []
+        if not isinstance(za_types, list):
+            za_types = []
+        za_types = [str(x).strip() for x in za_types if str(x).strip()]
 
         if not kssj or not jssj or not hbkssj or not hbjssj:
             return jsonify({"success": False, "message": "缺少参数：kssj/jssj/hbkssj/hbjssj"}), 400
 
         service = ZfbaJqAjReportService()
-        data = service.build_report_xls(kssj, jssj, hbkssj, hbjssj)
+        data = service.build_report_xls(kssj, jssj, hbkssj, hbjssj, za_types=za_types)
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
         filename = f"警情案件处罚统计报表_{ts}.xls"
 
