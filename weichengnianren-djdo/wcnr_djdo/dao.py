@@ -64,7 +64,7 @@ LEFT JOIN (
 ) mza
     ON jq."caseno" = mza."警情编号"
 WHERE jq."calltime" BETWEEN %s AND %s
-AND jq."casemarkok" ~ '未成年'
+AND jq."casemark" ~ '未成年'
 {type_condition}
 ;
 """

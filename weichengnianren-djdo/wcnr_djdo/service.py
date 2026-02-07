@@ -167,7 +167,7 @@ def metric_cs_fa(start_time: datetime, end_time: datetime, case_types: List[str]
             )
             texts.append(str(addr))
         preds = predict_addresses(texts)
-        for r, (label, prob) in zip(detail_rows, preds, strict=False):
+        for r, (label, prob) in zip(detail_rows, preds):
             r["分类结果"] = label
             r["置信度"] = round(float(prob or 0.0), 5)
     except Exception:

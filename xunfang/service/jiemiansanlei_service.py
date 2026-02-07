@@ -412,7 +412,7 @@ def _write_table_xls(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
 def _append_predictions(rows: List[Dict[str, Any]]) -> None:
     texts = [str((r.get("警情地址") or "")).strip() for r in rows]
     preds = predict_addresses(texts)
-    for r, (label, prob) in zip(rows, preds, strict=False):
+    for r, (label, prob) in zip(rows, preds):
         r["pred_label"] = label
         r["pred_prob"] = prob
 
@@ -442,7 +442,7 @@ def predict_addresses(texts: Sequence[str]) -> List[Tuple[str, float]]:
             logits = outputs.logits
             probs = F.softmax(logits, dim=-1)
             best_prob, best_idx = torch.max(probs, dim=-1)
-        for t, p, idx in zip(batch, best_prob.tolist(), best_idx.tolist(), strict=False):
+        for t, p, idx in zip(batch, best_prob.tolist(), best_idx.tolist()):
             if not str(t).strip():
                 results.append(("", 0.0))
                 continue

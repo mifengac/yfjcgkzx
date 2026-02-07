@@ -39,7 +39,7 @@ def build_summary(
 
     返回: (meta, rows)
     - meta: {"start_time": "...", "end_time": "..."}
-    - rows: 按分局分组的统计列表 + 最后一行全市合计
+    - rows: 按地区分组的统计列表 + 最后一行全市合计
     """
     start_dt = parse_dt(start_time)
     end_dt = parse_dt(end_time)
@@ -58,8 +58,8 @@ def build_summary(
             conn, start_time=meta["start_time"], end_time=meta["end_time"], leixing_list=leixing_list
         )
 
-        # 按分局分组统计
-        summary_rows = jzqk_tongji_dao.calculate_summary_by_fenju(detail_rows)
+        # 按地区分组统计
+        summary_rows = jzqk_tongji_dao.calculate_summary_by_diqu(detail_rows)
 
         return meta, summary_rows
     finally:

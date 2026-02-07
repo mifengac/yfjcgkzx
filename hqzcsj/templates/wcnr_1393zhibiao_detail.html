@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>未成年人1393指标明细</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .card { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow:0 6px 22px rgba(18,38,63,.06); border:1px solid #e6e8ef; }
+        .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+        .btn { height:34px; border:0; border-radius:8px; background:#1976d2; color:#fff; padding:0 14px; font-weight:700; cursor:pointer; }
+        .btn.secondary { background:#555; }
+        .muted { color:#666; font-size:12px; }
+        .err { color:#b42318; font-size:13px; white-space:pre-wrap; }
+        .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+        table { border-collapse: collapse; width: 100%; min-width: 920px; }
+        th, td { border-bottom:1px solid #eef0f6; padding:10px 12px; font-size:13px; text-align:left; white-space:nowrap; }
+        th { position: sticky; top: 0; background: #fbfcff; z-index: 2; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display:none; position:absolute; right:0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; min-width:140px; box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index: 20; }
+        .dropdown-menu a { display:block; padding:10px 12px; color:#111; text-decoration:none; font-size:13px; }
+        .dropdown-menu a:hover { background:#f3f5fb; }
+        .dropdown.open .dropdown-menu { display:block; }
+    </style>
+</head>
+<body>
+<header class="header">
+    <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+        <div>
+            <h1 style="margin:0;">未成年人1393指标明细</h1>
+            <p style="margin:6px 0 0 0;" class="muted">
+                指标：{{ metric_label }}；地区：{{ diqu_display }}
+            </p>
+        </div>
+        <div class="row">
+            <a href="{{ url_for('hqzcsj.zongcha_index') }}" class="btn secondary" style="text-decoration:none; display:inline-flex; align-items:center;">返回</a>
+            <div class="dropdown" id="exportDd">
+                <button class="btn" id="exportBtn">导出</button>
+                <div class="dropdown-menu">
+                    <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                    <a href="#" data-fmt="csv">导出 csv</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="container" style="max-width:1200px;">
+    <section class="card">
+        <div class="muted">时间范围：{{ start_time }} ~ {{ end_time }}</div>
+        <div class="muted" style="margin-top:6px;">
+            类型：{% if leixing_list %}{{ leixing_list|join('，') }}{% else %}未选择(默认全量){% endif %}
+        </div>
+        <div class="muted" id="rateBox" style="margin-top:6px;"></div>
+        <div class="err" id="errBox" style="margin-top:10px;"></div>
+        <div class="muted" id="statusBox" style="margin-top:10px;"></div>
+    </section>
+
+    <section class="card">
+        <div class="table-wrap">
+            <table id="tbl"></table>
+        </div>
+    </section>
+</main>
+
+<script>
+    (function() {
+        const exportDd = document.getElementById("exportDd");
+        const exportBtn = document.getElementById("exportBtn");
+        exportBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            exportDd.classList.toggle("open");
+        });
+        exportDd.querySelectorAll(".dropdown-menu a").forEach(a => {
+            a.addEventListener("click", (e) => {
+                e.preventDefault();
+                const fmt = a.getAttribute("data-fmt") || "xlsx";
+                doExport(fmt);
+                exportDd.classList.remove("open");
+            });
+        });
+        document.addEventListener("click", (e) => { if (!exportDd.contains(e.target)) exportDd.classList.remove("open"); });
+
+        const startTime = "{{ start_time }}";
+        const endTime = "{{ end_time }}";
+        const metric = "{{ metric }}";
+        const diqu = "{{ diqu }}";
+        const leixingList = {{ (leixing_list or [])|tojson }};
+
+        const errBox = document.getElementById("errBox");
+        const statusBox = document.getElementById("statusBox");
+        const rateBox = document.getElementById("rateBox");
+        const tbl = document.getElementById("tbl");
+
+        function buildQueryParams() {
+            const usp = new URLSearchParams();
+            usp.set("start_time", startTime);
+            usp.set("end_time", endTime);
+            usp.set("metric", metric);
+            usp.set("diqu", diqu);
+            for (const t of leixingList) usp.append("leixing", t);
+            return usp;
+        }
+
+        function renderTable(rows) {
+            if (!rows || rows.length === 0) {
+                tbl.innerHTML = `<thead><tr><th>无数据</th></tr></thead><tbody><tr><td class="muted">无数据</td></tr></tbody>`;
+                return;
+            }
+            const headers = Object.keys(rows[0] || {});
+            const thead = `<thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>`;
+            const tbodyRows = rows.map(r => {
+                const tds = headers.map(h => {
+                    const v = (r[h] == null) ? "" : String(r[h]);
+                    return `<td>${v}</td>`;
+                });
+                return `<tr>${tds.join("")}</tr>`;
+            }).join("");
+            tbl.innerHTML = thead + `<tbody>${tbodyRows}</tbody>`;
+        }
+
+        async function query() {
+            errBox.textContent = "";
+            statusBox.textContent = "加载中...";
+            if (rateBox) rateBox.textContent = "";
+            try {
+                const usp = buildQueryParams();
+                const resp = await fetch(`{{ url_for('wcnr_1393zhibiao.api_detail') }}?` + usp.toString());
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.message || "查询失败");
+                const rows = data.rows || [];
+                statusBox.textContent = `共 ${rows.length} 条`;
+                if (rateBox) {
+                    if (metric === "yzbl_cover") {
+                        const denom = rows.length;
+                        const num = rows.filter(r => String(r["是否开具矫治文书"] || "") === "是").length;
+                        const rate = denom ? ((num / denom) * 100).toFixed(2) + "%" : "0.00%";
+                        rateBox.textContent = `分子：${num}；分母：${denom}；覆盖率：${rate}`;
+                    } else if (metric === "syzmj_songjiao") {
+                        const denom = rows.length;
+                        const num = rows.filter(r => String(r["是否送校"] || "") === "是").length;
+                        const rate = denom ? ((num / denom) * 100).toFixed(2) + "%" : "0.00%";
+                        rateBox.textContent = `分子(送校)：${num}；分母(符合送生)：${denom}；送矫率：${rate}`;
+                    }
+                }
+                renderTable(rows);
+            } catch (e) {
+                errBox.textContent = e.message || String(e);
+                statusBox.textContent = "";
+                if (rateBox) rateBox.textContent = "";
+                renderTable([]);
+            }
+        }
+
+        function doExport(fmt) {
+            const usp = buildQueryParams();
+            usp.set("fmt", fmt);
+            const href = `{{ url_for('wcnr_1393zhibiao.export_metric_detail') }}?` + usp.toString();
+            window.location.href = href;
+        }
+
+        query();
+    })();
+</script>
+</body>
+</html>
