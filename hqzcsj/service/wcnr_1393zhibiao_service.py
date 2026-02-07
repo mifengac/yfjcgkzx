@@ -149,18 +149,14 @@ def build_summary(
             )
         )
 
-        # 送矫率：复用矫治情况统计的明细逻辑，统计“是否符合送生=是”的送校比例
-        sj_rows = jzqk_tongji_dao.fetch_jzqk_data(
+        # 送矫率：复用矫治情况统计的明细逻辑
+        # - 分子：是否送校=是（送生数）
+        # - 分母：是否符合送生=是（符合送生数）
+        sj_rows_all = jzqk_tongji_dao.fetch_jzqk_data(
             conn, start_time=meta["start_time"], end_time=meta["end_time"], leixing_list=leixing_list
         )
-        sj_rows = [r for r in sj_rows if str(r.get("是否符合送生") or "") == "是"]
-        sj_denom_by = _count_by_diqu(sj_rows)
-        sj_num_by: Dict[str, int] = {}
-        for r in sj_rows:
-            if str(r.get("是否送校") or "") != "是":
-                continue
-            code = str(r.get("地区") or "").strip() or "未知"
-            sj_num_by[code] = sj_num_by.get(code, 0) + 1
+        sj_num_by = _count_by_diqu([r for r in sj_rows_all if str(r.get("是否送校") or "") == "是"])
+        sj_denom_by = _count_by_diqu([r for r in sj_rows_all if str(r.get("是否符合送生") or "") == "是"])
         sj_denom_total = sum(sj_denom_by.values())
         sj_num_total = sum(sj_num_by.values())
     finally:
@@ -170,7 +166,7 @@ def build_summary(
             pass
 
     all_codes = set()
-    for d in (wfzf_by, jyh_cf_by, jyh_wfzf_by, cs_by, bqh_by, yz_denom_by, sj_denom_by):
+    for d in (wfzf_by, jyh_cf_by, jyh_wfzf_by, cs_by, bqh_by, yz_denom_by, sj_num_by, sj_denom_by):
         all_codes.update(d.keys())
     ordered_codes = [c for c in DIQU_ORDER if c in all_codes]
     rest_codes = sorted([c for c in all_codes if c not in set(DIQU_ORDER)])
@@ -280,7 +276,6 @@ def fetch_detail(
             sj_rows = jzqk_tongji_dao.fetch_jzqk_data(
                 conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list
             )
-            sj_rows = [r for r in sj_rows if str(r.get("是否符合送生") or "") == "是"]
             if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
                 code = str(diqu).strip()
                 sj_rows = [r for r in sj_rows if str(r.get("地区") or "").strip() == code]
@@ -363,7 +358,6 @@ def fetch_all_details(
         sj_rows = jzqk_tongji_dao.fetch_jzqk_data(
             conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list
         )
-        sj_rows = [r for r in sj_rows if str(r.get("是否符合送生") or "") == "是"]
     finally:
         try:
             conn.close()
