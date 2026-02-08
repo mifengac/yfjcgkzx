@@ -52,20 +52,7 @@
 
 <script>
     (function() {
-        const COLS = [
-            "地区",
-            "违法人数",
-            "符合送生（行政）",
-            "矫治教育文书开具数(行政)",
-            "提请专门教育申请书数(行政)",
-            "送生数（行政）",
-            "犯罪人数",
-            "符合送生（刑事）",
-            "矫治教育文书开具数(刑事)",
-            "提请专门教育申请书数(刑事)",
-            "送生数（刑事）",
-            "刑拘数"
-        ];
+        const DEFAULT_COLS = [];
 
         const startEl = document.getElementById("jzqkStart");
         const endEl = document.getElementById("jzqkEnd");
@@ -212,19 +199,25 @@
             return usp;
         }
 
-        function renderTable(rows, meta) {
-            const thead = `<thead><tr>${COLS.map(c => `<th>${c}</th>`).join("")}</tr></thead>`;
+        function renderTable(rows, columns) {
+            const cols = (Array.isArray(columns) && columns.length)
+                ? columns
+                : ((rows && rows.length) ? Object.keys(rows[0]) : DEFAULT_COLS);
+            const thead = cols.length
+                ? `<thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>`
+                : `<thead><tr><th>无数据</th></tr></thead>`;
             const tbodyRows = (rows || []).map(r => {
                 const diquName = r["地区"] || "";
                 const rowClass = (diquName === "全市") ? "total-row" : "";
-                const tds = COLS.map(c => {
+                const tds = cols.map(c => {
                     if (c === "地区") return `<td class="rowh">${diquName}</td>`;
                     const v = (r[c] == null) ? 0 : r[c];
                     return `<td class="num-cell">${v || 0}</td>`;
                 });
                 return `<tr class="${rowClass}">${tds.join("")}</tr>`;
             }).join("");
-            tbl.innerHTML = thead + `<tbody>${tbodyRows || `<tr><td colspan="${COLS.length}" class="muted">无数据</td></tr>`}</tbody>`;
+            const emptyColspan = Math.max(cols.length, 1);
+            tbl.innerHTML = thead + `<tbody>${tbodyRows || `<tr><td colspan="${emptyColspan}" class="muted">无数据</td></tr>`}</tbody>`;
         }
 
         async function query() {
@@ -238,7 +231,7 @@
                 if (!data.success) throw new Error(data.message || "查询失败");
                 statusEl.textContent = `当前统计时间段：${data.meta.start_time} ~ ${data.meta.end_time}`;
                 lastMeta = data.meta || null;
-                renderTable(data.rows || [], data.meta || {});
+                renderTable(data.rows || [], data.columns || DEFAULT_COLS);
             } catch (e) {
                 errEl.textContent = e.message || String(e);
                 statusEl.textContent = "";

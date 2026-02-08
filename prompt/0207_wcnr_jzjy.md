@@ -1,3 +1,176 @@
+# 任务:阅读yfjcgkzx\hqzcsj模块代码,并按照我下面的内容生成开发清单,如有问题则向我提问,如有更好的建议则向我提出
+## 修改yfjcgkzx\hqzcsj模块的"矫治情况统计"的数据源及列显示
+### 列显示:
+    - 第一列为"地区":通过对数据源"地区"字段分组计数得到,映射关系为{445300:市局,445302:云城,445303:云安,445321:新兴,445322:郁南,445381:罗定}
+    - 第二列为"违法犯罪人数":通过对数据源"所有值分组计数得到,最后一行是不分组计数的数据,即全部数据
+    - 第三列为"矫治教育文书开具数":通过对数据源"是否开具矫治文书"值为'是'的数据过滤并分组计数得到,最后一行是不分组计数的数据,即全部数据
+    - 第四列为"监护文书开具数":通过对数据源"是否开具家庭教育指导书"值为'是'的数据过滤并分组计数得到,最后一行是不分组计数的数据,即全部数据
+    - 第五列为"提请专门教育申请书数":通过对数据源"是否开具家庭教育指导书"值为'是'的数据过滤并分组计数得到,最后一行是不分组计数的数据,即全部数据
+    - 第五列为"符合送校数":通过对数据源"是否符合送生"值为'是'的数据过滤并分组计数得到,最后一行是不分组计数的数据,即全部数据
+    - 第六列为"是否送校":通过对数据源"是否送校"值为'是'的数据过滤并分组计数得到,最后一行是不分组计数的数据,即全部数据
+    - 第七列为"刑拘数":通过对数据源"是否刑拘"值为'是'的数据过滤并分组计数得到,最后一行是不分组计数的数据,即全部数据
+    - 最后一行是不分组的数据源计数
+### 数据源
+	```
+	WITH violation_counts AS (
+		-- 计算每个人的违法次数和案由
+		SELECT 
+			xyrxx_sfzh AS 身份证号,
+			COUNT(*) AS 违法次数,
+			COUNT(DISTINCT ajxx_join_ajxx_ay_dm) AS 不同案由数,
+			MIN(ajxx_join_ajxx_ay_dm) AS 案由代码
+		FROM ywdata."zq_zfba_wcnr_xyr"
+		WHERE xyrxx_isdel_dm = 0 AND ajxx_join_ajxx_isdel_dm = 0
+		GROUP BY xyrxx_sfzh
+	),
+	first_case_xjs AS (
+		-- 查找第一次违法是否开具了训诫书
+		SELECT DISTINCT
+			vw.身份证号,
+			vw.案件编号 AS 当前案件编号,
+			CASE 
+				WHEN EXISTS (
+					SELECT 1 
+					FROM ywdata."zq_zfba_wcnr_xyr" w
+					JOIN ywdata."zq_zfba_xjs2" x 
+						ON w."ajxx_join_ajxx_ajbh" = x.ajbh 
+						AND w.xyrxx_xm = x.xgry_xm
+					WHERE w.xyrxx_sfzh = vw.身份证号
+						AND w."ajxx_join_ajxx_ajbh" != vw.案件编号
+						AND w.xyrxx_isdel_dm = 0
+						AND w.ajxx_join_ajxx_isdel_dm = 0
+				) THEN 1 
+				ELSE 0 
+			END AS 有训诫书
+		FROM v_wcnr_wfry_base vw
+	)
+	SELECT DISTINCT
+		vw.案件编号,
+		vw.人员编号,
+		vw.案件类型,
+		vw.案由,
+		vw.地区,
+		vw.办案单位,
+		vw.立案时间,
+		vw.姓名,
+		vw.身份证号,
+		vw.户籍地,
+		vw.年龄,
+		vw.居住地,
+		
+		-- 治拘大于4天(仅行政案件)
+		CASE 
+			WHEN vw.案件类型 = '行政' AND EXISTS (
+				SELECT 1 FROM ywdata."zq_zfba_xzcfjds" x
+				WHERE x.ajxx_ajbh = vw.案件编号 
+					AND x.xzcfjds_rybh = vw.人员编号
+					AND CAST(x.xzcfjds_tj_jlts AS INTEGER) > 4
+			) THEN '是'
+			ELSE '否'
+		END AS 治拘大于4天,
+		
+		-- 2次违法且案由相同且第一次违法开具了训诫书(仅行政案件)
+		CASE 
+			WHEN vw.案件类型 = '行政' 
+				AND vc.违法次数 = 2 
+				AND vc.不同案由数 = 1
+				AND fcx.有训诫书 = 1
+			THEN '是'
+			ELSE '否'
+		END AS "2次违法且案由相同且第一次违法开具了训诫书",
+		
+		-- 3次及以上违法(仅行政案件)
+		CASE 
+			WHEN vw.案件类型 = '行政' AND vc.违法次数 > 2 THEN '是'
+			ELSE '否'
+		END AS "3次及以上违法",
+		
+		-- 是否刑拘(仅刑事案件)
+		CASE 
+			WHEN vw.案件类型 = '刑事' AND EXISTS (
+				SELECT 1 FROM ywdata."zq_zfba_jlz" j
+				WHERE j.ajxx_ajbh = vw.案件编号 AND j.jlz_rybh = vw.人员编号
+			) THEN '是'
+			ELSE '否'
+		END AS 是否刑拘,
+		
+		-- 是否开具矫治文书
+		CASE 
+			WHEN EXISTS (
+				SELECT 1 FROM ywdata."zq_zfba_zlwcnrzstdxwgftzs" z
+				WHERE z.zltzs_ajbh = vw.案件编号 AND z.zltzs_rybh = vw.人员编号
+			) OR EXISTS (
+				SELECT 1 FROM ywdata."zq_zfba_xjs2" x
+				WHERE x.ajbh = vw.案件编号 AND x.xgry_xm = vw.姓名
+			) THEN '是'
+			ELSE '否'
+		END AS 是否开具矫治文书,
+		
+		-- 是否开具加强监督教育/责令接受家庭教育指导通知书
+		CASE 
+			WHEN EXISTS (
+				SELECT 1 FROM ywdata."zq_zfba_jtjyzdtzs" j
+				WHERE j.jqjhjyzljsjtjyzdtzs_ajbh = vw.案件编号 
+					AND j.jqjhjyzljsjtjyzdtzs_rybh = vw.人员编号
+			) THEN '是'
+			ELSE '否'
+		END AS 是否开具家庭教育指导书,
+		
+		-- 是否开具提请专门教育申请书
+		CASE 
+			WHEN EXISTS (
+				SELECT 1 FROM ywdata."zq_zfba_tqzmjy" t
+				WHERE t.ajbh = vw.案件编号 AND t.xgry_xm = vw.姓名
+			) THEN '是'
+			ELSE '否'
+		END AS 是否开具专门教育申请书,
+		
+		-- 是否符合送生
+		CASE 
+			WHEN CAST(vw.年龄 AS INTEGER) > 11 AND (
+				-- 治拘大于4天
+				(vw.案件类型 = '行政' AND EXISTS (
+					SELECT 1 FROM ywdata."zq_zfba_xzcfjds" x
+					WHERE x.ajxx_ajbh = vw.案件编号 
+						AND x.xzcfjds_rybh = vw.人员编号
+						AND CAST(x.xzcfjds_tj_jlts AS INTEGER) > 4
+				))
+				-- 2次违法且案由相同且第一次违法开具了训诫书
+				OR (vw.案件类型 = '行政' AND vc.违法次数 = 2 AND vc.不同案由数 = 1 AND fcx.有训诫书 = 1)
+				-- 3次及以上违法
+				OR (vw.案件类型 = '行政' AND vc.违法次数 > 2)
+				-- 是否刑拘
+				OR (vw.案件类型 = '刑事' AND EXISTS (
+					SELECT 1 FROM ywdata."zq_zfba_jlz" j
+					WHERE j.ajxx_ajbh = vw.案件编号 AND j.jlz_rybh = vw.人员编号
+				))
+			) THEN '是'
+			ELSE '否'
+		END AS 是否符合送生,
+		
+		-- 是否送校
+		CASE 
+			WHEN EXISTS (
+				SELECT 1 FROM ywdata."zq_wcnr_sfzxx" s
+				WHERE s.sfzhm = vw.身份证号 
+					AND s.rx_time > vw.立案时间
+			) THEN '是'
+			ELSE '否'
+		END AS 是否送校
+
+	FROM v_wcnr_wfry_base vw
+	LEFT JOIN violation_counts vc ON vw.身份证号 = vc.身份证号
+	LEFT JOIN first_case_xjs fcx ON vw.身份证号 = fcx.身份证号 AND vw.案件编号 = fcx.当前案件编号
+	-- 在视图外进行时间和类型过滤
+	WHERE vw.录入时间 BETWEEN '2026-01-01' AND '2026-02-06'
+		AND vw.案由 SIMILAR TO (
+			SELECT ctc."ay_pattern" 
+			FROM "case_type_config" ctc 
+			WHERE ctc."leixing" = '打架斗殴'
+		)
+
+	ORDER BY vw.案件编号, vw.人员编号;
+	```
 # 帮我分析下这个SQL执行慢的原因
 ## 修改严重不良未成年人矫治教育覆盖率的数据源为
 	```

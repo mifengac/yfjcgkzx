@@ -10,7 +10,7 @@ from flask import Blueprint, Response, abort, jsonify, redirect, render_template
 from openpyxl import Workbook
 
 from gonggong.config.database import get_database_connection
-from hqzcsj.dao.jzqk_tongji_dao import fetch_leixing_list
+from hqzcsj.dao.jzqk_tongji_dao import SUMMARY_COLUMNS, fetch_leixing_list
 from hqzcsj.service.jzqk_tongji_service import build_summary, default_time_range_for_page, fetch_detail
 
 
@@ -74,7 +74,7 @@ def api_summary() -> Any:
 
     try:
         meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list)
-        return jsonify({"success": True, "meta": meta, "rows": rows})
+        return jsonify({"success": True, "meta": meta, "columns": SUMMARY_COLUMNS, "rows": rows})
     except Exception as exc:
         logging.exception(
             "jzqk_tongji api_summary failed: start_time=%s end_time=%s leixing_list=%s",
