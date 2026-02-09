@@ -137,10 +137,10 @@
                         const rate = denom ? ((num / denom) * 100).toFixed(2) + "%" : "0.00%";
                         rateBox.textContent = `分子：${num}；分母：${denom}；覆盖率：${rate}`;
                     } else if (metric === "syzmj_songjiao") {
-                        const denom = rows.filter(r => String(r["是否符合送生"] || "") === "是").length;
+                        const denom = rows.length;
                         const num = rows.filter(r => String(r["是否送校"] || "") === "是").length;
                         const rate = denom ? ((num / denom) * 100).toFixed(2) + "%" : "0.00%";
-                        rateBox.textContent = `分子(送校)：${num}；分母(符合送生)：${denom}；送矫率：${rate}`;
+                        rateBox.textContent = `分子(送校)：${num}；分母(全量)：${denom}；送矫率：${rate}`;
                     }
                 }
                 renderTable(rows);

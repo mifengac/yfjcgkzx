@@ -21,6 +21,30 @@ def _normalize_leixing_list(leixing_list: Sequence[str]) -> List[str]:
     return [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
 
 
+def _resolve_sfzxx_case_col(conn) -> str:
+    """
+    解析 zq_wcnr_sfzxx 中可用于“案件编号”关联的字段名。
+    优先使用显式案件编号字段；若不存在则回退到 bh。
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema=%s AND table_name=%s
+            """,
+            ("ywdata", "zq_wcnr_sfzxx"),
+        )
+        cols = {str(r[0]) for r in cur.fetchall() if r and r[0]}
+
+    for c in ("ajxx_ajbh", "ajbh", "bh"):
+        if c in cols:
+            return c
+    raise RuntimeError(
+        f'无法识别表 ywdata."zq_wcnr_sfzxx" 的案件编号字段（当前列：{sorted(cols)}）'
+    )
+
+
 def count_wfzf_wcnr_by_diqu(
     conn, *, start_time: str, end_time: str, leixing_list: Sequence[str]
 ) -> Tuple[Dict[str, int], int]:
@@ -33,7 +57,7 @@ def count_wfzf_wcnr_by_diqu(
                 SELECT 1
                 FROM "ywdata"."case_type_config" ctc
                 WHERE ctc."leixing" = ANY(%s)
-                  AND zzwx."ajxx_join_ajxx_ay" SIMILAR TO ctc."ay_pattern"
+                  AND vw."案由" SIMILAR TO ctc."ay_pattern"
             )
             """
         )
@@ -44,48 +68,30 @@ def count_wfzf_wcnr_by_diqu(
 
     query = sql.SQL(
         """
-        WITH base_data AS (
-            SELECT DISTINCT ON (zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh")
-                zzwx."ajxx_join_ajxx_ajbh" AS 案件编号,
-                zzwx."xyrxx_rybh" AS 人员编号,
-                zzwx."ajxx_join_ajxx_ajlx" AS 案件类型,
-                zzwx."ajxx_join_ajxx_ay" AS 案由,
-                zzwx."ajxx_join_ajxx_ay_dm" AS 案由代码,
-                LEFT(zzwx."ajxx_join_ajxx_cbqy_bh_dm", 6) AS 地区,
-                zzwx."ajxx_join_ajxx_cbdw_bh" AS 办案单位,
-                zzwx."ajxx_join_ajxx_lasj" AS 立案时间,
-                zzwx."xyrxx_xm" AS 姓名,
-                zzwx."xyrxx_sfzh" AS 身份证号,
-                zzwx."xyrxx_hjdxz" AS 户籍地,
-                zzwx."xyrxx_nl" AS 年龄,
-                zzwx."xyrxx_jzdxzqh" AS 居住地
-            FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
-            WHERE zzwx."ajxx_join_ajxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_sfda_dm" = '1'
-              AND zzwx."xyrxx_lrsj" BETWEEN %s AND %s
-            {type_condition}
-            ORDER BY zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh", zzwx."xyrxx_lrsj" DESC
-        ),
+        WITH
         filtered_data AS (
-            SELECT bd.*
-            FROM base_data bd
-            WHERE
-                (bd.案件类型 = '行政' AND (
-                    EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
-                        WHERE x.ajxx_ajbh = bd.案件编号 AND x.xzcfjds_rybh = bd.人员编号
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_byxzcfjds" b
-                        WHERE b.ajxx_ajbh = bd.案件编号 AND b.byxzcfjds_rybh = bd.人员编号
-                    )
-                ))
-                OR (bd.案件类型 = '刑事')
+            SELECT DISTINCT ON (vw."身份证号", vw."案件编号")
+                vw."案件编号" AS 案件编号,
+                vw."人员编号" AS 人员编号,
+                vw."案件类型" AS 案件类型,
+                vw."案由" AS 案由,
+                vw."案由代码" AS 案由代码,
+                vw."地区" AS 地区,
+                vw."办案单位" AS 办案单位,
+                vw."立案时间" AS 立案时间,
+                vw."姓名" AS 姓名,
+                vw."身份证号" AS 身份证号,
+                vw."户籍地" AS 户籍地,
+                vw."年龄" AS 年龄,
+                vw."居住地" AS 居住地
+            FROM "ywdata"."v_wcnr_wfry_base" vw
+            WHERE vw."录入时间" BETWEEN %s AND %s
+            {type_condition}
+            ORDER BY vw."身份证号", vw."案件编号", vw."录入时间" DESC
         )
-        SELECT COALESCE(fd.地区, '未知') AS 地区, COUNT(*)::INT AS cnt
+        SELECT COALESCE(fd."地区", '未知') AS 地区, COUNT(*)::INT AS cnt
         FROM filtered_data fd
-        GROUP BY COALESCE(fd.地区, '未知')
+        GROUP BY COALESCE(fd."地区", '未知')
         """
     ).format(type_condition=type_condition)
 
@@ -110,7 +116,7 @@ def fetch_wfzf_wcnr_detail(
                 SELECT 1
                 FROM "ywdata"."case_type_config" ctc
                 WHERE ctc."leixing" = ANY(%s)
-                  AND zzwx."ajxx_join_ajxx_ay" SIMILAR TO ctc."ay_pattern"
+                  AND vw."案由" SIMILAR TO ctc."ay_pattern"
             )
             """
         )
@@ -120,7 +126,7 @@ def fetch_wfzf_wcnr_detail(
         type_params = []
 
     if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
-        diqu_condition = sql.SQL(" AND fd.地区 = %s ")
+        diqu_condition = sql.SQL(' AND fd."地区" = %s ')
         diqu_params = [str(diqu).strip()]
     else:
         diqu_condition = sql.SQL("")
@@ -128,63 +134,45 @@ def fetch_wfzf_wcnr_detail(
 
     query = sql.SQL(
         """
-        WITH base_data AS (
-            SELECT DISTINCT ON (zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh")
-                zzwx."ajxx_join_ajxx_ajbh" AS 案件编号,
-                zzwx."xyrxx_rybh" AS 人员编号,
-                zzwx."ajxx_join_ajxx_ajlx" AS 案件类型,
-                zzwx."ajxx_join_ajxx_ay" AS 案由,
-                zzwx."ajxx_join_ajxx_ay_dm" AS 案由代码,
-                LEFT(zzwx."ajxx_join_ajxx_cbqy_bh_dm", 6) AS 地区,
-                zzwx."ajxx_join_ajxx_cbdw_bh" AS 办案单位,
-                zzwx."ajxx_join_ajxx_lasj" AS 立案时间,
-                zzwx."xyrxx_xm" AS 姓名,
-                zzwx."xyrxx_sfzh" AS 身份证号,
-                zzwx."xyrxx_hjdxz" AS 户籍地,
-                zzwx."xyrxx_nl" AS 年龄,
-                zzwx."xyrxx_jzdxzqh" AS 居住地
-            FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
-            WHERE zzwx."ajxx_join_ajxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_sfda_dm" = '1'
-              AND zzwx."xyrxx_lrsj" BETWEEN %s AND %s
-            {type_condition}
-            ORDER BY zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh", zzwx."xyrxx_lrsj" DESC
-        ),
+        WITH
         filtered_data AS (
-            SELECT bd.*
-            FROM base_data bd
-            WHERE
-                (bd.案件类型 = '行政' AND (
-                    EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
-                        WHERE x.ajxx_ajbh = bd.案件编号 AND x.xzcfjds_rybh = bd.人员编号
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_byxzcfjds" b
-                        WHERE b.ajxx_ajbh = bd.案件编号 AND b.byxzcfjds_rybh = bd.人员编号
-                    )
-                ))
-                OR (bd.案件类型 = '刑事')
+            SELECT DISTINCT ON (vw."身份证号", vw."案件编号")
+                vw."案件编号" AS 案件编号,
+                vw."人员编号" AS 人员编号,
+                vw."案件类型" AS 案件类型,
+                vw."案由" AS 案由,
+                vw."案由代码" AS 案由代码,
+                vw."地区" AS 地区,
+                vw."办案单位" AS 办案单位,
+                vw."立案时间" AS 立案时间,
+                vw."姓名" AS 姓名,
+                vw."身份证号" AS 身份证号,
+                vw."户籍地" AS 户籍地,
+                vw."年龄" AS 年龄,
+                vw."居住地" AS 居住地
+            FROM "ywdata"."v_wcnr_wfry_base" vw
+            WHERE vw."录入时间" BETWEEN %s AND %s
+            {type_condition}
+            ORDER BY vw."身份证号", vw."案件编号", vw."录入时间" DESC
         )
         SELECT
-            fd.案件编号,
-            fd.人员编号,
-            fd.案件类型,
-            fd.案由,
-            fd.案由代码,
-            fd.地区,
-            fd.办案单位,
-            TO_CHAR(fd.立案时间, 'YYYY-MM-DD HH24:MI:SS') AS 立案时间,
-            fd.姓名,
-            fd.身份证号,
-            fd.户籍地,
-            fd.年龄,
-            fd.居住地
+            fd."案件编号" AS 案件编号,
+            fd."人员编号" AS 人员编号,
+            fd."案件类型" AS 案件类型,
+            fd."案由" AS 案由,
+            fd."案由代码" AS 案由代码,
+            fd."地区" AS 地区,
+            fd."办案单位" AS 办案单位,
+            TO_CHAR(fd."立案时间", 'YYYY-MM-DD HH24:MI:SS') AS 立案时间,
+            fd."姓名" AS 姓名,
+            fd."身份证号" AS 身份证号,
+            fd."户籍地" AS 户籍地,
+            fd."年龄" AS 年龄,
+            fd."居住地" AS 居住地
         FROM filtered_data fd
         WHERE 1=1
         {diqu_condition}
-        ORDER BY fd.立案时间 DESC, fd.姓名
+        ORDER BY fd."立案时间" DESC, fd."姓名"
         """
     ).format(type_condition=type_condition, diqu_condition=diqu_condition)
 
@@ -203,6 +191,7 @@ def count_jyh_after_cases_by_diqu(
     only_xingshi: bool,
 ) -> Tuple[Dict[str, int], int]:
     leixing_list = _normalize_leixing_list(leixing_list)
+    sfz_case_col = _resolve_sfzxx_case_col(conn)
 
     if leixing_list:
         type_condition = sql.SQL(
@@ -211,7 +200,7 @@ def count_jyh_after_cases_by_diqu(
                 SELECT 1
                 FROM "ywdata"."case_type_config" ctc
                 WHERE ctc."leixing" = ANY(%s)
-                  AND zzx.案由 SIMILAR TO ctc."ay_pattern"
+                  AND zzx."案由" SIMILAR TO ctc."ay_pattern"
             )
             """
         )
@@ -220,54 +209,28 @@ def count_jyh_after_cases_by_diqu(
         type_condition = sql.SQL("")
         type_params = []
 
-    xingshi_condition = sql.SQL(" AND zzx.案件类型 = '刑事' ") if only_xingshi else sql.SQL("")
+    xingshi_condition = sql.SQL(' AND zzx."案件类型" = \'刑事\' ') if only_xingshi else sql.SQL("")
 
     query = sql.SQL(
         """
-        WITH case_base AS (
-            SELECT DISTINCT ON (zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh")
-                zzwx."ajxx_join_ajxx_ajbh" AS 案件编号,
-                zzwx."xyrxx_rybh" AS 人员编号,
-                zzwx."ajxx_join_ajxx_ajlx" AS 案件类型,
-                zzwx."ajxx_join_ajxx_ay" AS 案由,
-                zzwx."ajxx_join_ajxx_lasj" AS 立案时间,
-                zzwx."xyrxx_sfzh" AS 身份证号,
-                zzwx."xyrxx_xm" AS 姓名
-            FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
-            WHERE zzwx."ajxx_join_ajxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_sfda_dm" = '1'
-            ORDER BY zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh", zzwx."xyrxx_lrsj" DESC
-        ),
-        filtered_data AS (
-            SELECT bd.*
-            FROM case_base bd
-            WHERE
-                (bd.案件类型 = '行政' AND (
-                    EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
-                        WHERE x.ajxx_ajbh = bd.案件编号 AND x.xzcfjds_rybh = bd.人员编号
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_byxzcfjds" b
-                        WHERE b.ajxx_ajbh = bd.案件编号 AND b.byxzcfjds_rybh = bd.人员编号
-                    )
-                ))
-                OR (bd.案件类型 = '刑事')
-        )
         SELECT
             COALESCE(LEFT(COALESCE(zws."hjdq", ''), 6), '未知') AS 地区,
             COUNT(*)::INT AS cnt
         FROM "ywdata"."zq_wcnr_sfzxx" zws
-        INNER JOIN filtered_data zzx
-            ON zws."sfzhm" = zzx.身份证号
+        INNER JOIN "ywdata"."v_wcnr_wfry_base" zzx
+            ON zws."sfzhm" = zzx."身份证号"
+           AND COALESCE(zws.{sfz_case_col}::text, '') = COALESCE(zzx."案件编号"::text, '')
         WHERE zws."lx_time" BETWEEN %s AND %s
-          AND zws."lx_time" < zzx.立案时间
+          AND zws."lx_time" < zzx."立案时间"
           {xingshi_condition}
           {type_condition}
         GROUP BY COALESCE(LEFT(COALESCE(zws."hjdq", ''), 6), '未知')
         """
-    ).format(xingshi_condition=xingshi_condition, type_condition=type_condition)
+    ).format(
+        xingshi_condition=xingshi_condition,
+        type_condition=type_condition,
+        sfz_case_col=sql.Identifier(sfz_case_col),
+    )
 
     params = [start_date, end_date] + type_params
     with conn.cursor() as cur:
@@ -289,6 +252,7 @@ def fetch_jyh_after_cases_detail(
     diqu: str | None,
 ) -> List[Dict[str, Any]]:
     leixing_list = _normalize_leixing_list(leixing_list)
+    sfz_case_col = _resolve_sfzxx_case_col(conn)
 
     if leixing_list:
         type_condition = sql.SQL(
@@ -297,7 +261,7 @@ def fetch_jyh_after_cases_detail(
                 SELECT 1
                 FROM "ywdata"."case_type_config" ctc
                 WHERE ctc."leixing" = ANY(%s)
-                  AND zzx.案由 SIMILAR TO ctc."ay_pattern"
+                  AND zzx."案由" SIMILAR TO ctc."ay_pattern"
             )
             """
         )
@@ -306,7 +270,7 @@ def fetch_jyh_after_cases_detail(
         type_condition = sql.SQL("")
         type_params = []
 
-    xingshi_condition = sql.SQL(" AND zzx.案件类型 = '刑事' ") if only_xingshi else sql.SQL("")
+    xingshi_condition = sql.SQL(' AND zzx."案件类型" = \'刑事\' ') if only_xingshi else sql.SQL("")
 
     if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
         diqu_condition = sql.SQL(" AND LEFT(COALESCE(zws.\"hjdq\", ''), 6) = %s ")
@@ -317,37 +281,6 @@ def fetch_jyh_after_cases_detail(
 
     query = sql.SQL(
         """
-        WITH case_base AS (
-            SELECT DISTINCT ON (zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh")
-                zzwx."ajxx_join_ajxx_ajbh" AS 案件编号,
-                zzwx."xyrxx_rybh" AS 人员编号,
-                zzwx."ajxx_join_ajxx_ajlx" AS 案件类型,
-                zzwx."ajxx_join_ajxx_ay" AS 案由,
-                zzwx."ajxx_join_ajxx_lasj" AS 立案时间,
-                zzwx."xyrxx_sfzh" AS 身份证号,
-                zzwx."xyrxx_xm" AS 嫌疑人姓名
-            FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
-            WHERE zzwx."ajxx_join_ajxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_sfda_dm" = '1'
-            ORDER BY zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh", zzwx."xyrxx_lrsj" DESC
-        ),
-        filtered_data AS (
-            SELECT bd.*
-            FROM case_base bd
-            WHERE
-                (bd.案件类型 = '行政' AND (
-                    EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
-                        WHERE x.ajxx_ajbh = bd.案件编号 AND x.xzcfjds_rybh = bd.人员编号
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_byxzcfjds" b
-                        WHERE b.ajxx_ajbh = bd.案件编号 AND b.byxzcfjds_rybh = bd.人员编号
-                    )
-                ))
-                OR (bd.案件类型 = '刑事')
-        )
         SELECT
             LEFT(COALESCE(zws."hjdq", ''), 6) AS 地区,
             zws."xm" AS 学生姓名,
@@ -361,21 +294,27 @@ def fetch_jyh_after_cases_detail(
             zws."lxdh" AS 联系电话,
             zws."yxx" AS 学校,
 
-            zzx.案件编号,
-            zzx.案件类型,
-            zzx.案由,
-            TO_CHAR(zzx.立案时间, 'YYYY-MM-DD HH24:MI:SS') AS 立案时间
+            zzx."案件编号" AS 案件编号,
+            zzx."案件类型" AS 案件类型,
+            zzx."案由" AS 案由,
+            TO_CHAR(zzx."立案时间", 'YYYY-MM-DD HH24:MI:SS') AS 立案时间
         FROM "ywdata"."zq_wcnr_sfzxx" zws
-        INNER JOIN filtered_data zzx
-            ON zws."sfzhm" = zzx.身份证号
+        INNER JOIN "ywdata"."v_wcnr_wfry_base" zzx
+            ON zws."sfzhm" = zzx."身份证号"
+           AND COALESCE(zws.{sfz_case_col}::text, '') = COALESCE(zzx."案件编号"::text, '')
         WHERE zws."lx_time" BETWEEN %s AND %s
-          AND zws."lx_time" < zzx.立案时间
+          AND zws."lx_time" < zzx."立案时间"
           {xingshi_condition}
           {type_condition}
           {diqu_condition}
-        ORDER BY zws."lx_time" DESC, zws."sfzhm", zzx.立案时间 DESC
+        ORDER BY zws."lx_time" DESC, zws."sfzhm", zzx."立案时间" DESC
         """
-    ).format(xingshi_condition=xingshi_condition, type_condition=type_condition, diqu_condition=diqu_condition)
+    ).format(
+        xingshi_condition=xingshi_condition,
+        type_condition=type_condition,
+        diqu_condition=diqu_condition,
+        sfz_case_col=sql.Identifier(sfz_case_col),
+    )
 
     params = [start_date, end_date] + type_params + diqu_params
     with conn.cursor() as cur:

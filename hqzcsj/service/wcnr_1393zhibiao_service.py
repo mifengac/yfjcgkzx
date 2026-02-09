@@ -16,14 +16,23 @@ class MetricDef:
     kind: str  # "count" | "rate"
 
 
+LABEL_WFZF = "违法犯罪未成年人"
+LABEL_JYH_CF = "结业后再犯数(犯罪)"
+LABEL_JYH_WFZF = "结业后再犯数(违法犯罪)"
+LABEL_CS_BQH = "未成年人场所被侵害发案数"
+LABEL_BQH = "未成年人被侵害发案数"
+LABEL_YZBL = "严重不良未成年人矫治教育覆盖率"
+LABEL_SYZMJ = "适用专门（矫治）教育情形送矫率"
+
+
 METRICS: List[MetricDef] = [
-    MetricDef("wfzf", "违法犯罪未成年人", "count"),
-    MetricDef("jyh_cf", "结业后再犯数", "count"),
-    MetricDef("jyh_wfzf", "结业后违法犯罪数", "count"),
-    MetricDef("cs_bqh", "未成年人场所被侵害发案数", "count"),
-    MetricDef("bqh", "未成年人被侵害发案数", "count"),
-    MetricDef("yzbl_cover", "严重不良未成年人矫治教育覆盖率", "rate"),
-    MetricDef("syzmj_songjiao", "适用专门（矫治）教育情形送矫率", "rate"),
+    MetricDef("wfzf", LABEL_WFZF, "count"),
+    MetricDef("jyh_cf", LABEL_JYH_CF, "count"),
+    MetricDef("jyh_wfzf", LABEL_JYH_WFZF, "count"),
+    MetricDef("cs_bqh", LABEL_CS_BQH, "count"),
+    MetricDef("bqh", LABEL_BQH, "count"),
+    MetricDef("yzbl_cover", LABEL_YZBL, "rate"),
+    MetricDef("syzmj_songjiao", LABEL_SYZMJ, "rate"),
 ]
 
 
@@ -143,20 +152,17 @@ def build_summary(
         cs_by = _count_by_diqu(cs_rows)
         cs_total = len(cs_rows)
 
-        yz_num_by, yz_denom_by, yz_num_total, yz_denom_total = (
-            wcnr_1393zhibiao_dao.count_yzbl_jzjy_cover_by_diqu(
-                conn, start_time=meta["start_time"], end_time=meta["end_time"], leixing_list=leixing_list
-            )
-        )
-
-        # 送矫率：复用矫治情况统计的明细逻辑
-        # - 分子：是否送校=是（送生数）
-        # - 分母：是否符合送生=是（符合送生数）
-        sj_rows_all = jzqk_tongji_dao.fetch_jzqk_data(
+        # 覆盖率/送矫率统一使用矫治情况明细数据源，分母均为全量记录数
+        rate_rows_all = jzqk_tongji_dao.fetch_jzqk_data(
             conn, start_time=meta["start_time"], end_time=meta["end_time"], leixing_list=leixing_list
         )
-        sj_num_by = _count_by_diqu([r for r in sj_rows_all if str(r.get("是否送校") or "") == "是"])
-        sj_denom_by = _count_by_diqu([r for r in sj_rows_all if str(r.get("是否符合送生") or "") == "是"])
+        yz_num_by = _count_by_diqu([r for r in rate_rows_all if str(r.get("是否开具矫治文书") or "") == "是"])
+        yz_denom_by = _count_by_diqu(rate_rows_all)
+        yz_num_total = sum(yz_num_by.values())
+        yz_denom_total = sum(yz_denom_by.values())
+
+        sj_num_by = _count_by_diqu([r for r in rate_rows_all if str(r.get("是否送校") or "") == "是"])
+        sj_denom_by = _count_by_diqu(rate_rows_all)
         sj_denom_total = sum(sj_denom_by.values())
         sj_num_total = sum(sj_num_by.values())
     finally:
@@ -178,15 +184,15 @@ def build_summary(
             {
                 "地区": map_diqu_name(code),
                 "__diqu_code": code,
-                "违法犯罪未成年人": int(wfzf_by.get(code, 0)),
-                "结业后再犯数": int(jyh_cf_by.get(code, 0)),
-                "结业后违法犯罪数": int(jyh_wfzf_by.get(code, 0)),
-                "未成年人场所被侵害发案数": int(cs_by.get(code, 0)),
-                "未成年人被侵害发案数": int(bqh_by.get(code, 0)),
-                "严重不良未成年人矫治教育覆盖率": fmt_rate(
+                LABEL_WFZF: int(wfzf_by.get(code, 0)),
+                LABEL_JYH_CF: int(jyh_cf_by.get(code, 0)),
+                LABEL_JYH_WFZF: int(jyh_wfzf_by.get(code, 0)),
+                LABEL_CS_BQH: int(cs_by.get(code, 0)),
+                LABEL_BQH: int(bqh_by.get(code, 0)),
+                LABEL_YZBL: fmt_rate(
                     int(yz_num_by.get(code, 0)), int(yz_denom_by.get(code, 0))
                 ),
-                "适用专门（矫治）教育情形送矫率": fmt_rate(
+                LABEL_SYZMJ: fmt_rate(
                     int(sj_num_by.get(code, 0)), int(sj_denom_by.get(code, 0))
                 ),
             }
@@ -196,13 +202,13 @@ def build_summary(
         {
             "地区": "全市",
             "__diqu_code": "ALL",
-            "违法犯罪未成年人": wfzf_total,
-            "结业后再犯数": jyh_cf_total,
-            "结业后违法犯罪数": jyh_wfzf_total,
-            "未成年人场所被侵害发案数": cs_total,
-            "未成年人被侵害发案数": bqh_total,
-            "严重不良未成年人矫治教育覆盖率": fmt_rate(yz_num_total, yz_denom_total),
-            "适用专门（矫治）教育情形送矫率": fmt_rate(sj_num_total, sj_denom_total),
+            LABEL_WFZF: wfzf_total,
+            LABEL_JYH_CF: jyh_cf_total,
+            LABEL_JYH_WFZF: jyh_wfzf_total,
+            LABEL_CS_BQH: cs_total,
+            LABEL_BQH: bqh_total,
+            LABEL_YZBL: fmt_rate(yz_num_total, yz_denom_total),
+            LABEL_SYZMJ: fmt_rate(sj_num_total, sj_denom_total),
         }
     )
 
@@ -268,18 +274,14 @@ def fetch_detail(
                 rows = [dict(r) for r in base_rows]
                 _append_addr_predictions(rows, addr_col="发案地点")
                 rows = [r for r in rows if str(r.get("分类结果") or "").strip() == "重点管控行业"]
-        elif metric == "yzbl_cover":
-            rows = wcnr_1393zhibiao_dao.fetch_yzbl_jzjy_cover_detail(
-                conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list, diqu=diqu
-            )
-        elif metric == "syzmj_songjiao":
-            sj_rows = jzqk_tongji_dao.fetch_jzqk_data(
+        elif metric in ("yzbl_cover", "syzmj_songjiao"):
+            rate_rows = jzqk_tongji_dao.fetch_jzqk_data(
                 conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list
             )
             if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
                 code = str(diqu).strip()
-                sj_rows = [r for r in sj_rows if str(r.get("地区") or "").strip() == code]
-            rows = sj_rows
+                rate_rows = [r for r in rate_rows if str(r.get("地区") or "").strip() == code]
+            rows = rate_rows
         else:
             raise ValueError(f"不支持的 metric: {metric}")
     finally:
@@ -351,13 +353,11 @@ def fetch_all_details(
         _append_addr_predictions(cs_rows, addr_col="发案地点")
         cs_rows = [r for r in cs_rows if str(r.get("分类结果") or "").strip() == "重点管控行业"]
 
-        yzbl_rows = wcnr_1393zhibiao_dao.fetch_yzbl_jzjy_cover_detail(
-            conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list, diqu="ALL"
-        )
-
-        sj_rows = jzqk_tongji_dao.fetch_jzqk_data(
+        rate_rows = jzqk_tongji_dao.fetch_jzqk_data(
             conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list
         )
+        yzbl_rows = [dict(r) for r in rate_rows]
+        sj_rows = [dict(r) for r in rate_rows]
     finally:
         try:
             conn.close()
