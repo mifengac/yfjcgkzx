@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Sequence, Tuple
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao import jzqk_tongji_dao
 from hqzcsj.dao import wcnr_1393zhibiao_dao
+from hqzcsj.service.wcnr_1393_rate_utils import calc_rate_stats_bundle
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ LABEL_CS_BQH = "未成年人场所被侵害发案数"
 LABEL_BQH = "未成年人被侵害发案数"
 LABEL_YZBL = "严重不良未成年人矫治教育覆盖率"
 LABEL_SYZMJ = "适用专门（矫治）教育情形送矫率"
+LABEL_ZLJQJH = "责令加强监护率"
 
 
 METRICS: List[MetricDef] = [
@@ -33,6 +35,7 @@ METRICS: List[MetricDef] = [
     MetricDef("bqh", LABEL_BQH, "count"),
     MetricDef("yzbl_cover", LABEL_YZBL, "rate"),
     MetricDef("syzmj_songjiao", LABEL_SYZMJ, "rate"),
+    MetricDef("zljqjh_rate", LABEL_ZLJQJH, "rate"),
 ]
 
 
@@ -152,19 +155,18 @@ def build_summary(
         cs_by = _count_by_diqu(cs_rows)
         cs_total = len(cs_rows)
 
-        # 覆盖率/送矫率统一使用矫治情况明细数据源，分母均为全量记录数
+        # 基于矫治情况明细数据源的比率指标（统一在 helper 中计算）
         rate_rows_all = jzqk_tongji_dao.fetch_jzqk_data(
             conn, start_time=meta["start_time"], end_time=meta["end_time"], leixing_list=leixing_list
         )
-        yz_num_by = _count_by_diqu([r for r in rate_rows_all if str(r.get("是否开具矫治文书") or "") == "是"])
-        yz_denom_by = _count_by_diqu(rate_rows_all)
-        yz_num_total = sum(yz_num_by.values())
-        yz_denom_total = sum(yz_denom_by.values())
-
-        sj_num_by = _count_by_diqu([r for r in rate_rows_all if str(r.get("是否送校") or "") == "是"])
-        sj_denom_by = _count_by_diqu(rate_rows_all)
-        sj_denom_total = sum(sj_denom_by.values())
-        sj_num_total = sum(sj_num_by.values())
+        rate_stats = calc_rate_stats_bundle(
+            rate_rows_all,
+            wfzf_by=wfzf_by,
+            wfzf_total=wfzf_total,
+        )
+        yz_num_by, yz_denom_by, yz_num_total, yz_denom_total = rate_stats["yzbl_cover"]
+        sj_num_by, sj_denom_by, sj_num_total, sj_denom_total = rate_stats["syzmj_songjiao"]
+        jl_num_by, jl_denom_by, jl_num_total, jl_denom_total = rate_stats["zljqjh_rate"]
     finally:
         try:
             conn.close()
@@ -172,7 +174,7 @@ def build_summary(
             pass
 
     all_codes = set()
-    for d in (wfzf_by, jyh_cf_by, jyh_wfzf_by, cs_by, bqh_by, yz_denom_by, sj_num_by, sj_denom_by):
+    for d in (wfzf_by, jyh_cf_by, jyh_wfzf_by, cs_by, bqh_by, yz_denom_by, sj_num_by, sj_denom_by, jl_num_by):
         all_codes.update(d.keys())
     ordered_codes = [c for c in DIQU_ORDER if c in all_codes]
     rest_codes = sorted([c for c in all_codes if c not in set(DIQU_ORDER)])
@@ -195,6 +197,9 @@ def build_summary(
                 LABEL_SYZMJ: fmt_rate(
                     int(sj_num_by.get(code, 0)), int(sj_denom_by.get(code, 0))
                 ),
+                LABEL_ZLJQJH: fmt_rate(
+                    int(jl_num_by.get(code, 0)), int(jl_denom_by.get(code, 0))
+                ),
             }
         )
 
@@ -209,6 +214,7 @@ def build_summary(
             LABEL_BQH: bqh_total,
             LABEL_YZBL: fmt_rate(yz_num_total, yz_denom_total),
             LABEL_SYZMJ: fmt_rate(sj_num_total, sj_denom_total),
+            LABEL_ZLJQJH: fmt_rate(jl_num_total, jl_denom_total),
         }
     )
 
@@ -274,7 +280,7 @@ def fetch_detail(
                 rows = [dict(r) for r in base_rows]
                 _append_addr_predictions(rows, addr_col="发案地点")
                 rows = [r for r in rows if str(r.get("分类结果") or "").strip() == "重点管控行业"]
-        elif metric in ("yzbl_cover", "syzmj_songjiao"):
+        elif metric in ("yzbl_cover", "syzmj_songjiao", "zljqjh_rate"):
             rate_rows = jzqk_tongji_dao.fetch_jzqk_data(
                 conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list
             )
@@ -372,6 +378,7 @@ def fetch_all_details(
         "bqh": bqh_rows,
         "yzbl_cover": yzbl_rows,
         "syzmj_songjiao": sj_rows,
+        "zljqjh_rate": [dict(r) for r in rate_rows],
     }
 
     for rows in metric_rows.values():

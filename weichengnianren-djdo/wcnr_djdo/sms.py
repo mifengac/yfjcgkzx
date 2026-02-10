@@ -112,7 +112,7 @@ def build_dashboard_sms_content(results: List[MetricResult]) -> str:
     未成年人打击斗殴专项行动指标监测:1.xxx:全市A{x},B{y},C{z},其中云城...,云安...;2....
     规则：若某地区（不含全市）三项均为 0，则省略该地区段落。
     """
-    parts: List[str] = ["未成年人打击斗殴专项行动指标监测:"]
+    parts: List[str] = ["未成年人打架斗殴专项行动指标监测:"]
 
     for idx, r in enumerate(results, start=1):
         by_region = {str(x.get("地区") or ""): x for x in r.chart_rows}

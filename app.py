@@ -159,6 +159,8 @@ def main():
 
         modules: List[Dict[str, str]] = []
         for (module_name,) in rows:
+            module_name = str(module_name or "").strip()
+            normalized_module_name = module_name.replace("（", "(").replace("）", ")")
             conf_map = {
                 "警情": {"endpoint": "jingqing_anjian.jingqing_anjian", "label": "警情案件"},
                 "巡防": {"endpoint": "xunfang.xunfang", "label": "巡防统计"},
@@ -173,8 +175,9 @@ def main():
             }
             if wcnr_djdo_bp is not None:
                 conf_map["未成年人(打架斗殴)"] = {"endpoint": "wcnr_djdo.index", "label": "未成年人(打架斗殴)"}
+                conf_map["未成年人（打架斗殴）"] = {"endpoint": "wcnr_djdo.index", "label": "未成年人(打架斗殴)"}
 
-            conf = conf_map.get(module_name)
+            conf = conf_map.get(module_name) or conf_map.get(normalized_module_name)
             if not conf:
                 continue
             modules.append({"label": conf["label"], "url": url_for(conf["endpoint"])})

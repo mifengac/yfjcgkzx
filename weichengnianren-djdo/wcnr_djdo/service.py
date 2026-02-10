@@ -97,7 +97,11 @@ def metric_sx_sx(start_time: datetime, end_time: datetime, case_types: List[str]
     detail_rows = dao.query_sx_sx_details(start_time, end_time, case_types)
     groups = _region_group(detail_rows)
 
-    all_total = len(detail_rows)
+    all_total = sum(
+        1
+        for r in detail_rows
+        if str(r.get("案件类型") or "") == "刑事" and str(r.get("是否符合送生") or "") == "是"
+    )
     all_yes = sum(1 for r in detail_rows if str(r.get("是否送校") or "") == "是")
 
     chart_rows: List[Dict[str, Any]] = []
@@ -107,7 +111,11 @@ def metric_sx_sx(start_time: datetime, end_time: datetime, case_types: List[str]
             yes = all_yes
         else:
             rows = groups.get(region, [])
-            total = len(rows)
+            total = sum(
+                1
+                for r in rows
+                if str(r.get("案件类型") or "") == "刑事" and str(r.get("是否符合送生") or "") == "是"
+            )
             yes = sum(1 for r in rows if str(r.get("是否送校") or "") == "是")
         chart_rows.append(
             {"地区": region, "符合涉刑人员送学人数": total, "实际送学人数": yes, "涉刑人员送学率": _pct(yes, total)}

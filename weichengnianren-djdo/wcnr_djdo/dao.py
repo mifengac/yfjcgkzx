@@ -330,79 +330,16 @@ def query_jzjy_details(start_time: datetime, end_time: datetime, case_types: Lis
 
 
 def query_sx_sx_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:
-    # 构建类型过滤条件
-    if case_types and len(case_types) > 0:
-        type_condition = """
-AND EXISTS (
-    SELECT 1
-    FROM ywdata."case_type_config" ctc
-    WHERE ctc."leixing" = ANY(%s)
-      AND COALESCE(zzwx."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
-)"""
-        params = (start_time, end_time, case_types)
-    else:
-        type_condition = ""
-        params = (start_time, end_time)
-
-    sql = f"""
-SELECT
-    zzwx."xyrxx_rybh" AS "人员编号",
-    zzwx."xyrxx_xm" AS "姓名",
-    zzwx."xyrxx_sfzh" AS "证件号码",
-    zzwx."xyrxx_hjdxz" AS "户籍地",
-    zzwx."xyrxx_xzdxz" AS "现住地",
-    zzwx."xyrxx_nl" AS "年龄",
-    '嫌疑人' AS "人员类型",
-    zzwx."ajxx_ajbhs" AS "案件编号",
-    CASE
-        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445302' THEN '云城'
-        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445303' THEN '云安'
-        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445381' THEN '罗定'
-        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445321' THEN '新兴'
-        WHEN LEFT(zzwx."ajxx_join_ajxx_cbdw_bh_dm", 6) = '445322' THEN '郁南'
-        ELSE '其他'
-    END AS "地区",
-    zzwx."ajxx_join_ajxx_ajmc" AS "案件名称",
-    aj."ajxx_jyaq" AS "简要案情",
-    zzwx."ajxx_join_ajxx_lasj" AS "立案日期",
-    aj."ajxx_cbdw_mc" AS "办案单位名称",
-    bx."办案联系人_json",
-    bx."联系电话_json",
-    CASE
-        WHEN sx.is_match = 1 THEN '是'
-        ELSE '否'
-    END AS "是否送校"
-FROM ywdata."zq_zfba_wcnr_xyr" zzwx
-LEFT JOIN ywdata."zq_zfba_wcnr_ajxx" aj
-    ON zzwx."ajxx_ajbhs" = aj."ajxx_ajbh"
-LEFT JOIN LATERAL (
-    WITH d AS (
-        SELECT DISTINCT
-            NULLIF(TRIM(r.baxgry_xm), '') AS name,
-            NULLIF(TRIM(r.lxdh), '')      AS phone
-        FROM ywdata."zfba_ry_001" r
-        WHERE r.asjbh = zzwx."ajxx_ajbhs"
-        AND NULLIF(TRIM(r.baxgry_xm), '') IS NOT NULL
-        AND NULLIF(TRIM(r.lxdh), '') IS NOT NULL
-    )
-    SELECT
-        jsonb_agg(jsonb_build_object('name', d.name, 'phone', d.phone) ORDER BY d.name, d.phone) AS "办案联系人_json",
-        jsonb_agg(d.phone ORDER BY d.phone) AS "联系电话_json"
-    FROM d
-) bx ON TRUE
-LEFT JOIN LATERAL (
-    SELECT 1 AS is_match
-    FROM "ywdata"."zq_wcnr_sfzxx" z
-    WHERE z."sfzhm" = zzwx."xyrxx_sfzh"
-    AND z.rx_time::timestamp > zzwx."ajxx_join_ajxx_lasj"::timestamp
-    LIMIT 1
-) sx ON TRUE
-WHERE 人员编号<>'R4453816500002026013043' AND zzwx."ajxx_join_ajxx_lasj"::timestamp BETWEEN %s AND %s
-{type_condition}
-AND zzwx."ajxx_join_ajxx_ajlx" = '刑事'
-;
-"""
-    return _fetch_all(sql, params)
+    # 复用“矫治教育”基础明细口径，保持“是否符合送生/是否送校”字段一致。
+    rows = _query_jzjy_base_details(start_time=start_time, end_time=end_time, case_types=case_types)
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        if str(r.get("人员编号") or "") == "R4453816500002026013043":
+            continue
+        if str(r.get("案件类型") or "") != "刑事":
+            continue
+        out.append(r)
+    return out
 
 
 def query_zljqjh_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:

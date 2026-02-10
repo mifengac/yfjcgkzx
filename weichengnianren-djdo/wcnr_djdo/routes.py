@@ -40,8 +40,8 @@ def _check_access() -> None:
         conn = get_database_connection()
         with conn.cursor() as cur:
             cur.execute(
-                'SELECT 1 FROM "ywdata"."jcgkzx_permission" WHERE username=%s AND module=%s',
-                (session["username"], "未成年人(打架斗殴)"),
+                'SELECT 1 FROM "ywdata"."jcgkzx_permission" WHERE username=%s AND module IN (%s, %s)',
+                (session["username"], "未成年人(打架斗殴)", "未成年人（打架斗殴）"),
             )
             row = cur.fetchone()
         conn.close()

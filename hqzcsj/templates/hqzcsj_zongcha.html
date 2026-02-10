@@ -77,6 +77,7 @@
             <div class="row" style="justify-content:space-between;">
                 <div class="row">
                     <button class="btn" id="openModalBtn">获取数据</button>
+                    <button class="btn" id="openJsxxModalBtn" style="background:#0f766e;">获取监所数据</button>
                     <label style="display:flex; align-items:center; gap:8px;">
                         <span class="muted">数据源</span>
                         <div class="multi-select" id="sourceMs">
@@ -212,10 +213,50 @@
     </div>
 </div>
 
+<div class="modal" id="jsxxModal">
+    <div class="panel">
+        <div class="hd">
+            <div style="font-weight:800;">获取监所数据</div>
+            <button class="btn secondary" id="closeJsxxModalBtn">关闭</button>
+        </div>
+        <div class="bd">
+            <div class="grid">
+                <label>SESSION</label>
+                <input type="text" id="jsxxSessionInput" placeholder="例如：07be0107-c290-... 或 SESSION=...">
+                <label>开始日期</label>
+                <input type="text" id="jsxxStartInput" value="{{ default_start[:10] }}" placeholder="YYYY-MM-DD">
+                <label>结束日期</label>
+                <input type="text" id="jsxxEndInput" value="{{ default_end[:10] }}" placeholder="YYYY-MM-DD">
+                <label>pageSize</label>
+                <input type="text" id="jsxxPageSizeInput" value="2000" placeholder="建议 1000-3000，最大 5000">
+            </div>
+            <div style="margin-top:12px;">
+                <div class="muted" style="margin-bottom:6px;">数据源</div>
+                <label style="display:inline-flex; align-items:center; gap:6px; margin-right:16px;">
+                    <input type="checkbox" class="jsxx-source" value="看守所入所信息" checked>
+                    <span>看守所入所信息（zq_jsxx_kss）</span>
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px;">
+                    <input type="checkbox" class="jsxx-source" value="拘留所入所信息" checked>
+                    <span>拘留所入所信息（zq_jsxx_jls）</span>
+                </label>
+            </div>
+            <div class="muted" style="margin-top:10px;">
+                固定参数：DWDM=4453。入库模式：全量重刷（先清表再导入）。保存接口返回全部字段。
+            </div>
+        </div>
+        <div class="ft">
+            <button class="btn secondary" id="cancelJsxxBtn">取消</button>
+            <button class="btn" id="startJsxxBtn" style="background:#0f766e;">开始获取</button>
+        </div>
+    </div>
+</div>
+
 <script>
     const modal = document.getElementById('modal');
     const backdrop = document.getElementById('modalBackdrop');
     const openBtn = document.getElementById('openModalBtn');
+    const openJsxxBtn = document.getElementById('openJsxxModalBtn');
     const openTqwsBtn = document.getElementById('openTqwsModalBtn');
     const closeBtn = document.getElementById('closeModalBtn');
     const cancelBtn = document.getElementById('cancelBtn');
@@ -229,6 +270,10 @@
     const closeTqwsBtn = document.getElementById('closeTqwsModalBtn');
     const cancelTqwsBtn = document.getElementById('cancelTqwsBtn');
     const startTqwsBtn = document.getElementById('startTqwsBtn');
+    const jsxxModal = document.getElementById('jsxxModal');
+    const closeJsxxModalBtn = document.getElementById('closeJsxxModalBtn');
+    const cancelJsxxBtn = document.getElementById('cancelJsxxBtn');
+    const startJsxxBtn = document.getElementById('startJsxxBtn');
 
     // 提请文书数据源多选
     const tqwsSourceMs = document.getElementById('tqwsSourceMs');
@@ -414,14 +459,32 @@
         backdrop.style.display = 'none';
         tqwsModal.style.display = 'none';
     }
+    function selectedJsxxSources() {
+        return Array.from(document.querySelectorAll('.jsxx-source'))
+            .filter(x => x.checked)
+            .map(x => x.value);
+    }
+    function openJsxxModal() {
+        backdrop.style.display = 'block';
+        jsxxModal.style.display = 'flex';
+        errBox.textContent = '';
+        okBox.textContent = '';
+    }
+    function closeJsxxModal() {
+        backdrop.style.display = 'none';
+        jsxxModal.style.display = 'none';
+    }
 
     openBtn.addEventListener('click', openModal);
+    openJsxxBtn.addEventListener('click', openJsxxModal);
     openTqwsBtn.addEventListener('click', openTqwsModal);
     closeBtn.addEventListener('click', closeModal);
     cancelBtn.addEventListener('click', closeModal);
     closeTqwsBtn.addEventListener('click', closeTqwsModal);
     cancelTqwsBtn.addEventListener('click', closeTqwsModal);
-    backdrop.addEventListener('click', () => { closeModal(); closeTqwsModal(); });
+    closeJsxxModalBtn.addEventListener('click', closeJsxxModal);
+    cancelJsxxBtn.addEventListener('click', closeJsxxModal);
+    backdrop.addEventListener('click', () => { closeModal(); closeTqwsModal(); closeJsxxModal(); });
 
     function renderResults(results) {
         if (!results || results.length === 0) {
@@ -487,6 +550,30 @@
         setTimeout(() => pollTqws(jobId).catch(e => { errBox.textContent = e.message; }), 1500);
     }
 
+    async function pollJsxx(jobId) {
+        const resp = await fetch(`{{ url_for('hqzcsj.jsxx_status', job_id='__JOB__') }}`.replace('__JOB__', jobId), {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            throw new Error(data.message || '查询任务失败');
+        }
+        const st = data.data;
+        const prog = st.progress || {};
+        statusText.textContent = `${st.state || ''} ${prog.current ?? 0}/${prog.total ?? 0} ${st.message || ''}`;
+        renderResults(st.results || []);
+        if (st.state === 'success') {
+            okBox.textContent = '任务完成';
+            return;
+        }
+        if (st.state === 'failed') {
+            errBox.textContent = st.message || '任务失败';
+            return;
+        }
+        setTimeout(() => pollJsxx(jobId).catch(e => { errBox.textContent = e.message; }), 1500);
+    }
+
     startBtn.addEventListener('click', async () => {
         errBox.textContent = '';
         okBox.textContent = '';
@@ -550,6 +637,44 @@
             errBox.textContent = e.message || String(e);
         } finally {
             startTqwsBtn.disabled = false;
+        }
+    });
+
+    startJsxxBtn.addEventListener('click', async () => {
+        errBox.textContent = '';
+        okBox.textContent = '';
+        startJsxxBtn.disabled = true;
+        try {
+            const session_cookie = document.getElementById('jsxxSessionInput').value.trim();
+            const start_date = document.getElementById('jsxxStartInput').value.trim();
+            const end_date = document.getElementById('jsxxEndInput').value.trim();
+            const page_size_raw = document.getElementById('jsxxPageSizeInput').value.trim();
+            const sources = selectedJsxxSources();
+            if (!session_cookie) throw new Error('SESSION 不能为空');
+            if (!start_date || !end_date) throw new Error('开始日期/结束日期不能为空');
+            if (!sources || sources.length === 0) throw new Error('请至少选择 1 个数据源');
+            const body = { session_cookie, start_date, end_date, sources };
+            if (page_size_raw) body.page_size = page_size_raw;
+
+            const resp = await fetch(`{{ url_for('hqzcsj.jsxx_start') }}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                throw new Error(data.message || '启动失败');
+            }
+            closeJsxxModal();
+            const jobId = data.job_id;
+            okBox.textContent = `任务已启动：${jobId}`;
+            statusText.textContent = 'running 0/0';
+            resultBody.innerHTML = '<tr><td colspan="4" class="muted">执行中...</td></tr>';
+            pollJsxx(jobId).catch(e => { errBox.textContent = e.message; });
+        } catch (e) {
+            errBox.textContent = e.message || String(e);
+        } finally {
+            startJsxxBtn.disabled = false;
         }
     });
 

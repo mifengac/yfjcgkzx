@@ -128,133 +128,130 @@ def fetch_jzqk_data(
                     ELSE 0
                 END AS 有训诫书
             FROM "ywdata"."v_wcnr_wfry_base" vw
+        ),
+        base_data AS (
+            SELECT DISTINCT
+                vw.案件编号,
+                vw.人员编号,
+                vw.案件类型,
+                vw.案由,
+                vw.地区,
+                vw.办案单位,
+                vw.立案时间,
+                vw.姓名,
+                vw.身份证号,
+                vw.户籍地,
+                vw.年龄,
+                vw.居住地,
+                CASE WHEN vw.年龄::text ~ '^\\d+$' THEN CAST(vw.年龄 AS INTEGER) END AS 年龄数值,
+                COALESCE(vc.违法次数, 0) AS 违法次数,
+                COALESCE(vc.不同案由数, 0) AS 不同案由数,
+                COALESCE(fcx.有训诫书, 0) AS 有训诫书
+            FROM "ywdata"."v_wcnr_wfry_base" vw
+            LEFT JOIN violation_counts vc ON vw.身份证号 = vc.身份证号
+            LEFT JOIN first_case_xjs fcx ON vw.身份证号 = fcx.身份证号 AND vw.案件编号 = fcx.当前案件编号
+            WHERE vw.录入时间 BETWEEN %s AND %s
+            {type_condition}
+        ),
+        flag_data AS (
+            SELECT
+                bd.*,
+                CASE
+                    WHEN bd.案件类型 = '行政' AND EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
+                        WHERE x.ajxx_ajbh = bd.案件编号
+                          AND x.xzcfjds_rybh = bd.人员编号
+                          AND CAST(x.xzcfjds_tj_jlts AS INTEGER) > 4
+                    ) THEN 1
+                    ELSE 0
+                END AS is_zhiju_gt4,
+                CASE
+                    WHEN bd.案件类型 = '行政'
+                         AND bd.违法次数 = 2
+                         AND bd.不同案由数 = 1
+                         AND bd.有训诫书 = 1
+                    THEN 1
+                    ELSE 0
+                END AS is_second_same_ay_with_xjs,
+                CASE
+                    WHEN bd.案件类型 = '行政' AND bd.违法次数 > 2 THEN 1
+                    ELSE 0
+                END AS is_third_plus,
+                CASE
+                    WHEN bd.案件类型 = '刑事' AND EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_jlz" j
+                        WHERE j.ajxx_ajbh = bd.案件编号 AND j.jlz_rybh = bd.人员编号
+                    ) THEN 1
+                    ELSE 0
+                END AS is_xingju,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs" z
+                        WHERE z.zltzs_ajbh = bd.案件编号 AND z.zltzs_rybh = bd.人员编号
+                    ) OR EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_xjs2" x
+                        WHERE x.ajbh = bd.案件编号 AND x.xgry_xm = bd.姓名
+                    ) THEN 1
+                    ELSE 0
+                END AS is_jiaozhi_wenshu,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_jtjyzdtzs" j
+                        WHERE j.jqjhjyzljsjtjyzdtzs_ajbh = bd.案件编号
+                          AND j.jqjhjyzljsjtjyzdtzs_rybh = bd.人员编号
+                    ) THEN 1
+                    ELSE 0
+                END AS is_jiating_jiaoyu_wenshu,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_tqzmjy" t
+                        WHERE t.ajbh = bd.案件编号 AND t.xgry_xm = bd.姓名
+                    ) THEN 1
+                    ELSE 0
+                END AS is_zhuanmen_shenqingshu,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
+                        WHERE s.sfzhm = bd.身份证号 AND s.rx_time > bd.立案时间
+                    ) THEN 1
+                    ELSE 0
+                END AS is_songxiao
+            FROM base_data bd
         )
         SELECT DISTINCT
-            vw.案件编号,
-            vw.人员编号,
-            vw.案件类型,
-            vw.案由,
-            vw.地区,
-            vw.办案单位,
-            TO_CHAR(vw.立案时间, 'YYYY-MM-DD HH24:MI:SS') AS 立案时间,
-            vw.姓名,
-            vw.身份证号,
-            vw.户籍地,
-            vw.年龄,
-            vw.居住地,
-
-            -- 治拘大于4天(仅行政案件)
+            fd.案件编号,
+            fd.人员编号,
+            fd.案件类型,
+            fd.案由,
+            fd.地区,
+            fd.办案单位,
+            TO_CHAR(fd.立案时间, 'YYYY-MM-DD HH24:MI:SS') AS 立案时间,
+            fd.姓名,
+            fd.身份证号,
+            fd.户籍地,
+            fd.年龄,
+            fd.居住地,
+            CASE WHEN fd.is_zhiju_gt4 = 1 THEN '是' ELSE '否' END AS 治拘大于4天,
+            CASE WHEN fd.is_second_same_ay_with_xjs = 1 THEN '是' ELSE '否' END AS "2次违法且案由相同且第一次违法开具了训诫书",
+            CASE WHEN fd.is_third_plus = 1 THEN '是' ELSE '否' END AS "3次及以上违法",
+            CASE WHEN fd.is_xingju = 1 THEN '是' ELSE '否' END AS 是否刑拘,
+            CASE WHEN fd.is_jiaozhi_wenshu = 1 THEN '是' ELSE '否' END AS 是否开具矫治文书,
+            CASE WHEN fd.is_jiating_jiaoyu_wenshu = 1 THEN '是' ELSE '否' END AS 是否开具家庭教育指导书,
+            CASE WHEN fd.is_zhuanmen_shenqingshu = 1 THEN '是' ELSE '否' END AS 是否开具专门教育申请书,
             CASE
-                WHEN vw.案件类型 = '行政' AND EXISTS (
-                    SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
-                    WHERE x.ajxx_ajbh = vw.案件编号
-                      AND x.xzcfjds_rybh = vw.人员编号
-                      AND CAST(x.xzcfjds_tj_jlts AS INTEGER) > 4
-                ) THEN '是'
-                ELSE '否'
-            END AS 治拘大于4天,
-
-            -- 2次违法且案由相同且第一次违法开具了训诫书(仅行政案件)
-            CASE
-                WHEN vw.案件类型 = '行政'
-                     AND COALESCE(vc.违法次数, 0) = 2
-                     AND COALESCE(vc.不同案由数, 0) = 1
-                     AND COALESCE(fcx.有训诫书, 0) = 1
-                THEN '是'
-                ELSE '否'
-            END AS "2次违法且案由相同且第一次违法开具了训诫书",
-
-            -- 3次及以上违法(仅行政案件)
-            CASE
-                WHEN vw.案件类型 = '行政' AND COALESCE(vc.违法次数, 0) > 2 THEN '是'
-                ELSE '否'
-            END AS "3次及以上违法",
-
-            -- 是否刑拘(仅刑事案件)
-            CASE
-                WHEN vw.案件类型 = '刑事' AND EXISTS (
-                    SELECT 1 FROM "ywdata"."zq_zfba_jlz" j
-                    WHERE j.ajxx_ajbh = vw.案件编号 AND j.jlz_rybh = vw.人员编号
-                ) THEN '是'
-                ELSE '否'
-            END AS 是否刑拘,
-
-            -- 是否开具矫治文书
-            CASE
-                WHEN EXISTS (
-                    SELECT 1 FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs" z
-                    WHERE z.zltzs_ajbh = vw.案件编号 AND z.zltzs_rybh = vw.人员编号
-                ) OR EXISTS (
-                    SELECT 1 FROM "ywdata"."zq_zfba_xjs2" x
-                    WHERE x.ajbh = vw.案件编号 AND x.xgry_xm = vw.姓名
-                ) THEN '是'
-                ELSE '否'
-            END AS 是否开具矫治文书,
-
-            -- 是否开具家庭教育指导书
-            CASE
-                WHEN EXISTS (
-                    SELECT 1 FROM "ywdata"."zq_zfba_jtjyzdtzs" j
-                    WHERE j.jqjhjyzljsjtjyzdtzs_ajbh = vw.案件编号
-                      AND j.jqjhjyzljsjtjyzdtzs_rybh = vw.人员编号
-                ) THEN '是'
-                ELSE '否'
-            END AS 是否开具家庭教育指导书,
-
-            -- 是否开具专门教育申请书
-            CASE
-                WHEN EXISTS (
-                    SELECT 1 FROM "ywdata"."zq_zfba_tqzmjy" t
-                    WHERE t.ajbh = vw.案件编号 AND t.xgry_xm = vw.姓名
-                ) THEN '是'
-                ELSE '否'
-            END AS 是否开具专门教育申请书,
-
-            -- 是否符合送生
-            CASE
-                WHEN (CASE WHEN vw.年龄::text ~ '^\\d+$' THEN CAST(vw.年龄 AS INTEGER) END) > 11
+                WHEN fd.年龄数值 > 11
+                     AND fd.is_xingju = 0
                      AND (
-                        -- 治拘大于4天
-                        (vw.案件类型 = '行政' AND EXISTS (
-                            SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
-                            WHERE x.ajxx_ajbh = vw.案件编号
-                              AND x.xzcfjds_rybh = vw.人员编号
-                              AND CAST(x.xzcfjds_tj_jlts AS INTEGER) > 4
-                        ))
-                        -- 2次违法且案由相同且第一次违法开具了训诫书
-                        OR (vw.案件类型 = '行政'
-                            AND COALESCE(vc.违法次数, 0) = 2
-                            AND COALESCE(vc.不同案由数, 0) = 1
-                            AND COALESCE(fcx.有训诫书, 0) = 1
-                        )
-                        -- 3次及以上违法
-                        OR (vw.案件类型 = '行政' AND COALESCE(vc.违法次数, 0) > 2)
-                        -- 是否刑拘
-                        OR (vw.案件类型 = '刑事' AND EXISTS (
-                            SELECT 1 FROM "ywdata"."zq_zfba_jlz" j
-                            WHERE j.ajxx_ajbh = vw.案件编号 AND j.jlz_rybh = vw.人员编号
-                        ))
+                        fd.is_zhiju_gt4 = 1
+                        OR fd.is_second_same_ay_with_xjs = 1
+                        OR fd.is_third_plus = 1
                      )
                 THEN '是'
                 ELSE '否'
             END AS 是否符合送生,
-
-            -- 是否送校
-            CASE
-                WHEN EXISTS (
-                    SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
-                    WHERE s.sfzhm = vw.身份证号 AND s.rx_time > vw.立案时间
-                ) THEN '是'
-                ELSE '否'
-            END AS 是否送校
-
-        FROM "ywdata"."v_wcnr_wfry_base" vw
-        LEFT JOIN violation_counts vc ON vw.身份证号 = vc.身份证号
-        LEFT JOIN first_case_xjs fcx ON vw.身份证号 = fcx.身份证号 AND vw.案件编号 = fcx.当前案件编号
-        WHERE vw.录入时间 BETWEEN %s AND %s
-        {type_condition}
-
-        ORDER BY vw.案件编号, vw.人员编号
+            CASE WHEN fd.is_songxiao = 1 THEN '是' ELSE '否' END AS 是否送校
+        FROM flag_data fd
+        ORDER BY fd.案件编号, fd.人员编号
         """
     ).format(type_condition=type_condition)
 

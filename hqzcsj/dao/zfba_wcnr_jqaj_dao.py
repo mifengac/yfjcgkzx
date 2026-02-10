@@ -61,7 +61,7 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
         subclasses = fetch_newcharasubclass_list(conn, leixing_list=leixing_list)
         if not subclasses:
             return {}
-        where_type = sql.SQL(' AND jq."neworicharasubclass" = ANY(%s)')
+        where_type = sql.SQL(' AND jq."newcharasubclass" = ANY(%s)')
         params.append(subclasses)
 
     q = (
@@ -71,7 +71,7 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
             FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
             WHERE jq."calltime" BETWEEN %s AND %s
               AND jq."casemark" ~ '未成年'
-              AND LEFT(jq."neworicharasubclass", 2) IN ('01','02')
+              AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
               AND 1=1
             """
         )
@@ -503,7 +503,7 @@ def fetch_detail_rows(
             if leixing_list:
                 if not subclasses:
                     return [], False
-                where_type = sql.SQL(' AND jq."neworicharasubclass" = ANY(%s)')
+                where_type = sql.SQL(' AND jq."newcharasubclass" = ANY(%s)')
                 params1.append(subclasses)
 
             q = (
@@ -524,7 +524,7 @@ def fetch_detail_rows(
                     FROM ywdata."zq_kshddpt_dsjfx_jq" jq
                     WHERE jq."calltime" BETWEEN %s AND %s
                       AND jq."casemark" ~ '未成年'
-                      AND LEFT(jq."neworicharasubclass", 2) IN ('01','02')
+                      AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
                       AND 1=1
                     """
                 )
@@ -553,7 +553,8 @@ def fetch_detail_rows(
                       ajxx_aymc AS "案由名称",
                       ajxx_lasj AS "立案时间",
                       ajxx_cbdw_mc AS "承办单位",
-                      LEFT(ajxx_cbdw_bh_dm, 6) AS "地区"
+                      LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
+                      ajxx_jyaq 简要案情, ajxx_aymc 案由, ajxx_ajzt 案件状态,ajxx_fadd 发案地点,ajxx_fasj 发案时间
                     FROM {schema}.zq_zfba_wcnr_ajxx
                     WHERE ajxx_lasj BETWEEN %s AND %s
                       AND ajxx_ajlx = %s
