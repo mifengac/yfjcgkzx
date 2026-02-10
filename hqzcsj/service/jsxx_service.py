@@ -463,11 +463,21 @@ def _filter_sources(*, sources: Sequence[str]) -> List[JsxxSourceDef]:
 def _full_refresh_table(*, conn, schema: str, table: str) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            sql.SQL("TRUNCATE TABLE IF EXISTS {}.{}").format(
-                sql.Identifier(schema),
-                sql.Identifier(table),
-            )
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = %s AND table_name = %s
+            LIMIT 1
+            """,
+            (schema, table),
         )
+        if cur.fetchone():
+            cur.execute(
+                sql.SQL("TRUNCATE TABLE {}.{}").format(
+                    sql.Identifier(schema),
+                    sql.Identifier(table),
+                )
+            )
     conn.commit()
 
 

@@ -103,6 +103,8 @@ def count_wcnr_ajxx_by_diqu_and_ajlx(
             FROM {schema}.zq_zfba_wcnr_ajxx
             WHERE ajxx_lasj BETWEEN %s AND %s
               AND ajxx_ajlx IN ('行政','刑事')
+              AND ajxx_ajzt NOT IN ('已撤销','已合并')
+              AND ajxx_cbdw_mc !~ '交通'
               AND 1=1
             """
         ).format(schema=sql.Identifier(SCHEMA))
@@ -402,6 +404,8 @@ def count_wcnr_shr_ajxx_by_diqu(conn, *, start_time: str, end_time: str, pattern
               COUNT(1) AS cnt
             FROM {schema}.zq_zfba_wcnr_shr_ajxx
             WHERE ajxx_lasj BETWEEN %s AND %s
+              AND ajxx_ajzt NOT IN ('已撤销','已合并')
+              AND ajxx_cbdw_mc !~ '交通'
               AND 1=1
             """
         ).format(schema=sql.Identifier(SCHEMA))
@@ -558,6 +562,8 @@ def fetch_detail_rows(
                     FROM {schema}.zq_zfba_wcnr_ajxx
                     WHERE ajxx_lasj BETWEEN %s AND %s
                       AND ajxx_ajlx = %s
+                      AND ajxx_ajzt NOT IN ('已撤销','已合并')
+                      AND ajxx_cbdw_mc !~ '交通'
                       AND 1=1
                     """
                 ).format(schema=sql.Identifier(SCHEMA))
@@ -918,7 +924,9 @@ def fetch_detail_rows(
                       ajxx_ajly AS "案件来源"
                     FROM {schema}.zq_zfba_wcnr_shr_ajxx
                     WHERE ajxx_lasj BETWEEN %s AND %s
-                    AND 1=1
+                      AND ajxx_ajzt NOT IN ('已撤销','已合并')
+                      AND ajxx_cbdw_mc !~ '交通'
+                      AND 1=1
                     """
                 ).format(schema=sql.Identifier(SCHEMA))
                 + where_pat
