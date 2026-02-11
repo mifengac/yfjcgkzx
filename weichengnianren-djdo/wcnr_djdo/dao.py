@@ -73,7 +73,12 @@ def _resolve_jtjyz_rybh_col(conn) -> str:
 
 def query_jq_za_details(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> List[Dict[str, Any]]:
     if case_types and len(case_types) > 0:
-        type_condition = ' AND vjo."leixing" = ANY(%s) '
+        type_condition = '''
+  AND jq.newcharasubclass IN (
+      SELECT unnest(ctc.newcharasubclass_list) 
+      FROM ywdata.case_type_config ctc 
+      WHERE ctc.leixing = ANY(%s)
+  )'''
         params = (start_time, end_time, case_types)
     else:
         type_condition = ""
@@ -81,22 +86,22 @@ def query_jq_za_details(start_time: datetime, end_time: datetime, case_types: Li
 
     q = f"""
 SELECT
-    vjo."caseno" AS "警情编号",
-    vjo."calltime" AS "报警时间",
-    LEFT(vjo."cmdid", 6) AS "地区代码",
-    vjo."dutydeptname" AS "管辖单位",
-    vjo."casecontents" AS "报警内容",
+    jq."caseno" AS "警情编号",
+    jq."calltime" AS "报警时间",
+    LEFT(jq."cmdid", 6) AS "地区代码",
+    jq."dutydeptname" AS "管辖单位",
+    jq."casecontents" AS "报警内容",
     zza."ajxx_ajbh" AS "案件编号",
     zza."ajxx_ajmc" AS "案件名称",
     zza."ajxx_cbdw_mc" AS "办案单位名称",
     zza."ajxx_jyaq" AS "简要案情",
     zza."ajxx_ajzt" AS "案件状态"
-FROM "ywdata"."v_jq_optimized" vjo
-INNER JOIN "ywdata"."zq_zfba_ajxx" zza
-    ON vjo."caseno" = zza."ajxx_jqbh"
-WHERE vjo."calltime" BETWEEN %s AND %s
-  AND vjo."casemark" ~ '未成年'
-  AND vjo."code_type" = 'confirmed' AND LEFT (vjo.newcharasubclass,2) in ('01','02')
+FROM ywdata.zq_kshddpt_dsjfx_jq jq
+LEFT JOIN ywdata.zq_zfba_ajxx zza
+    ON jq.caseno = zza.ajxx_jqbh
+WHERE jq.calltime BETWEEN %s AND %s
+  AND LEFT(jq.newcharasubclass, 2) IN ('01', '02')
+  AND jq.casemark ~ '未成年'
 {type_condition}
 """
     rows = _fetch_all(q, params)

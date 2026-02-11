@@ -58,11 +58,15 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
     where_type = sql.SQL("")
     params: List[Any] = [start_time, end_time]
     if leixing_list:
-        subclasses = fetch_newcharasubclass_list(conn, leixing_list=leixing_list)
-        if not subclasses:
-            return {}
-        where_type = sql.SQL(' AND jq."newcharasubclass" = ANY(%s)')
-        params.append(subclasses)
+        where_type = sql.SQL(
+            '''
+  AND jq.newcharasubclass IN (
+      SELECT unnest(ctc.newcharasubclass_list) 
+      FROM ywdata.case_type_config ctc 
+      WHERE ctc.leixing = ANY(%s)
+  )'''
+        )
+        params.append(leixing_list)
 
     q = (
         sql.SQL(
@@ -505,10 +509,15 @@ def fetch_detail_rows(
                 params1.append(diqu)
             where_type = sql.SQL("")
             if leixing_list:
-                if not subclasses:
-                    return [], False
-                where_type = sql.SQL(' AND jq."newcharasubclass" = ANY(%s)')
-                params1.append(subclasses)
+                where_type = sql.SQL(
+                    '''
+  AND jq.newcharasubclass IN (
+      SELECT unnest(ctc.newcharasubclass_list) 
+      FROM ywdata.case_type_config ctc 
+      WHERE ctc.leixing = ANY(%s)
+  )'''
+                )
+                params1.append(leixing_list)
 
             q = (
                 sql.SQL(
