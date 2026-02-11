@@ -92,11 +92,11 @@ SELECT
     zza."ajxx_jyaq" AS "简要案情",
     zza."ajxx_ajzt" AS "案件状态"
 FROM "ywdata"."v_jq_optimized" vjo
-LEFT JOIN "ywdata"."zq_zfba_ajxx" zza
+INNER JOIN "ywdata"."zq_zfba_ajxx" zza
     ON vjo."caseno" = zza."ajxx_jqbh"
 WHERE vjo."calltime" BETWEEN %s AND %s
   AND vjo."casemark" ~ '未成年'
-  AND vjo."code_type" = 'confirmed'
+  AND vjo."code_type" = 'confirmed' AND LEFT (vjo.newcharasubclass,2) in ('01','02')
 {type_condition}
 """
     rows = _fetch_all(q, params)
