@@ -196,6 +196,20 @@ def fetch_jzqk_data(
                 END AS is_jiaozhi_wenshu,
                 CASE
                     WHEN EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_xjs2" x
+                        WHERE x.ajbh = bd.案件编号 AND x.xgry_xm = bd.姓名
+                    ) THEN 1
+                    ELSE 0
+                END AS is_xunjieshu,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs" z
+                        WHERE z.zltzs_ajbh = bd.案件编号 AND z.zltzs_rybh = bd.人员编号
+                    ) THEN 1
+                    ELSE 0
+                END AS is_zeling_tongzhishu,
+                CASE
+                    WHEN EXISTS (
                         SELECT 1 FROM "ywdata"."zq_zfba_jtjyzdtzs" j
                         WHERE j.jqjhjyzljsjtjyzdtzs_ajbh = bd.案件编号
                           AND j.jqjhjyzljsjtjyzdtzs_rybh = bd.人员编号
@@ -236,6 +250,12 @@ def fetch_jzqk_data(
             CASE WHEN fd.is_third_plus = 1 THEN '是' ELSE '否' END AS "3次及以上违法",
             CASE WHEN fd.is_xingju = 1 THEN '是' ELSE '否' END AS 是否刑拘,
             CASE WHEN fd.is_jiaozhi_wenshu = 1 THEN '是' ELSE '否' END AS 是否开具矫治文书,
+            CASE
+                WHEN fd.is_xunjieshu = 1 AND fd.is_zeling_tongzhishu = 1 THEN '训诫书/责令未成年人遵守特定行为规范通知书'
+                WHEN fd.is_xunjieshu = 1 THEN '训诫书'
+                WHEN fd.is_zeling_tongzhishu = 1 THEN '责令未成年人遵守特定行为规范通知书'
+                ELSE ''
+            END AS 开具矫治教育文书名称,
             CASE WHEN fd.is_jiating_jiaoyu_wenshu = 1 THEN '是' ELSE '否' END AS 是否开具家庭教育指导书,
             CASE WHEN fd.is_zhuanmen_shenqingshu = 1 THEN '是' ELSE '否' END AS 是否开具专门教育申请书,
             CASE

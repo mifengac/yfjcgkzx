@@ -131,16 +131,22 @@
                 const rows = data.rows || [];
                 statusBox.textContent = `共 ${rows.length} 条`;
                 if (rateBox) {
-                    if (metric === "yzbl_cover") {
+                    if (metric === "yzbl_cover_xz" || metric === "yzbl_cover_xs") {
+                        const ajlx = metric.endsWith("_xz") ? "行政" : "刑事";
                         const denom = rows.length;
                         const num = rows.filter(r => String(r["是否开具矫治文书"] || "") === "是").length;
                         const rate = denom ? ((num / denom) * 100).toFixed(2) + "%" : "0.00%";
-                        rateBox.textContent = `分子：${num}；分母：${denom}；覆盖率：${rate}`;
-                    } else if (metric === "syzmj_songjiao") {
-                        const denom = rows.length;
+                        rateBox.textContent = `案件类型：${ajlx}；分子：${num}；分母：${denom}；覆盖率：${rate}`;
+                    } else if (metric === "syzmj_songjiao_xz" || metric === "syzmj_songjiao_xs") {
+                        const ajlx = metric.endsWith("_xz") ? "行政" : "刑事";
+                        const denom = rows.filter(r => String(r["是否符合送生"] || "") === "是").length;
                         const num = rows.filter(r => String(r["是否送校"] || "") === "是").length;
                         const rate = denom ? ((num / denom) * 100).toFixed(2) + "%" : "0.00%";
-                        rateBox.textContent = `分子(送校)：${num}；分母(全量)：${denom}；送矫率：${rate}`;
+                        rateBox.textContent = `案件类型：${ajlx}；分子(送校)：${num}；分母(符合送生)：${denom}；送矫率：${rate}`;
+                    } else if (metric === "zljqjh_rate_xz" || metric === "zljqjh_rate_xs") {
+                        const ajlx = metric.endsWith("_xz") ? "行政" : "刑事";
+                        const num = rows.filter(r => String(r["是否开具家庭教育指导书"] || "") === "是").length;
+                        rateBox.textContent = `案件类型：${ajlx}；分子(开具家庭教育指导书)：${num}；分母：见违法犯罪未成年人总数`;
                     }
                 }
                 renderTable(rows);

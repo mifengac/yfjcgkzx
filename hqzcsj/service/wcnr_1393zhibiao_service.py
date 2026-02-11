@@ -22,9 +22,12 @@ LABEL_JYH_CF = "结业后再犯数(犯罪)"
 LABEL_JYH_WFZF = "结业后再犯数(违法犯罪)"
 LABEL_CS_BQH = "未成年人场所被侵害发案数"
 LABEL_BQH = "未成年人被侵害发案数"
-LABEL_YZBL = "严重不良未成年人矫治教育覆盖率"
-LABEL_SYZMJ = "适用专门（矫治）教育情形送矫率"
-LABEL_ZLJQJH = "责令加强监护率"
+LABEL_YZBL_XZ = "严重不良未成年人矫治教育覆盖率(行政)"
+LABEL_YZBL_XS = "严重不良未成年人矫治教育覆盖率(刑事)"
+LABEL_SYZMJ_XZ = "适用专门（矫治）教育情形送瞫率(行政)"
+LABEL_SYZMJ_XS = "适用专门（瞫治）教育情形送瞫率(刑事)"
+LABEL_ZLJQJH_XZ = "责令加强监护率(行政)"
+LABEL_ZLJQJH_XS = "责令加强监护率(刑事)"
 
 
 METRICS: List[MetricDef] = [
@@ -33,9 +36,12 @@ METRICS: List[MetricDef] = [
     MetricDef("jyh_wfzf", LABEL_JYH_WFZF, "count"),
     MetricDef("cs_bqh", LABEL_CS_BQH, "count"),
     MetricDef("bqh", LABEL_BQH, "count"),
-    MetricDef("yzbl_cover", LABEL_YZBL, "rate"),
-    MetricDef("syzmj_songjiao", LABEL_SYZMJ, "rate"),
-    MetricDef("zljqjh_rate", LABEL_ZLJQJH, "rate"),
+    MetricDef("yzbl_cover_xz", LABEL_YZBL_XZ, "rate"),
+    MetricDef("yzbl_cover_xs", LABEL_YZBL_XS, "rate"),
+    MetricDef("syzmj_songjiao_xz", LABEL_SYZMJ_XZ, "rate"),
+    MetricDef("syzmj_songjiao_xs", LABEL_SYZMJ_XS, "rate"),
+    MetricDef("zljqjh_rate_xz", LABEL_ZLJQJH_XZ, "rate"),
+    MetricDef("zljqjh_rate_xs", LABEL_ZLJQJH_XS, "rate"),
 ]
 
 
@@ -164,9 +170,12 @@ def build_summary(
             wfzf_by=wfzf_by,
             wfzf_total=wfzf_total,
         )
-        yz_num_by, yz_denom_by, yz_num_total, yz_denom_total = rate_stats["yzbl_cover"]
-        sj_num_by, sj_denom_by, sj_num_total, sj_denom_total = rate_stats["syzmj_songjiao"]
-        jl_num_by, jl_denom_by, jl_num_total, jl_denom_total = rate_stats["zljqjh_rate"]
+        yz_xz_num_by, yz_xz_denom_by, yz_xz_num_total, yz_xz_denom_total = rate_stats["yzbl_cover_xz"]
+        yz_xs_num_by, yz_xs_denom_by, yz_xs_num_total, yz_xs_denom_total = rate_stats["yzbl_cover_xs"]
+        sj_xz_num_by, sj_xz_denom_by, sj_xz_num_total, sj_xz_denom_total = rate_stats["syzmj_songjiao_xz"]
+        sj_xs_num_by, sj_xs_denom_by, sj_xs_num_total, sj_xs_denom_total = rate_stats["syzmj_songjiao_xs"]
+        jl_xz_num_by, jl_xz_denom_by, jl_xz_num_total, jl_xz_denom_total = rate_stats["zljqjh_rate_xz"]
+        jl_xs_num_by, jl_xs_denom_by, jl_xs_num_total, jl_xs_denom_total = rate_stats["zljqjh_rate_xs"]
     finally:
         try:
             conn.close()
@@ -174,7 +183,10 @@ def build_summary(
             pass
 
     all_codes = set()
-    for d in (wfzf_by, jyh_cf_by, jyh_wfzf_by, cs_by, bqh_by, yz_denom_by, sj_num_by, sj_denom_by, jl_num_by):
+    for d in (wfzf_by, jyh_cf_by, jyh_wfzf_by, cs_by, bqh_by, 
+              yz_xz_denom_by, yz_xs_denom_by, 
+              sj_xz_num_by, sj_xz_denom_by, sj_xs_num_by, sj_xs_denom_by, 
+              jl_xz_num_by, jl_xs_num_by):
         all_codes.update(d.keys())
     ordered_codes = [c for c in DIQU_ORDER if c in all_codes]
     rest_codes = sorted([c for c in all_codes if c not in set(DIQU_ORDER)])
@@ -191,14 +203,23 @@ def build_summary(
                 LABEL_JYH_WFZF: int(jyh_wfzf_by.get(code, 0)),
                 LABEL_CS_BQH: int(cs_by.get(code, 0)),
                 LABEL_BQH: int(bqh_by.get(code, 0)),
-                LABEL_YZBL: fmt_rate(
-                    int(yz_num_by.get(code, 0)), int(yz_denom_by.get(code, 0))
+                LABEL_YZBL_XZ: fmt_rate(
+                    int(yz_xz_num_by.get(code, 0)), int(yz_xz_denom_by.get(code, 0))
                 ),
-                LABEL_SYZMJ: fmt_rate(
-                    int(sj_num_by.get(code, 0)), int(sj_denom_by.get(code, 0))
+                LABEL_YZBL_XS: fmt_rate(
+                    int(yz_xs_num_by.get(code, 0)), int(yz_xs_denom_by.get(code, 0))
                 ),
-                LABEL_ZLJQJH: fmt_rate(
-                    int(jl_num_by.get(code, 0)), int(jl_denom_by.get(code, 0))
+                LABEL_SYZMJ_XZ: fmt_rate(
+                    int(sj_xz_num_by.get(code, 0)), int(sj_xz_denom_by.get(code, 0))
+                ),
+                LABEL_SYZMJ_XS: fmt_rate(
+                    int(sj_xs_num_by.get(code, 0)), int(sj_xs_denom_by.get(code, 0))
+                ),
+                LABEL_ZLJQJH_XZ: fmt_rate(
+                    int(jl_xz_num_by.get(code, 0)), int(jl_xz_denom_by.get(code, 0))
+                ),
+                LABEL_ZLJQJH_XS: fmt_rate(
+                    int(jl_xs_num_by.get(code, 0)), int(jl_xs_denom_by.get(code, 0))
                 ),
             }
         )
@@ -212,9 +233,12 @@ def build_summary(
             LABEL_JYH_WFZF: jyh_wfzf_total,
             LABEL_CS_BQH: cs_total,
             LABEL_BQH: bqh_total,
-            LABEL_YZBL: fmt_rate(yz_num_total, yz_denom_total),
-            LABEL_SYZMJ: fmt_rate(sj_num_total, sj_denom_total),
-            LABEL_ZLJQJH: fmt_rate(jl_num_total, jl_denom_total),
+            LABEL_YZBL_XZ: fmt_rate(yz_xz_num_total, yz_xz_denom_total),
+            LABEL_YZBL_XS: fmt_rate(yz_xs_num_total, yz_xs_denom_total),
+            LABEL_SYZMJ_XZ: fmt_rate(sj_xz_num_total, sj_xz_denom_total),
+            LABEL_SYZMJ_XS: fmt_rate(sj_xs_num_total, sj_xs_denom_total),
+            LABEL_ZLJQJH_XZ: fmt_rate(jl_xz_num_total, jl_xz_denom_total),
+            LABEL_ZLJQJH_XS: fmt_rate(jl_xs_num_total, jl_xs_denom_total),
         }
     )
 
@@ -280,13 +304,20 @@ def fetch_detail(
                 rows = [dict(r) for r in base_rows]
                 _append_addr_predictions(rows, addr_col="发案地点")
                 rows = [r for r in rows if str(r.get("分类结果") or "").strip() == "重点管控行业"]
-        elif metric in ("yzbl_cover", "syzmj_songjiao", "zljqjh_rate"):
+        elif metric in ("yzbl_cover_xz", "yzbl_cover_xs", 
+                        "syzmj_songjiao_xz", "syzmj_songjiao_xs", 
+                        "zljqjh_rate_xz", "zljqjh_rate_xs"):
             rate_rows = jzqk_tongji_dao.fetch_jzqk_data(
                 conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list
             )
             if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
                 code = str(diqu).strip()
                 rate_rows = [r for r in rate_rows if str(r.get("地区") or "").strip() == code]
+            # 根据 metric 过滤案件类型
+            if metric.endswith("_xz"):
+                rate_rows = [r for r in rate_rows if str(r.get("案件类型") or "").strip() == "行政"]
+            elif metric.endswith("_xs"):
+                rate_rows = [r for r in rate_rows if str(r.get("案件类型") or "").strip() == "刑事"]
             rows = rate_rows
         else:
             raise ValueError(f"不支持的 metric: {metric}")
@@ -362,8 +393,10 @@ def fetch_all_details(
         rate_rows = jzqk_tongji_dao.fetch_jzqk_data(
             conn, start_time=meta_start, end_time=meta_end, leixing_list=leixing_list
         )
-        yzbl_rows = [dict(r) for r in rate_rows]
-        sj_rows = [dict(r) for r in rate_rows]
+        yzbl_xz_rows = [dict(r) for r in rate_rows if str(r.get("案件类型") or "").strip() == "行政"]
+        yzbl_xs_rows = [dict(r) for r in rate_rows if str(r.get("案件类型") or "").strip() == "刑事"]
+        sj_xz_rows = [dict(r) for r in rate_rows if str(r.get("案件类型") or "").strip() == "行政"]
+        sj_xs_rows = [dict(r) for r in rate_rows if str(r.get("案件类型") or "").strip() == "刑事"]
     finally:
         try:
             conn.close()
@@ -376,9 +409,12 @@ def fetch_all_details(
         "jyh_wfzf": jyh_wfzf_rows,
         "cs_bqh": cs_rows,
         "bqh": bqh_rows,
-        "yzbl_cover": yzbl_rows,
-        "syzmj_songjiao": sj_rows,
-        "zljqjh_rate": [dict(r) for r in rate_rows],
+        "yzbl_cover_xz": yzbl_xz_rows,
+        "yzbl_cover_xs": yzbl_xs_rows,
+        "syzmj_songjiao_xz": sj_xz_rows,
+        "syzmj_songjiao_xs": sj_xs_rows,
+        "zljqjh_rate_xz": [dict(r) for r in rate_rows if str(r.get("案件类型") or "").strip() == "行政"],
+        "zljqjh_rate_xs": [dict(r) for r in rate_rows if str(r.get("案件类型") or "").strip() == "刑事"],
     }
 
     for rows in metric_rows.values():
