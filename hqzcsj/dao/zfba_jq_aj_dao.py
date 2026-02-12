@@ -192,28 +192,38 @@ def count_ajxx_all_by_diqu(conn, *, start_time: str, end_time: str, patterns: Se
     return out
 
 
-def count_ajxx_banjie_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
-    """办结：案件状态 IN ('已立案','已受案','已受理')"""
+def count_ajxx_banjie_by_diqu(
+    conn, *, start_time: str, end_time: str, patterns: Sequence[str], ajlx: str = ""
+) -> Dict[str, int]:
+    """未办结：案件状态 NOT IN ('已立案','已受案','已受理')，可按案件类型(行政/刑事)过滤"""
     has_data = _table_has_data_col(conn, schema=SCHEMA, table="zq_zfba_ajxx")
     diqu_expr = _left6(_text("aj", "ajxx_cbdw_bh_dm", has_data=has_data))
     ajzt_expr = _text("aj", "ajxx_ajzt", has_data=has_data)
+    ajlx_expr = _text("aj", "ajxx_ajlx", has_data=has_data)
     aymc_expr = _text("aj", "ajxx_aymc", has_data=has_data)
     time_expr = _ts("aj", "ajxx_lasj", has_data=has_data)
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
+    ajlx = (ajlx or "").strip()
+    where_ajlx = sql.SQL("")
+    params: List[Any] = [start_time, end_time]
+    if ajlx in ("行政", "刑事"):
+        where_ajlx = sql.SQL(" AND {ajlx} = %s").format(ajlx=ajlx_expr)
+        params.append(ajlx)
 
     q = (
         sql.SQL(
             "SELECT {diqu} AS diqu, COUNT(1) AS cnt "
             "FROM {schema}.zq_zfba_ajxx aj "
             "WHERE {t} BETWEEN %s AND %s "
-            "AND {ajzt} IN ('已立案','已受案','已受理') "
+            "AND {ajzt} NOT IN ('已立案','已受案','已受理') "
             "AND 1=1 "
         ).format(diqu=diqu_expr, schema=sql.Identifier(SCHEMA), t=time_expr, ajzt=ajzt_expr)
+        + where_ajlx
         + pat_sql
         + sql.SQL(" GROUP BY diqu")
     )
     with conn.cursor() as cur:
-        cur.execute(q, [start_time, end_time] + pat_params)
+        cur.execute(q, params + pat_params)
         rows = cur.fetchall()
     out: Dict[str, int] = {}
     for diqu, cnt in rows:
@@ -432,7 +442,7 @@ def fetch_detail_rows(
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """
     返回 (rows, truncated)；rows 仅包含"常用字段"。
-    metric: 警情/案件数/行政/刑事/治安处罚/刑拘/逮捕/起诉/移送案件/办结/高质量
+    metric: 警情/案件数/行政/刑事/治安处罚/刑拘/逮捕/起诉/移送案件/办结/破案/高质量
     diqu: 6位地区码 或 "__ALL__"(全市)
     """
     metric = (metric or "").strip()
@@ -851,9 +861,10 @@ def fetch_detail_rows(
                 rows = rows[:limit_n]
             return rows, truncated
 
-        # 新增指标：办结（案件状态 IN ('已立案','已受案','已受理')）
-        if metric == "办结":
-            params9: List[Any] = [start_time, end_time]
+        # 新增指标：办结/破案（未办结口径 + 按案件类型拆分）
+        if metric in ("办结", "破案"):
+            target_ajlx = "行政" if metric == "办结" else "刑事"
+            params9: List[Any] = [start_time, end_time, target_ajlx]
             where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
             params9 += pat_params
             where_diqu = sql.SQL("")
@@ -880,7 +891,8 @@ def fetch_detail_rows(
                       ajxx_ajly AS "案件来源"
                     FROM "ywdata"."zq_zfba_ajxx"
                     WHERE ajxx_lasj BETWEEN %s AND %s
-                    AND ajxx_ajzt IN ('已立案','已受案','已受理')
+                    AND ajxx_ajzt NOT IN ('已立案','已受案','已受理')
+                    AND ajxx_ajlx = %s
                     AND 1=1
                     """
                 )

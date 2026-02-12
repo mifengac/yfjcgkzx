@@ -17,6 +17,22 @@ REGION_ORDER: List[Tuple[str, str]] = [
     ("445300", "市局"),
 ]
 
+RATIO_RULES: List[Tuple[str, str, str]] = [
+    ("警情", "同比警情", "起"),
+    ("案件数", "同比案件数", "起"),
+    ("行政", "同比行政", "起"),
+    ("刑事", "同比刑事", "起"),
+    ("治安处罚", "同比治安处罚", "人次"),
+    ("刑拘", "同比刑拘", "人次"),
+    ("逮捕", "同比逮捕", "人次"),
+    ("起诉", "同比起诉", "人次"),
+    ("移送案件", "同比移送案件", "起"),
+    ("办结", "同比办结", "起"),
+    ("破案", "同比破案", "起"),
+    ("高质量", "同比高质量", "起"),
+]
+RATIO_RULE_BY_YOY: Dict[str, Tuple[str, str]] = {yoy_col: (cur_col, unit) for cur_col, yoy_col, unit in RATIO_RULES}
+
 
 @dataclass(frozen=True)
 class SummaryMeta:
@@ -48,6 +64,49 @@ def parse_dt(s: str) -> datetime:
 
 def fmt_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _to_num(v: Any) -> float:
+    try:
+        if v is None:
+            return 0.0
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def _fmt_num(v: float) -> str:
+    return str(int(v)) if float(v).is_integer() else f"{v:.2f}".rstrip("0").rstrip(".")
+
+
+def calc_ratio_text(current_value: Any, yoy_value: Any, unit: str) -> str:
+    current_num = _to_num(current_value)
+    yoy_num = _to_num(yoy_value)
+
+    if current_num == yoy_num:
+        return "持平"
+    if current_num == 0 and yoy_num != 0:
+        return f"下降{_fmt_num(yoy_num)}{unit}"
+    if current_num != 0 and yoy_num == 0:
+        return f"上升{_fmt_num(current_num)}{unit}"
+
+    ratio = ((current_num - yoy_num) / yoy_num) * 100
+    return f"{ratio:.2f}%"
+
+
+def append_ratio_columns(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        new_row: Dict[str, Any] = {}
+        for key, value in row.items():
+            new_row[key] = value
+            rule = RATIO_RULE_BY_YOY.get(key)
+            if rule:
+                current_col, unit = rule
+                ratio_col = f"{key}比例"
+                new_row[ratio_col] = calc_ratio_text(row.get(current_col), row.get(key), unit)
+        out.append(new_row)
+    return out
 
 
 def shift_year(dt: datetime, years: int = -1) -> datetime:
@@ -125,10 +184,18 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
             "当前-移送案件",
             lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
         )
-        # 新增：办结
+        # 新增：办结/破案（未办结口径，按案件类型拆分）
         banjie_now = _call(
             "当前-办结",
-            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(
+                conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, ajlx="行政"
+            ),
+        )
+        poan_now = _call(
+            "当前-破案",
+            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(
+                conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, ajlx="刑事"
+            ),
         )
         # 新增：高质量
         gaozhiliang_now = _call(
@@ -171,10 +238,18 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
             "同比-移送案件",
             lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
         )
-        # 新增：办结同比
+        # 新增：办结/破案同比
         banjie_yoy = _call(
             "同比-办结",
-            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(
+                conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns, ajlx="行政"
+            ),
+        )
+        poan_yoy = _call(
+            "同比-破案",
+            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(
+                conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns, ajlx="刑事"
+            ),
         )
         # 新增：高质量同比
         gaozhiliang_yoy = _call(
@@ -209,8 +284,10 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
                     "同比起诉": g(qisu_yoy, code),
                     "移送案件": g(yisong_now, code),
                     "同比移送案件": g(yisong_yoy, code),
-                    "未办结": g(banjie_now, code),
-                    "同比未办结": g(banjie_yoy, code),
+                    "办结": g(banjie_now, code),
+                    "同比办结": g(banjie_yoy, code),
+                    "破案": g(poan_now, code),
+                    "同比破案": g(poan_yoy, code),
                     "高质量": g(gaozhiliang_now, code),
                     "同比高质量": g(gaozhiliang_yoy, code),
                 }
@@ -237,8 +314,10 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
             "同比起诉",
             "移送案件",
             "同比移送案件",
-            "未办结",
-            "同比未办结",
+            "办结",
+            "同比办结",
+            "破案",
+            "同比破案",
             "高质量",
             "同比高质量",
         ]:

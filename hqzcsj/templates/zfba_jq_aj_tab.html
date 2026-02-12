@@ -28,6 +28,11 @@
             <button class="btn" id="jqajQueryBtn">查询</button>
         </div>
         <div class="row" style="gap:10px; align-items:center;">
+            <label class="ratio-switch" title="显示同比比例列">
+                <span class="ratio-switch-text">显示比例</span>
+                <input type="checkbox" id="jqajShowRatio">
+                <span class="ratio-switch-slider"></span>
+            </label>
             <div class="dropdown" id="jqajExportDd">
                 <button class="btn" id="jqajExportBtn">导出</button>
                 <div class="dropdown-menu">
@@ -52,6 +57,48 @@
     #jqajTbl th { text-align: center; }
     #jqajTbl td.num-cell { text-align: center; font-variant-numeric: tabular-nums; }
     #jqajTbl td.rowh { text-align: left; }
+    #jqajTbl td.ratio-cell { white-space: nowrap; }
+
+    .ratio-switch {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
+    }
+    .ratio-switch input {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .ratio-switch-slider {
+        position: relative;
+        width: 42px;
+        height: 22px;
+        border-radius: 999px;
+        background: #c6ccd6;
+        transition: background .2s ease;
+    }
+    .ratio-switch-slider::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,.22);
+        transition: transform .2s ease;
+    }
+    .ratio-switch input:checked + .ratio-switch-slider {
+        background: #1e88e5;
+    }
+    .ratio-switch input:checked + .ratio-switch-slider::after {
+        transform: translateX(20px);
+    }
 </style>
 
 <div id="jqajDetailModal" class="modal" onclick="jqajCloseModal(event)" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index: 80; align-items:center; justify-content:center; padding: 16px;">
@@ -69,7 +116,7 @@
 <script>
     (function() {
         const REGION_COL = "地区";
-        const COLS = [
+        const BASE_COLS = [
             "地区",
             "警情","同比警情",
             "案件数","同比案件数",
@@ -80,9 +127,28 @@
             "逮捕","同比逮捕",
             "起诉","同比起诉",
             "移送案件","同比移送案件",
-            "未办结","同比未办结",
+            "办结","同比办结",
+            "破案","同比破案",
             "高质量","同比高质量"
         ];
+        const RATIO_META_BY_YOY_COL = {
+            "同比警情": {currentCol: "警情", unit: "起"},
+            "同比案件数": {currentCol: "案件数", unit: "起"},
+            "同比行政": {currentCol: "行政", unit: "起"},
+            "同比刑事": {currentCol: "刑事", unit: "起"},
+            "同比治安处罚": {currentCol: "治安处罚", unit: "人次"},
+            "同比刑拘": {currentCol: "刑拘", unit: "人次"},
+            "同比逮捕": {currentCol: "逮捕", unit: "人次"},
+            "同比起诉": {currentCol: "起诉", unit: "人次"},
+            "同比移送案件": {currentCol: "移送案件", unit: "起"},
+            "同比办结": {currentCol: "办结", unit: "起"},
+            "同比破案": {currentCol: "破案", unit: "起"},
+            "同比高质量": {currentCol: "高质量", unit: "起"},
+        };
+        const RATIO_DEF_BY_COL = {};
+        Object.entries(RATIO_META_BY_YOY_COL).forEach(([yoyCol, meta]) => {
+            RATIO_DEF_BY_COL[`${yoyCol}比例`] = {yoyCol, currentCol: meta.currentCol, unit: meta.unit};
+        });
         const METRIC_BY_COL = {
             "警情":"警情",
             "案件数":"案件数",
@@ -93,7 +159,8 @@
             "逮捕":"逮捕",
             "起诉":"起诉",
             "移送案件":"移送案件",
-            "未办结":"办结",
+            "办结":"办结",
+            "破案":"破案",
             "高质量":"高质量",
             "同比警情":"警情",
             "同比案件数":"案件数",
@@ -104,7 +171,8 @@
             "同比逮捕":"逮捕",
             "同比起诉":"起诉",
             "同比移送案件":"移送案件",
-            "同比未办结":"办结",
+            "同比办结":"办结",
+            "同比破案":"破案",
             "同比高质量":"高质量",
         };
 
@@ -117,8 +185,10 @@
         const tbl = document.getElementById("jqajTbl");
         const queryBtn = document.getElementById("jqajQueryBtn");
         const reportBtn = document.getElementById("jqajReportBtn");
+        const showRatioEl = document.getElementById("jqajShowRatio");
 
         let lastMeta = null;
+        let lastRows = [];
 
         // dropdown
         const dd = document.getElementById("jqajExportDd");
@@ -316,13 +386,47 @@
             return usp;
         }
 
+        function getDisplayCols() {
+            if (!showRatioEl || !showRatioEl.checked) return BASE_COLS;
+            const cols = [];
+            for (const c of BASE_COLS) {
+                cols.push(c);
+                if (RATIO_META_BY_YOY_COL[c]) cols.push(`${c}比例`);
+            }
+            return cols;
+        }
+
+        function fmtPlainNumber(v) {
+            const n = Number(v || 0);
+            if (Number.isNaN(n)) return "0";
+            if (Number.isInteger(n)) return String(n);
+            return n.toFixed(2).replace(/\.?0+$/, "");
+        }
+
+        function calcRatioText(currentValue, yoyValue, unit) {
+            const currentNum = Number(currentValue || 0);
+            const yoyNum = Number(yoyValue || 0);
+            if (currentNum === yoyNum) return "持平";
+            if (currentNum === 0 && yoyNum !== 0) return `下降${fmtPlainNumber(yoyNum)}${unit}`;
+            if (currentNum !== 0 && yoyNum === 0) return `上升${fmtPlainNumber(currentNum)}${unit}`;
+            if (yoyNum === 0) return "持平";
+            const ratio = ((currentNum - yoyNum) / yoyNum) * 100;
+            return `${ratio.toFixed(2)}%`;
+        }
+
         function renderTable(rows, meta) {
-            const thead = `<thead><tr>${COLS.map(c => `<th>${c}</th>`).join("")}</tr></thead>`;
+            const cols = getDisplayCols();
+            const thead = `<thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>`;
             const tbodyRows = (rows || []).map(r => {
                 const diquName = r["地区"] || "";
                 const diquCode = r["地区代码"] || "__ALL__";
-                const tds = COLS.map(c => {
+                const tds = cols.map(c => {
                     if (c === REGION_COL) return `<td class="rowh">${diquName}</td>`;
+                    const ratioDef = RATIO_DEF_BY_COL[c];
+                    if (ratioDef) {
+                        const ratioText = calcRatioText(r[ratioDef.currentCol], r[ratioDef.yoyCol], ratioDef.unit);
+                        return `<td class="num-cell ratio-cell">${ratioText}</td>`;
+                    }
                     const v = (r[c] == null) ? 0 : r[c];
                     if (!v || Number(v) <= 0) return `<td class="num-cell">${v || 0}</td>`;
                     const metric = METRIC_BY_COL[c] || "";
@@ -337,7 +441,7 @@
                 });
                 return `<tr>${tds.join("")}</tr>`;
             }).join("");
-            tbl.innerHTML = thead + `<tbody>${tbodyRows || `<tr><td colspan="${COLS.length}" class="muted">无数据</td></tr>`}</tbody>`;
+            tbl.innerHTML = thead + `<tbody>${tbodyRows || `<tr><td colspan="${cols.length}" class="muted">无数据</td></tr>`}</tbody>`;
 
             // bind click for detail modal
             tbl.querySelectorAll("td.clickable-cell").forEach(td => {
@@ -359,10 +463,12 @@
                 if (!data.success) throw new Error(data.message || "查询失败");
                 statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}`;
                 lastMeta = data.meta || null;
-                renderTable(data.rows || [], data.meta || {});
+                lastRows = data.rows || [];
+                renderTable(lastRows, data.meta || {});
             } catch (e) {
                 errEl.textContent = e.message || String(e);
                 statusEl.textContent = "";
+                lastRows = [];
             } finally {
                 queryBtn.disabled = false;
             }
@@ -371,6 +477,7 @@
         function doExport(fmt) {
             const usp = buildQueryParams();
             usp.set("fmt", fmt);
+            if (showRatioEl && showRatioEl.checked) usp.set("show_ratio", "1");
             const href = `{{ url_for('zfba_jq_aj.export_summary') }}?` + usp.toString();
             window.location.href = href;
         }
@@ -421,6 +528,11 @@
 
         reportBtn.addEventListener("click", (e) => { e.preventDefault(); exportReport(); });
         queryBtn.addEventListener("click", (e) => { e.preventDefault(); query(); });
+        if (showRatioEl) {
+            showRatioEl.addEventListener("change", () => {
+                renderTable(lastRows, lastMeta || {});
+            });
+        }
 
         // detail modal helpers (iframe)
         window.jqajOpenDetail = function(href) {

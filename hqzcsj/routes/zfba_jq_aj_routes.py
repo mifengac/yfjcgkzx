@@ -12,7 +12,13 @@ from openpyxl import Workbook
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao.zfba_jq_aj_dao import fetch_leixing_list
 from hqzcsj.service.zfba_jq_aj_report_service import ZfbaJqAjReportService
-from hqzcsj.service.zfba_jq_aj_service import REGION_ORDER, build_summary, default_time_range_for_page, fetch_detail
+from hqzcsj.service.zfba_jq_aj_service import (
+    REGION_ORDER,
+    append_ratio_columns,
+    build_summary,
+    default_time_range_for_page,
+    fetch_detail,
+)
 
 
 zfba_jq_aj_bp = Blueprint("zfba_jq_aj", __name__, template_folder="../templates")
@@ -60,6 +66,11 @@ def _parse_list_args(name: str) -> List[str]:
     return out
 
 
+def _parse_bool_arg(name: str) -> bool:
+    v = (request.args.get(name) or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
 @zfba_jq_aj_bp.route("/zfba_jq_aj/api/summary")
 def api_summary() -> Any:
     start_time = (request.args.get("start_time") or "").strip()
@@ -68,8 +79,11 @@ def api_summary() -> Any:
         start_time, end_time = default_time_range_for_page()
     leixing_list = _parse_list_args("leixing")
     za_types = _parse_list_args("za_type")
+    show_ratio = _parse_bool_arg("show_ratio")
     try:
         meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list, za_types=za_types)
+        if show_ratio:
+            rows = append_ratio_columns(rows)
         return jsonify({"success": True, "meta": meta.__dict__, "rows": rows})
     except Exception as exc:
         logging.exception(
@@ -91,8 +105,11 @@ def export_summary() -> Response:
         start_time, end_time = default_time_range_for_page()
     leixing_list = _parse_list_args("leixing")
     za_types = _parse_list_args("za_type")
+    show_ratio = _parse_bool_arg("show_ratio")
 
     meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list, za_types=za_types)
+    if show_ratio:
+        rows = append_ratio_columns(rows)
     ts = datetime.now().strftime("%Y%m%d%H%M%S")
     filename = f"警情案件统计{ts}.{fmt}"
 
