@@ -94,6 +94,49 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
     return out
 
 
+def count_zhuanan_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str]) -> Dict[str, int]:
+    """转案数：按警情去重，统计已关联案件编号的警情数量。"""
+    leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
+    where_type = sql.SQL("")
+    params: List[Any] = [start_time, end_time]
+    if leixing_list:
+        where_type = sql.SQL(
+            '''
+  AND jq.newcharasubclass IN (
+      SELECT unnest(ctc.newcharasubclass_list) 
+      FROM ywdata.case_type_config ctc 
+      WHERE ctc.leixing = ANY(%s)
+  )'''
+        )
+        params.append(leixing_list)
+
+    q = (
+        sql.SQL(
+            """
+            SELECT LEFT(jq."cmdid", 6) AS diqu, COUNT(DISTINCT jq."caseno") AS cnt
+            FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
+            LEFT JOIN "ywdata"."zq_zfba_ajxx" zza ON jq."caseno" = zza."ajxx_jqbh"
+            WHERE jq."calltime" BETWEEN %s AND %s
+              AND jq."casemark" ~ '未成年'
+              AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
+              AND NULLIF(BTRIM(zza."ajxx_ajbh"), '') IS NOT NULL
+              AND 1=1
+            """
+        )
+        + where_type
+        + sql.SQL(' GROUP BY LEFT(jq."cmdid", 6)')
+    )
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        rows = cur.fetchall()
+    out: Dict[str, int] = {}
+    for diqu, cnt in rows:
+        if not diqu:
+            continue
+        out[str(diqu)] = int(cnt or 0)
+    return out
+
+
 def count_wcnr_ajxx_by_diqu_and_ajlx(
     conn, *, start_time: str, end_time: str, patterns: Sequence[str]
 ) -> Dict[str, Dict[str, int]]:
@@ -126,6 +169,107 @@ def count_wcnr_ajxx_by_diqu_and_ajlx(
         ajlx_s = str(ajlx)
         if ajlx_s in out:
             out[ajlx_s][str(diqu)] = int(cnt or 0)
+    return out
+
+
+def _append_addr_predictions(rows: List[Dict[str, Any]], *, addr_col: str = "发案地点") -> None:
+    try:
+        from xunfang.service.jiemiansanlei_service import predict_addresses
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"无法加载地址分类模型（xunfang/5lei_dizhi_model）：{exc}") from exc
+
+    unique_texts: List[str] = []
+    seen = set()
+    for row in rows:
+        text = str((row.get(addr_col) or "")).strip()
+        if text in seen:
+            continue
+        seen.add(text)
+        unique_texts.append(text)
+
+    pred_map: Dict[str, Tuple[str, float]] = {}
+    if unique_texts:
+        preds = predict_addresses(unique_texts)
+        for text, (label, prob) in zip(unique_texts, preds):
+            pred_map[text] = (str(label or "").strip(), float(prob or 0.0))
+
+    for row in rows:
+        text = str((row.get(addr_col) or "")).strip()
+        label, prob = pred_map.get(text, ("", 0.0))
+        row["分类结果"] = label
+        try:
+            row["置信度"] = f"{float(prob):.5f}"
+        except Exception:
+            row["置信度"] = "0.00000"
+
+
+def fetch_wcnr_ajxx_changsuo_base_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    patterns: Sequence[str],
+    diqu: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
+    where_diqu = sql.SQL("")
+    params: List[Any] = [start_time, end_time] + list(pat_params)
+    if diqu:
+        where_diqu = sql.SQL(" AND LEFT(ajxx_cbdw_bh_dm, 6) = %s")
+        params.append(str(diqu).strip())
+
+    q = (
+        sql.SQL(
+            """
+            SELECT
+              ajxx_ajbh AS "案件编号",
+              ajxx_jqbh AS "警情编号",
+              ajxx_ajmc AS "案件名称",
+              ajxx_ajlx AS "案件类型",
+              ajxx_aymc AS "案由名称",
+              ajxx_lasj AS "立案时间",
+              ajxx_cbdw_mc AS "承办单位",
+              LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
+              ajxx_jyaq AS "简要案情",
+              ajxx_aymc AS "案由",
+              ajxx_ajzt AS "案件状态",
+              ajxx_fadd AS "发案地点",
+              ajxx_fasj AS "发案时间"
+            FROM {schema}.zq_zfba_wcnr_ajxx
+            WHERE ajxx_lasj BETWEEN %s AND %s
+              AND ajxx_ajzt NOT IN ('已撤销','已合并')
+              AND ajxx_cbdw_mc !~ '交通'
+              AND 1=1
+            """
+        ).format(schema=sql.Identifier(SCHEMA))
+        + pat_sql
+        + where_diqu
+        + sql.SQL(" ORDER BY ajxx_lasj DESC")
+    )
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def count_changsuo_ajxx_by_diqu(
+    conn, *, start_time: str, end_time: str, patterns: Sequence[str]
+) -> Dict[str, int]:
+    base_rows = fetch_wcnr_ajxx_changsuo_base_rows(
+        conn, start_time=start_time, end_time=end_time, patterns=patterns, diqu=None
+    )
+    if not base_rows:
+        return {}
+
+    _append_addr_predictions(base_rows, addr_col="发案地点")
+    out: Dict[str, int] = {}
+    for row in base_rows:
+        if str(row.get("分类结果") or "").strip() != "重点管控行业":
+            continue
+        diqu = str(row.get("地区") or "").strip()
+        if not diqu:
+            continue
+        out[diqu] = int(out.get(diqu) or 0) + 1
     return out
 
 
@@ -428,6 +572,80 @@ def count_wcnr_shr_ajxx_by_diqu(conn, *, start_time: str, end_time: str, pattern
     return out
 
 
+def fetch_wcnr_shr_ajxx_base_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    patterns: Sequence[str],
+    diqu: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """案件数(被侵害)基础明细，供场所案件(被侵害)二次分类复用。"""
+    pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
+    params: List[Any] = [start_time, end_time] + list(pat_params)
+    where_diqu = sql.SQL("")
+    if diqu:
+        where_diqu = sql.SQL(" AND LEFT(ajxx_cbdw_bh_dm, 6) = %s")
+        params.append(str(diqu).strip())
+
+    q = (
+        sql.SQL(
+            """
+            SELECT
+              ajxx_ajbh AS "案件编号",
+              ajxx_jqbh AS "警情编号",
+              ajxx_ajmc AS "案件名称",
+              ajxx_ajlx AS "案件类型",
+              ajxx_ajzt AS "案件状态",
+              ajxx_ay AS "案由",
+              ajxx_ay_dm AS "案由代码",
+              ajxx_fasj AS "发案时间",
+              ajxx_lasj AS "立案时间",
+              ajxx_sldw_mc AS "受理单位",
+              ajxx_cbdw_mc AS "承办单位",
+              LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
+              ajxx_zbbj AS "在办标记",
+              ajxx_ajly AS "案件来源",
+              ajxx_fadd AS "发案地点"
+            FROM {schema}.zq_zfba_wcnr_shr_ajxx
+            WHERE ajxx_lasj BETWEEN %s AND %s
+              AND ajxx_ajzt NOT IN ('已撤销','已合并')
+              AND ajxx_cbdw_mc !~ '交通'
+              AND 1=1
+            """
+        ).format(schema=sql.Identifier(SCHEMA))
+        + pat_sql
+        + where_diqu
+        + sql.SQL(" ORDER BY ajxx_lasj DESC")
+    )
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def count_changsuo_shr_ajxx_by_diqu(
+    conn, *, start_time: str, end_time: str, patterns: Sequence[str]
+) -> Dict[str, int]:
+    """场所案件(被侵害)：在案件数(被侵害)基础明细上做地址分类，保留“重点管控行业”后按地区计数。"""
+    rows = fetch_wcnr_shr_ajxx_base_rows(
+        conn, start_time=start_time, end_time=end_time, patterns=patterns, diqu=None
+    )
+    if not rows:
+        return {}
+
+    _append_addr_predictions(rows, addr_col="发案地点")
+    out: Dict[str, int] = {}
+    for row in rows:
+        if str(row.get("分类结果") or "").strip() != "重点管控行业":
+            continue
+        diqu = str(row.get("地区") or "").strip()
+        if not diqu:
+            continue
+        out[diqu] = int(out.get(diqu) or 0) + 1
+    return out
+
+
 def count_songxiao_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.SQL("sfz.jzyy"))
     sfz_table = sql.SQL(".").join([sql.Identifier(SCHEMA), sql.Identifier("zq_wcnr_sfzxx")])
@@ -485,21 +703,37 @@ def fetch_detail_rows(
     limit: Optional[int],
 ) -> Tuple[List[Dict[str, Any]], bool]:
     metric = (metric or "").strip()
-    # 后端兼容：历史链接仍可能传“训诫书”，统一映射到“矫治文书”
-    metric = "矫治文书" if metric == "训诫书" else metric
+    metric_alias = {
+        "训诫书": "矫治文书",
+        "行政嫌疑人": "嫌疑人(行政)",
+        "刑事嫌疑人": "嫌疑人(刑事)",
+    }
+    metric = metric_alias.get(metric, metric)
     diqu = (diqu or "").strip()
     is_all = diqu in ("", "__ALL__", "全市")
     leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
     za_types = [str(x).strip() for x in (za_types or []) if str(x).strip()]
     patterns = fetch_ay_patterns(conn, leixing_list=leixing_list)
-    if leixing_list and not patterns and metric != "警情":
+    jzqk_metrics = {
+        "嫌疑人(行政)",
+        "嫌疑人(刑事)",
+        "矫治文书",
+        "矫治文书(行政)",
+        "矫治文书(刑事)",
+        "加强监督教育",
+        "加强监督教育(行政)",
+        "加强监督教育(刑事)",
+        "符合送校",
+        "送校",
+    }
+    if leixing_list and not patterns and metric not in {"警情", "转案数"} and metric not in jzqk_metrics:
         return [], False
 
     limit_n = int(limit) if limit and int(limit) > 0 else 0
     truncated = False
 
-    # 复用“矫治情况统计”口径：行政/刑事嫌疑人、矫治文书、加强监督教育、符合送校、送校
-    if metric in ("行政嫌疑人", "刑事嫌疑人", "矫治文书", "加强监督教育", "符合送校", "送校"):
+    # 复用“矫治情况统计”口径：嫌疑人/矫治文书/加强监督教育（行政+刑事拆分）/符合送校/送校
+    if metric in jzqk_metrics:
         rows = fetch_wcnr_jzqk_rows(
             conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
         )
@@ -511,13 +745,21 @@ def fetch_detail_rows(
                 continue
 
             ajlx = str(item.get("案件类型") or "").strip()
-            if metric == "行政嫌疑人" and ajlx != "行政":
+            if metric == "嫌疑人(行政)" and ajlx != "行政":
                 continue
-            if metric == "刑事嫌疑人" and ajlx != "刑事":
+            if metric == "嫌疑人(刑事)" and ajlx != "刑事":
                 continue
-            if metric == "矫治文书" and str(item.get("是否开具矫治文书") or "").strip() != "是":
+            if metric in ("矫治文书", "矫治文书(行政)", "矫治文书(刑事)") and str(item.get("是否开具矫治文书") or "").strip() != "是":
                 continue
-            if metric == "加强监督教育" and str(item.get("是否开具家庭教育指导书") or "").strip() != "是":
+            if metric == "矫治文书(行政)" and ajlx != "行政":
+                continue
+            if metric == "矫治文书(刑事)" and ajlx != "刑事":
+                continue
+            if metric in ("加强监督教育", "加强监督教育(行政)", "加强监督教育(刑事)") and str(item.get("是否开具家庭教育指导书") or "").strip() != "是":
+                continue
+            if metric == "加强监督教育(行政)" and ajlx != "行政":
+                continue
+            if metric == "加强监督教育(刑事)" and ajlx != "刑事":
                 continue
             if metric == "符合送校" and str(item.get("是否符合送生") or "").strip() != "是":
                 continue
@@ -591,6 +833,57 @@ def fetch_detail_rows(
             )
             return _exec(cur, q, params1)
 
+        if metric == "转案数":
+            params1: List[Any] = [start_time, end_time]
+            where_diqu = sql.SQL("")
+            if not is_all:
+                where_diqu = sql.SQL(' AND LEFT(jq."cmdid", 6) = %s')
+                params1.append(diqu)
+            where_type = sql.SQL("")
+            if leixing_list:
+                where_type = sql.SQL(
+                    '''
+  AND jq.newcharasubclass IN (
+      SELECT unnest(ctc.newcharasubclass_list) 
+      FROM ywdata.case_type_config ctc 
+      WHERE ctc.leixing = ANY(%s)
+  )'''
+                )
+                params1.append(leixing_list)
+
+            q = (
+                sql.SQL(
+                    """
+                    SELECT DISTINCT ON (jq."caseno")
+                      jq."calltime" AS "报警时间",
+                      jq."caseno" AS "警情编号",
+                      jq."dutydeptname" AS "管辖单位",
+                      jq."cmdname" AS "分局",
+                      jq."occuraddress" AS "警情地址",
+                      jq."casecontents" AS "报警内容",
+                      jq."replies" AS "处警情况",
+                      jq."casemark" AS "警情标注",
+                      jq."lngofcriterion" AS "经度",
+                      jq."latofcriterion" AS "纬度",
+                      LEFT(jq."cmdid", 6) AS "地区",
+                      zza."ajxx_ajbh" AS "案件编号",
+                      zza."ajxx_lasj" AS "立案时间",
+                      zza."ajxx_cbdw_mc" AS "办案单位"
+                    FROM ywdata."zq_kshddpt_dsjfx_jq" jq
+                    LEFT JOIN "ywdata"."zq_zfba_ajxx" zza ON jq."caseno" = zza."ajxx_jqbh"
+                    WHERE jq."calltime" BETWEEN %s AND %s
+                      AND jq."casemark" ~ '未成年'
+                      AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
+                      AND NULLIF(BTRIM(zza."ajxx_ajbh"), '') IS NOT NULL
+                      AND 1=1
+                    """
+                )
+                + where_type
+                + where_diqu
+                + sql.SQL(' ORDER BY jq."caseno", jq."calltime" DESC, zza."ajxx_lasj" DESC NULLS LAST, zza."ajxx_ajbh" DESC')
+            )
+            return _exec(cur, q, params1)
+
         if metric in ("行政", "刑事"):
             params2: List[Any] = [start_time, end_time, metric]
             where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
@@ -625,6 +918,21 @@ def fetch_detail_rows(
                 + sql.SQL(" ORDER BY ajxx_lasj DESC")
             )
             return _exec(cur, q, params2)
+
+        if metric == "场所案件":
+            base_rows = fetch_wcnr_ajxx_changsuo_base_rows(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                patterns=patterns,
+                diqu=None if is_all else diqu,
+            )
+            _append_addr_predictions(base_rows, addr_col="发案地点")
+            filtered = [r for r in base_rows if str(r.get("分类结果") or "").strip() == "重点管控行业"]
+            if limit_n and len(filtered) > limit_n:
+                truncated = True
+                filtered = filtered[:limit_n]
+            return filtered, truncated
 
         if metric in ("行政嫌疑人", "刑事嫌疑人"):
             ajlx = "行政" if metric == "行政嫌疑人" else "刑事"
@@ -950,42 +1258,31 @@ def fetch_detail_rows(
 
         # 新增：案件数(被侵害)明细
         if metric == "案件数(被侵害)":
-            params10: List[Any] = [start_time, end_time]
-            where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.Identifier("ajxx_aymc"))
-            params10 += pat_params
-            where_diqu = sql.SQL("")
-            if not is_all:
-                where_diqu = sql.SQL(" AND LEFT(ajxx_cbdw_bh_dm, 6) = %s")
-                params10.append(diqu)
-            q = (
-                sql.SQL(
-                    """
-                    SELECT
-                      ajxx_ajbh AS "案件编号",
-                      ajxx_jqbh AS "警情编号",
-                      ajxx_ajmc AS "案件名称",
-                      ajxx_ajlx AS "案件类型",
-                      ajxx_ajzt AS "案件状态",
-                      ajxx_ay AS "案由",
-                      ajxx_ay_dm AS "案由代码",
-                      ajxx_fasj AS "发案时间",
-                      ajxx_lasj AS "立案时间",
-                      ajxx_sldw_mc AS "受理单位",
-                      ajxx_cbdw_mc AS "承办单位",
-                      LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
-                      ajxx_zbbj AS "在办标记",
-                      ajxx_ajly AS "案件来源"
-                    FROM {schema}.zq_zfba_wcnr_shr_ajxx
-                    WHERE ajxx_lasj BETWEEN %s AND %s
-                      AND ajxx_ajzt NOT IN ('已撤销','已合并')
-                      AND ajxx_cbdw_mc !~ '交通'
-                      AND 1=1
-                    """
-                ).format(schema=sql.Identifier(SCHEMA))
-                + where_pat
-                + where_diqu
-                + sql.SQL(" ORDER BY ajxx_lasj DESC")
+            rows = fetch_wcnr_shr_ajxx_base_rows(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                patterns=patterns,
+                diqu=None if is_all else diqu,
             )
-            return _exec(cur, q, params10)
+            if limit_n and len(rows) > limit_n:
+                truncated = True
+                rows = rows[:limit_n]
+            return rows, truncated
+
+        if metric == "场所案件(被侵害)":
+            rows = fetch_wcnr_shr_ajxx_base_rows(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                patterns=patterns,
+                diqu=None if is_all else diqu,
+            )
+            _append_addr_predictions(rows, addr_col="发案地点")
+            filtered = [r for r in rows if str(r.get("分类结果") or "").strip() == "重点管控行业"]
+            if limit_n and len(filtered) > limit_n:
+                truncated = True
+                filtered = filtered[:limit_n]
+            return filtered, truncated
 
     raise ValueError(f"未知 metric: {metric}")

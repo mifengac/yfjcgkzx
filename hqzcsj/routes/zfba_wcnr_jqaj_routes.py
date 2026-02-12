@@ -94,7 +94,7 @@ def export_summary() -> Response:
     meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list, za_types=za_types)
     _ = meta
     ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"未成年人统计{ts}.{fmt}"
+    filename = f"未成年人警情案件统计{ts}.{fmt}"
     if fmt == "csv":
         return _download_csv(rows, filename)
     return _download_excel(rows, filename)
@@ -181,15 +181,21 @@ def export_detail_all() -> Response:
 
     metrics = [
         "警情",
+        "转案数",
+        "案件数(被侵害)",
+        "场所案件(被侵害)",
         "行政",
         "刑事",
-        "行政嫌疑人",
-        "刑事嫌疑人",
+        "嫌疑人(行政)",
+        "嫌疑人(刑事)",
+        "场所案件",
         "治安处罚",
         "治安处罚(不执行)",
         "刑拘",
-        "矫治文书",
-        "加强监督教育",
+        "矫治文书(行政)",
+        "矫治文书(刑事)",
+        "加强监督教育(行政)",
+        "加强监督教育(刑事)",
         "符合送校",
         "送校",
     ]
@@ -220,7 +226,7 @@ def export_detail_all() -> Response:
     wb.save(buffer)
     buffer.seek(0)
     ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"未成年人详细{ts}.xlsx"
+    filename = f"未成年人警情案件统计详细{ts}.xlsx"
     return send_file(
         buffer,
         as_attachment=True,

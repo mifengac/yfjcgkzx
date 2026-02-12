@@ -260,11 +260,17 @@ def fetch_jzqk_data(
             CASE WHEN fd.is_zhuanmen_shenqingshu = 1 THEN '是' ELSE '否' END AS 是否开具专门教育申请书,
             CASE
                 WHEN fd.年龄数值 > 11
-                     AND fd.is_xingju = 0
                      AND (
-                        fd.is_zhiju_gt4 = 1
-                        OR fd.is_second_same_ay_with_xjs = 1
-                        OR fd.is_third_plus = 1
+                        (fd.案件类型 = '刑事' AND fd.is_xingju = 0)
+                        OR
+                        (
+                            fd.案件类型 = '行政'
+                            AND (
+                                fd.is_zhiju_gt4 = 1
+                                OR fd.is_second_same_ay_with_xjs = 1
+                                OR fd.is_third_plus = 1
+                            )
+                        )
                      )
                 THEN '是'
                 ELSE '否'

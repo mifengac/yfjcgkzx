@@ -21,6 +21,14 @@ def _normalize_leixing_list(leixing_list: Sequence[str]) -> List[str]:
     return [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
 
 
+def _count_by_diqu(rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for row in rows:
+        code = str(row.get("地区") or "").strip() or "未知"
+        out[code] = out.get(code, 0) + 1
+    return out
+
+
 def _resolve_sfzxx_case_col(conn) -> str:
     """
     解析 zq_wcnr_sfzxx 中可用于“案件编号”关联的字段名。
@@ -380,194 +388,37 @@ def fetch_bqh_ajxx_base_detail(
 def count_yzbl_jzjy_cover_by_diqu(
     conn, *, start_time: str, end_time: str, leixing_list: Sequence[str]
 ) -> Tuple[Dict[str, int], Dict[str, int], int, int]:
-    leixing_list = _normalize_leixing_list(leixing_list)
+    # 口径统一：复用“矫治情况统计”数据源逻辑，避免 1393 与 jzqk 口径偏差。
+    from hqzcsj.dao import jzqk_tongji_dao
 
-    if leixing_list:
-        type_condition = sql.SQL(
-            """
-            AND EXISTS (
-                SELECT 1
-                FROM "ywdata"."case_type_config" ctc
-                WHERE ctc."leixing" = ANY(%s)
-                  AND zzwx."ajxx_join_ajxx_ay" SIMILAR TO ctc."ay_pattern"
-            )
-            """
-        )
-        type_params = [list(leixing_list)]
-    else:
-        type_condition = sql.SQL("")
-        type_params = []
-
-    xjs2_ajbh_col, xjs2_xm_col = _resolve_xjs2_join_cols(conn)
-
-    query = sql.SQL(
-        """
-        WITH base_data AS (
-            SELECT DISTINCT ON (zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh")
-                zzwx."ajxx_join_ajxx_ajbh" AS 案件编号,
-                zzwx."ajxx_join_ajxx_ajlx" AS 案件类型,
-                zzwx."ajxx_join_ajxx_ay" AS 案由,
-                zzwx."ajxx_join_ajxx_ay_dm" AS 案由代码,
-                LEFT(zzwx."ajxx_join_ajxx_cbqy_bh_dm", 6) AS 地区,
-                zzwx."ajxx_join_ajxx_cbdw_bh" AS 办案单位,
-                zzwx."ajxx_join_ajxx_lasj" AS 立案时间,
-                zzwx.xyrxx_xm AS 姓名,
-                zzwx."xyrxx_sfzh" AS 身份证号,
-                zzwx."xyrxx_rybh" AS 人员编号,
-                zzwx."xyrxx_hjdxz" AS 户籍地,
-                zzwx."xyrxx_nl" AS 年龄,
-                zzwx."xyrxx_isdel" AS 是否删除,
-                zzwx."xyrxx_jzdxzqh" AS 居住地
-            FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
-            WHERE zzwx."ajxx_join_ajxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_sfda_dm" = '1'
-              AND zzwx."xyrxx_lrsj" BETWEEN %s AND %s
-              {type_condition}
-            ORDER BY zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh", zzwx."xyrxx_lrsj" DESC
-        ),
-        filtered_data AS (
-            SELECT bd.*
-            FROM base_data bd
-            WHERE
-                (bd.案件类型 = '行政' AND (
-                    EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
-                        WHERE x.ajxx_ajbh = bd.案件编号 AND x.xzcfjds_rybh = bd.人员编号
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_byxzcfjds" b
-                        WHERE b.ajxx_ajbh = bd.案件编号 AND b.byxzcfjds_rybh = bd.人员编号
-                    )
-                ))
-                OR bd.案件类型 = '刑事'
-        )
-        SELECT
-            COALESCE(zws.地区, '未知') AS 地区,
-            COUNT(*)::INT AS denom,
-            SUM(CASE WHEN zzx.{xjs2_ajbh_col} IS NOT NULL THEN 1 ELSE 0 END)::INT AS num
-        FROM filtered_data zws
-        LEFT JOIN "ywdata"."zq_zfba_xjs2" zzx
-            ON zws.姓名 = zzx.{xjs2_xm_col}
-           AND zws.案件编号 = zzx.{xjs2_ajbh_col}
-        GROUP BY COALESCE(zws.地区, '未知')
-        """
-    ).format(
-        type_condition=type_condition,
-        xjs2_ajbh_col=sql.Identifier(xjs2_ajbh_col),
-        xjs2_xm_col=sql.Identifier(xjs2_xm_col),
+    rows = jzqk_tongji_dao.fetch_jzqk_data(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=_normalize_leixing_list(leixing_list),
     )
-
-    params = [start_time, end_time] + type_params
-    with conn.cursor() as cur:
-        cur.execute(query, params)
-        rows = cur.fetchall()
-
-    num_by: Dict[str, int] = {}
-    denom_by: Dict[str, int] = {}
-    for r in rows:
-        diqu = str(r[0])
-        denom = int(r[1] or 0)
-        num = int(r[2] or 0)
-        denom_by[diqu] = denom
-        num_by[diqu] = num
+    denom_by = _count_by_diqu(rows)
+    num_rows = [r for r in rows if str(r.get("是否开具矫治文书") or "").strip() == "是"]
+    num_by = _count_by_diqu(num_rows)
     return num_by, denom_by, sum(num_by.values()), sum(denom_by.values())
 
 
 def fetch_yzbl_jzjy_cover_detail(
     conn, *, start_time: str, end_time: str, leixing_list: Sequence[str], diqu: str | None
 ) -> List[Dict[str, Any]]:
-    leixing_list = _normalize_leixing_list(leixing_list)
+    # 口径统一：复用“矫治情况统计”数据源逻辑，输出明细时仅按地区筛选。
+    from hqzcsj.dao import jzqk_tongji_dao
 
-    if leixing_list:
-        type_condition = sql.SQL(
-            """
-            AND EXISTS (
-                SELECT 1
-                FROM "ywdata"."case_type_config" ctc
-                WHERE ctc."leixing" = ANY(%s)
-                  AND zzwx."ajxx_join_ajxx_ay" SIMILAR TO ctc."ay_pattern"
-            )
-            """
-        )
-        type_params = [list(leixing_list)]
-    else:
-        type_condition = sql.SQL("")
-        type_params = []
-
-    if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
-        diqu_condition = sql.SQL(" AND zws.地区 = %s ")
-        diqu_params = [str(diqu).strip()]
-    else:
-        diqu_condition = sql.SQL("")
-        diqu_params = []
-
-    xjs2_ajbh_col, xjs2_xm_col = _resolve_xjs2_join_cols(conn)
-
-    query = sql.SQL(
-        """
-        WITH base_data AS (
-            SELECT DISTINCT ON (zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh")
-                zzwx."ajxx_join_ajxx_ajbh" AS 案件编号,
-                zzwx."ajxx_join_ajxx_ajlx" AS 案件类型,
-                zzwx."ajxx_join_ajxx_ay" AS 案由,
-                zzwx."ajxx_join_ajxx_ay_dm" AS 案由代码,
-                LEFT(zzwx."ajxx_join_ajxx_cbqy_bh_dm", 6) AS 地区,
-                zzwx."ajxx_join_ajxx_cbdw_bh" AS 办案单位,
-                zzwx."ajxx_join_ajxx_lasj" AS 立案时间,
-                zzwx.xyrxx_xm AS 姓名,
-                zzwx."xyrxx_sfzh" AS 身份证号,
-                zzwx."xyrxx_rybh" AS 人员编号,
-                zzwx."xyrxx_hjdxz" AS 户籍地,
-                zzwx."xyrxx_nl" AS 年龄,
-                zzwx."xyrxx_isdel" AS 是否删除,
-                zzwx."xyrxx_jzdxzqh" AS 居住地
-            FROM "ywdata"."zq_zfba_wcnr_xyr" zzwx
-            WHERE zzwx."ajxx_join_ajxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_isdel_dm" = '0'
-              AND zzwx."xyrxx_sfda_dm" = '1'
-              AND zzwx."xyrxx_lrsj" BETWEEN %s AND %s
-              {type_condition}
-            ORDER BY zzwx."xyrxx_sfzh", zzwx."ajxx_join_ajxx_ajbh", zzwx."xyrxx_lrsj" DESC
-        ),
-        filtered_data AS (
-            SELECT bd.*
-            FROM base_data bd
-            WHERE
-                (bd.案件类型 = '行政' AND (
-                    EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
-                        WHERE x.ajxx_ajbh = bd.案件编号 AND x.xzcfjds_rybh = bd.人员编号
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_byxzcfjds" b
-                        WHERE b.ajxx_ajbh = bd.案件编号 AND b.byxzcfjds_rybh = bd.人员编号
-                    )
-                ))
-                OR bd.案件类型 = '刑事'
-        )
-        SELECT
-            zws.*,
-            CASE WHEN zzx.{xjs2_ajbh_col} IS NOT NULL THEN '是' ELSE '否' END AS 是否开具矫治文书
-        FROM filtered_data zws
-        LEFT JOIN "ywdata"."zq_zfba_xjs2" zzx
-            ON zws.姓名 = zzx.{xjs2_xm_col}
-           AND zws.案件编号 = zzx.{xjs2_ajbh_col}
-        WHERE 1=1
-        {diqu_condition}
-        ORDER BY zws.立案时间 DESC, zws.姓名
-        """
-    ).format(
-        type_condition=type_condition,
-        diqu_condition=diqu_condition,
-        xjs2_ajbh_col=sql.Identifier(xjs2_ajbh_col),
-        xjs2_xm_col=sql.Identifier(xjs2_xm_col),
+    rows = jzqk_tongji_dao.fetch_jzqk_data(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=_normalize_leixing_list(leixing_list),
     )
-
-    params = [start_time, end_time] + type_params + diqu_params
-    with conn.cursor() as cur:
-        cur.execute(query, params)
-        return _as_dict_rows(cur)
+    if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
+        code = str(diqu).strip()
+        rows = [r for r in rows if str(r.get("地区") or "").strip() == code]
+    return rows
 
 
 def _resolve_xjs2_join_cols(conn) -> Tuple[str, str]:

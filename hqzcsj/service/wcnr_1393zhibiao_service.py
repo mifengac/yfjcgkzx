@@ -24,8 +24,8 @@ LABEL_CS_BQH = "未成年人场所被侵害发案数"
 LABEL_BQH = "未成年人被侵害发案数"
 LABEL_YZBL_XZ = "严重不良未成年人矫治教育覆盖率(行政)"
 LABEL_YZBL_XS = "严重不良未成年人矫治教育覆盖率(刑事)"
-LABEL_SYZMJ_XZ = "适用专门（矫治）教育情形送瞫率(行政)"
-LABEL_SYZMJ_XS = "适用专门（瞫治）教育情形送瞫率(刑事)"
+LABEL_SYZMJ_XZ = "适用专门（矫治）教育情形送矫率(行政)"
+LABEL_SYZMJ_XS = "适用专门（矫治）教育情形送矫率(刑事)"
 LABEL_ZLJQJH_XZ = "责令加强监护率(行政)"
 LABEL_ZLJQJH_XS = "责令加强监护率(刑事)"
 
@@ -165,11 +165,7 @@ def build_summary(
         rate_rows_all = jzqk_tongji_dao.fetch_jzqk_data(
             conn, start_time=meta["start_time"], end_time=meta["end_time"], leixing_list=leixing_list
         )
-        rate_stats = calc_rate_stats_bundle(
-            rate_rows_all,
-            wfzf_by=wfzf_by,
-            wfzf_total=wfzf_total,
-        )
+        rate_stats = calc_rate_stats_bundle(rate_rows_all)
         yz_xz_num_by, yz_xz_denom_by, yz_xz_num_total, yz_xz_denom_total = rate_stats["yzbl_cover_xz"]
         yz_xs_num_by, yz_xs_denom_by, yz_xs_num_total, yz_xs_denom_total = rate_stats["yzbl_cover_xs"]
         sj_xz_num_by, sj_xz_denom_by, sj_xz_num_total, sj_xz_denom_total = rate_stats["syzmj_songjiao_xz"]
@@ -186,7 +182,7 @@ def build_summary(
     for d in (wfzf_by, jyh_cf_by, jyh_wfzf_by, cs_by, bqh_by, 
               yz_xz_denom_by, yz_xs_denom_by, 
               sj_xz_num_by, sj_xz_denom_by, sj_xs_num_by, sj_xs_denom_by, 
-              jl_xz_num_by, jl_xs_num_by):
+              jl_xz_num_by, jl_xz_denom_by, jl_xs_num_by, jl_xs_denom_by):
         all_codes.update(d.keys())
     ordered_codes = [c for c in DIQU_ORDER if c in all_codes]
     rest_codes = sorted([c for c in all_codes if c not in set(DIQU_ORDER)])
