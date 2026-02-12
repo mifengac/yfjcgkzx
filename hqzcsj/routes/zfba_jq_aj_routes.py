@@ -75,21 +75,35 @@ def _parse_bool_arg(name: str) -> bool:
 def api_summary() -> Any:
     start_time = (request.args.get("start_time") or "").strip()
     end_time = (request.args.get("end_time") or "").strip()
+    hb_start_time = (request.args.get("hb_start_time") or "").strip()
+    hb_end_time = (request.args.get("hb_end_time") or "").strip()
     if not start_time or not end_time:
         start_time, end_time = default_time_range_for_page()
     leixing_list = _parse_list_args("leixing")
     za_types = _parse_list_args("za_type")
     show_ratio = _parse_bool_arg("show_ratio")
+    show_hb = _parse_bool_arg("show_hb")
     try:
-        meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list, za_types=za_types)
+        meta, rows = build_summary(
+            start_time=start_time,
+            end_time=end_time,
+            hb_start_time=hb_start_time or None,
+            hb_end_time=hb_end_time or None,
+            leixing_list=leixing_list,
+            za_types=za_types,
+        )
+        if not show_hb:
+            rows = [{k: v for k, v in row.items() if not str(k).startswith("环比")} for row in rows]
         if show_ratio:
             rows = append_ratio_columns(rows)
         return jsonify({"success": True, "meta": meta.__dict__, "rows": rows})
     except Exception as exc:
         logging.exception(
-            "zfba_jq_aj api_summary failed: start_time=%s end_time=%s leixing_list=%s za_types=%s",
+            "zfba_jq_aj api_summary failed: start_time=%s end_time=%s hb_start_time=%s hb_end_time=%s leixing_list=%s za_types=%s",
             start_time,
             end_time,
+            hb_start_time,
+            hb_end_time,
             leixing_list,
             za_types,
         )
@@ -101,13 +115,25 @@ def export_summary() -> Response:
     fmt = (request.args.get("fmt") or "xlsx").lower()
     start_time = (request.args.get("start_time") or "").strip()
     end_time = (request.args.get("end_time") or "").strip()
+    hb_start_time = (request.args.get("hb_start_time") or "").strip()
+    hb_end_time = (request.args.get("hb_end_time") or "").strip()
     if not start_time or not end_time:
         start_time, end_time = default_time_range_for_page()
     leixing_list = _parse_list_args("leixing")
     za_types = _parse_list_args("za_type")
     show_ratio = _parse_bool_arg("show_ratio")
+    show_hb = _parse_bool_arg("show_hb")
 
-    meta, rows = build_summary(start_time=start_time, end_time=end_time, leixing_list=leixing_list, za_types=za_types)
+    meta, rows = build_summary(
+        start_time=start_time,
+        end_time=end_time,
+        hb_start_time=hb_start_time or None,
+        hb_end_time=hb_end_time or None,
+        leixing_list=leixing_list,
+        za_types=za_types,
+    )
+    if not show_hb:
+        rows = [{k: v for k, v in row.items() if not str(k).startswith("环比")} for row in rows]
     if show_ratio:
         rows = append_ratio_columns(rows)
     ts = datetime.now().strftime("%Y%m%d%H%M%S")

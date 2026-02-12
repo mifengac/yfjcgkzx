@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao import zfba_jq_aj_dao
@@ -31,7 +31,10 @@ RATIO_RULES: List[Tuple[str, str, str]] = [
     ("破案", "同比破案", "起"),
     ("高质量", "同比高质量", "起"),
 ]
-RATIO_RULE_BY_YOY: Dict[str, Tuple[str, str]] = {yoy_col: (cur_col, unit) for cur_col, yoy_col, unit in RATIO_RULES}
+RATIO_HB_RULES: List[Tuple[str, str, str]] = [(cur_col, f"环比{cur_col}", unit) for cur_col, _yoy_col, unit in RATIO_RULES]
+RATIO_RULE_BY_COMPARE: Dict[str, Tuple[str, str]] = {
+    compare_col: (cur_col, unit) for cur_col, compare_col, unit in (RATIO_RULES + RATIO_HB_RULES)
+}
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,8 @@ class SummaryMeta:
     end_time: str
     yoy_start_time: str
     yoy_end_time: str
+    hb_start_time: str
+    hb_end_time: str
 
 
 def default_time_range_for_page() -> Tuple[str, str]:
@@ -79,18 +84,26 @@ def _fmt_num(v: float) -> str:
     return str(int(v)) if float(v).is_integer() else f"{v:.2f}".rstrip("0").rstrip(".")
 
 
-def calc_ratio_text(current_value: Any, yoy_value: Any, unit: str) -> str:
-    current_num = _to_num(current_value)
-    yoy_num = _to_num(yoy_value)
+def calc_percent_text(numerator: Any, denominator: Any) -> str:
+    den = _to_num(denominator)
+    if den <= 0:
+        return "0.00%"
+    num = _to_num(numerator)
+    return f"{(num / den) * 100:.2f}%"
 
-    if current_num == yoy_num:
+
+def calc_ratio_text(current_value: Any, compare_value: Any, unit: str) -> str:
+    current_num = _to_num(current_value)
+    compare_num = _to_num(compare_value)
+
+    if current_num == compare_num:
         return "持平"
-    if current_num == 0 and yoy_num != 0:
-        return f"下降{_fmt_num(yoy_num)}{unit}"
-    if current_num != 0 and yoy_num == 0:
+    if current_num == 0 and compare_num != 0:
+        return f"下降{_fmt_num(compare_num)}{unit}"
+    if current_num != 0 and compare_num == 0:
         return f"上升{_fmt_num(current_num)}{unit}"
 
-    ratio = ((current_num - yoy_num) / yoy_num) * 100
+    ratio = ((current_num - compare_num) / compare_num) * 100
     return f"{ratio:.2f}%"
 
 
@@ -100,11 +113,14 @@ def append_ratio_columns(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         new_row: Dict[str, Any] = {}
         for key, value in row.items():
             new_row[key] = value
-            rule = RATIO_RULE_BY_YOY.get(key)
+            rule = RATIO_RULE_BY_COMPARE.get(key)
             if rule:
                 current_col, unit = rule
                 ratio_col = f"{key}比例"
                 new_row[ratio_col] = calc_ratio_text(row.get(current_col), row.get(key), unit)
+        # 转案率口径：转案数/警情，同比转案率：同比转案数/同比警情
+        new_row["转案率"] = calc_percent_text(row.get("转案数"), row.get("警情"))
+        new_row["同比转案率"] = calc_percent_text(row.get("同比转案数"), row.get("同比警情"))
         out.append(new_row)
     return out
 
@@ -121,7 +137,91 @@ def shift_year(dt: datetime, years: int = -1) -> datetime:
         raise
 
 
-def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str], za_types: Sequence[str] = None) -> Tuple[SummaryMeta, List[Dict[str, Any]]]:
+def infer_hb_range(start_dt: datetime, end_dt: datetime) -> Tuple[datetime, datetime]:
+    """按当前时间段推导环比：上一等长区间，且与当前区间不重叠。"""
+    delta = end_dt - start_dt
+    hb_end = start_dt - timedelta(seconds=1)
+    hb_start = hb_end - delta
+    return hb_start, hb_end
+
+
+def _collect_stats_bundle(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str], patterns: Sequence[str], za_types: Sequence[str], _call, stage_prefix: str) -> Dict[str, Any]:
+    jq = _call(
+        f"{stage_prefix}-警情",
+        lambda: zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list),
+    )
+    zhuanan = _call(
+        f"{stage_prefix}-转案数",
+        lambda: zfba_jq_aj_dao.count_zhuanan_by_diqu(conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list),
+    )
+    ajxx_all = _call(
+        f"{stage_prefix}-案件数",
+        lambda: zfba_jq_aj_dao.count_ajxx_all_by_diqu(conn, start_time=start_time, end_time=end_time, patterns=patterns),
+    )
+    ajxx = _call(
+        f"{stage_prefix}-案件(行政/刑事)",
+        lambda: zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=start_time, end_time=end_time, patterns=patterns),
+    )
+    zhiju = _call(
+        f"{stage_prefix}-治安处罚",
+        lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(
+            conn, start_time=start_time, end_time=end_time, patterns=patterns, za_types=za_types
+        ),
+    )
+    xingju = _call(
+        f"{stage_prefix}-刑拘",
+        lambda: zfba_jq_aj_dao.count_jlz_by_diqu(conn, start_time=start_time, end_time=end_time, patterns=patterns),
+    )
+    daibu = _call(
+        f"{stage_prefix}-逮捕",
+        lambda: zfba_jq_aj_dao.count_dbz_by_diqu(conn, start_time=start_time, end_time=end_time, patterns=patterns),
+    )
+    qisu = _call(
+        f"{stage_prefix}-起诉",
+        lambda: zfba_jq_aj_dao.count_qsryxx_by_diqu(conn, start_time=start_time, end_time=end_time, patterns=patterns),
+    )
+    yisong = _call(
+        f"{stage_prefix}-移送案件",
+        lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=start_time, end_time=end_time, patterns=patterns),
+    )
+    banjie = _call(
+        f"{stage_prefix}-办结",
+        lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(conn, start_time=start_time, end_time=end_time, patterns=patterns, ajlx="行政"),
+    )
+    poan = _call(
+        f"{stage_prefix}-破案",
+        lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(conn, start_time=start_time, end_time=end_time, patterns=patterns, ajlx="刑事"),
+    )
+    gaozhiliang = _call(
+        f"{stage_prefix}-高质量",
+        lambda: zfba_jq_aj_dao.count_gaozhiliang_by_diqu(conn, start_time=start_time, end_time=end_time, patterns=patterns),
+    )
+    return {
+        "警情": jq,
+        "转案数": zhuanan,
+        "案件数": ajxx_all,
+        "行政": ajxx.get("行政", {}),
+        "刑事": ajxx.get("刑事", {}),
+        "治安处罚": zhiju,
+        "刑拘": xingju,
+        "逮捕": daibu,
+        "起诉": qisu,
+        "移送案件": yisong,
+        "办结": banjie,
+        "破案": poan,
+        "高质量": gaozhiliang,
+    }
+
+
+def build_summary(
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    za_types: Sequence[str] = None,
+    hb_start_time: Optional[str] = None,
+    hb_end_time: Optional[str] = None,
+) -> Tuple[SummaryMeta, List[Dict[str, Any]]]:
     start_dt = parse_dt(start_time)
     end_dt = parse_dt(end_time)
     if end_dt < start_dt:
@@ -129,11 +229,21 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
 
     yoy_start = shift_year(start_dt, -1)
     yoy_end = shift_year(end_dt, -1)
+    if hb_start_time and hb_end_time:
+        hb_start_dt = parse_dt(hb_start_time)
+        hb_end_dt = parse_dt(hb_end_time)
+    else:
+        hb_start_dt, hb_end_dt = infer_hb_range(start_dt, end_dt)
+    if hb_end_dt < hb_start_dt:
+        raise ValueError("环比结束时间不能早于环比开始时间")
+
     meta = SummaryMeta(
         start_time=fmt_dt(start_dt),
         end_time=fmt_dt(end_dt),
         yoy_start_time=fmt_dt(yoy_start),
         yoy_end_time=fmt_dt(yoy_end),
+        hb_start_time=fmt_dt(hb_start_dt),
+        hb_end_time=fmt_dt(hb_end_dt),
     )
 
     def _call(stage: str, fn):
@@ -144,184 +254,61 @@ def build_summary(*, start_time: str, end_time: str, leixing_list: Sequence[str]
 
     conn = get_database_connection()
     try:
-        patterns = _call("类型映射(案由)", lambda: zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing_list))
-
         leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
         za_types = [str(x).strip() for x in (za_types or []) if str(x).strip()]
+        patterns = _call("类型映射(案由)", lambda: zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing_list))
 
-        # 当前
-        jq_now = _call(
-            "当前-警情",
-            lambda: zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, leixing_list=leixing_list),
+        now_stats = _collect_stats_bundle(
+            conn,
+            start_time=meta.start_time,
+            end_time=meta.end_time,
+            leixing_list=leixing_list,
+            patterns=patterns,
+            za_types=za_types,
+            _call=_call,
+            stage_prefix="当前",
         )
-        # 新增：案件数（不区分行政/刑事）
-        ajxx_all_now = _call(
-            "当前-案件数",
-            lambda: zfba_jq_aj_dao.count_ajxx_all_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+        yoy_stats = _collect_stats_bundle(
+            conn,
+            start_time=meta.yoy_start_time,
+            end_time=meta.yoy_end_time,
+            leixing_list=leixing_list,
+            patterns=patterns,
+            za_types=za_types,
+            _call=_call,
+            stage_prefix="同比",
         )
-        ajxx_now = _call(
-            "当前-案件(行政/刑事)",
-            lambda: zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-        )
-        # 治拘改为治安处罚，支持 za_types 过滤
-        zhiju_now = _call(
-            "当前-治安处罚",
-            lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, za_types=za_types),
-        )
-        xingju_now = _call(
-            "当前-刑拘",
-            lambda: zfba_jq_aj_dao.count_jlz_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-        )
-        daibu_now = _call(
-            "当前-逮捕",
-            lambda: zfba_jq_aj_dao.count_dbz_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-        )
-        qisu_now = _call(
-            "当前-起诉",
-            lambda: zfba_jq_aj_dao.count_qsryxx_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-        )
-        yisong_now = _call(
-            "当前-移送案件",
-            lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-        )
-        # 新增：办结/破案（未办结口径，按案件类型拆分）
-        banjie_now = _call(
-            "当前-办结",
-            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(
-                conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, ajlx="行政"
-            ),
-        )
-        poan_now = _call(
-            "当前-破案",
-            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(
-                conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, ajlx="刑事"
-            ),
-        )
-        # 新增：高质量
-        gaozhiliang_now = _call(
-            "当前-高质量",
-            lambda: zfba_jq_aj_dao.count_gaozhiliang_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-        )
-
-        # 同比（上一年同周期）
-        jq_yoy = _call(
-            "同比-警情",
-            lambda: zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, leixing_list=leixing_list),
-        )
-        # 新增：案件数同比
-        ajxx_all_yoy = _call(
-            "同比-案件数",
-            lambda: zfba_jq_aj_dao.count_ajxx_all_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-        )
-        ajxx_yoy = _call(
-            "同比-案件(行政/刑事)",
-            lambda: zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-        )
-        # 治安处罚同比
-        zhiju_yoy = _call(
-            "同比-治安处罚",
-            lambda: zfba_jq_aj_dao.count_xzcfjds_zhiju_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns, za_types=za_types),
-        )
-        xingju_yoy = _call(
-            "同比-刑拘",
-            lambda: zfba_jq_aj_dao.count_jlz_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-        )
-        daibu_yoy = _call(
-            "同比-逮捕",
-            lambda: zfba_jq_aj_dao.count_dbz_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-        )
-        qisu_yoy = _call(
-            "同比-起诉",
-            lambda: zfba_jq_aj_dao.count_qsryxx_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-        )
-        yisong_yoy = _call(
-            "同比-移送案件",
-            lambda: zfba_jq_aj_dao.count_ysajtzs_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-        )
-        # 新增：办结/破案同比
-        banjie_yoy = _call(
-            "同比-办结",
-            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(
-                conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns, ajlx="行政"
-            ),
-        )
-        poan_yoy = _call(
-            "同比-破案",
-            lambda: zfba_jq_aj_dao.count_ajxx_banjie_by_diqu(
-                conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns, ajlx="刑事"
-            ),
-        )
-        # 新增：高质量同比
-        gaozhiliang_yoy = _call(
-            "同比-高质量",
-            lambda: zfba_jq_aj_dao.count_gaozhiliang_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+        hb_stats = _collect_stats_bundle(
+            conn,
+            start_time=meta.hb_start_time,
+            end_time=meta.hb_end_time,
+            leixing_list=leixing_list,
+            patterns=patterns,
+            za_types=za_types,
+            _call=_call,
+            stage_prefix="环比",
         )
 
         def g(m: Dict[str, int], code: str) -> int:
             return int(m.get(code) or 0)
 
+        metric_order = ["警情", "转案数", "案件数", "行政", "刑事", "治安处罚", "刑拘", "逮捕", "起诉", "移送案件", "办结", "破案", "高质量"]
         rows: List[Dict[str, Any]] = []
         for code, name in REGION_ORDER:
-            rows.append(
-                {
-                    "地区": name,
-                    "地区代码": code,
-                    "警情": g(jq_now, code),
-                    "同比警情": g(jq_yoy, code),
-                    "案件数": g(ajxx_all_now, code),
-                    "同比案件数": g(ajxx_all_yoy, code),
-                    "行政": g(ajxx_now.get("行政", {}), code),
-                    "同比行政": g(ajxx_yoy.get("行政", {}), code),
-                    "刑事": g(ajxx_now.get("刑事", {}), code),
-                    "同比刑事": g(ajxx_yoy.get("刑事", {}), code),
-                    "治安处罚": g(zhiju_now, code),
-                    "同比治安处罚": g(zhiju_yoy, code),
-                    "刑拘": g(xingju_now, code),
-                    "同比刑拘": g(xingju_yoy, code),
-                    "逮捕": g(daibu_now, code),
-                    "同比逮捕": g(daibu_yoy, code),
-                    "起诉": g(qisu_now, code),
-                    "同比起诉": g(qisu_yoy, code),
-                    "移送案件": g(yisong_now, code),
-                    "同比移送案件": g(yisong_yoy, code),
-                    "办结": g(banjie_now, code),
-                    "同比办结": g(banjie_yoy, code),
-                    "破案": g(poan_now, code),
-                    "同比破案": g(poan_yoy, code),
-                    "高质量": g(gaozhiliang_now, code),
-                    "同比高质量": g(gaozhiliang_yoy, code),
-                }
-            )
+            row: Dict[str, Any] = {"地区": name, "地区代码": code}
+            for metric in metric_order:
+                row[metric] = g(now_stats.get(metric, {}), code)
+                row[f"同比{metric}"] = g(yoy_stats.get(metric, {}), code)
+                row[f"环比{metric}"] = g(hb_stats.get(metric, {}), code)
+            rows.append(row)
 
         # 全市合计（6个地区 + 市局）
         total = {"地区": "全市", "地区代码": "__ALL__"}
-        for k in [
-            "警情",
-            "同比警情",
-            "案件数",
-            "同比案件数",
-            "行政",
-            "同比行政",
-            "刑事",
-            "同比刑事",
-            "治安处罚",
-            "同比治安处罚",
-            "刑拘",
-            "同比刑拘",
-            "逮捕",
-            "同比逮捕",
-            "起诉",
-            "同比起诉",
-            "移送案件",
-            "同比移送案件",
-            "办结",
-            "同比办结",
-            "破案",
-            "同比破案",
-            "高质量",
-            "同比高质量",
-        ]:
-            total[k] = sum(int(r.get(k) or 0) for r in rows)
+        if rows:
+            for k in rows[0].keys():
+                if k in ("地区", "地区代码"):
+                    continue
+                total[k] = sum(int(r.get(k) or 0) for r in rows)
         rows.append(total)
 
         return meta, rows

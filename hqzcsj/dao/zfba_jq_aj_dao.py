@@ -97,24 +97,57 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
         sql.SQL(
             """
             WITH flat_config AS (
-                SELECT ctc.leixing,
-                    unnest(ctc.newcharasubclass_list) AS single_code,
-                    'original' AS code_type
-                FROM ywdata.case_type_config ctc
-                UNION ALL
-                SELECT ctc.leixing,
-                    unnest(ctc.newcharasubclass_list) AS single_code,
-                    'confirmed' AS code_type
+                SELECT
+                    ctc.leixing,
+                    unnest(ctc.newcharasubclass_list) AS single_code
                 FROM ywdata.case_type_config ctc
             )
-            SELECT LEFT(jq."cmdid", 6) AS diqu, COUNT(DISTINCT (jq.id, fc.code_type)) AS cnt
+            SELECT LEFT(jq."cmdid", 6) AS diqu, COUNT(DISTINCT jq.id) AS cnt
             FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
-            JOIN flat_config fc ON (
-                (jq.neworicharasubclass = fc.single_code AND fc.code_type = 'original')
-                --OR (jq.newcharasubclass = fc.single_code AND fc.code_type = 'confirmed')
-            )
+            JOIN flat_config fc ON jq.neworicharasubclass = fc.single_code
             WHERE jq."calltime" BETWEEN %s AND %s
             AND 1=1
+            """
+        )
+        + where_leixing
+        + sql.SQL(' GROUP BY LEFT(jq."cmdid", 6)')
+    )
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        rows = cur.fetchall()
+    out: Dict[str, int] = {}
+    for diqu, cnt in rows:
+        if diqu is None:
+            continue
+        out[str(diqu)] = int(cnt or 0)
+    return out
+
+
+def count_zhuanan_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str]) -> Dict[str, int]:
+    """转案数：按警情去重，统计已关联到案件编号的警情数量。"""
+    leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
+    where_leixing = sql.SQL("")
+    params: List[Any] = [start_time, end_time]
+    if leixing_list:
+        where_leixing = sql.SQL(' AND fc."leixing" = ANY(%s)')
+        params.append(leixing_list)
+
+    q = (
+        sql.SQL(
+            """
+            WITH flat_config AS (
+                SELECT
+                    ctc.leixing,
+                    unnest(ctc.newcharasubclass_list) AS single_code
+                FROM ywdata.case_type_config ctc
+            )
+            SELECT LEFT(jq."cmdid", 6) AS diqu, COUNT(DISTINCT jq.id) AS cnt
+            FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
+            JOIN flat_config fc ON jq.neworicharasubclass = fc.single_code
+            LEFT JOIN "ywdata"."zq_zfba_ajxx" zza ON jq."caseno" = zza."ajxx_jqbh"
+            WHERE jq."calltime" BETWEEN %s AND %s
+              AND NULLIF(BTRIM(zza."ajxx_ajbh"), '') IS NOT NULL
+              AND 1=1
             """
         )
         + where_leixing
@@ -468,17 +501,12 @@ def fetch_detail_rows(
                 sql.SQL(
                     """
                     WITH flat_config AS (
-                        SELECT ctc.leixing,
-                            unnest(ctc.newcharasubclass_list) AS single_code,
-                            'original' AS code_type
-                        FROM ywdata.case_type_config ctc
-                        UNION ALL
-                        SELECT ctc.leixing,
-                            unnest(ctc.newcharasubclass_list) AS single_code,
-                            'confirmed' AS code_type
+                        SELECT
+                            ctc.leixing,
+                            unnest(ctc.newcharasubclass_list) AS single_code
                         FROM ywdata.case_type_config ctc
                     )
-                    SELECT DISTINCT ON (jq.id, fc.code_type)
+                    SELECT DISTINCT ON (jq.id)
                       jq."calltime" AS "报警时间",
                       jq."caseno" AS "警情编号",
                       jq."dutydeptname" AS "管辖单位",
@@ -486,39 +514,88 @@ def fetch_detail_rows(
                       jq."occuraddress" AS "警情地址",
                       jq."casecontents" AS "报警内容",
                       jq."replies" AS "处警情况",
-                      jq."casemarkok" AS "警情标注",
+                      jq."casemark" AS "警情标注",
                       jq."lngofcriterion" AS "经度",
                       jq."latofcriterion" AS "纬度",
                       LEFT(jq."cmdid", 6) AS "地区",
-                      jq.id,
-                      fc.code_type
+                      zza."ajxx_ajbh" AS "案件编号",
+                      zza."ajxx_lasj" AS "立案时间",
+                      zza."ajxx_cbdw_mc" AS "办案单位"
                     FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
-                    JOIN flat_config fc ON (
-                        (jq.neworicharasubclass = fc.single_code AND fc.code_type = 'original')
-                        --OR (jq.newcharasubclass = fc.single_code AND fc.code_type = 'confirmed')
-                    )
+                    JOIN flat_config fc ON jq.neworicharasubclass = fc.single_code
+                    LEFT JOIN "ywdata"."zq_zfba_ajxx" zza ON jq."caseno" = zza."ajxx_jqbh"
                     WHERE jq."calltime" BETWEEN %s AND %s
                     AND 1=1
                     """
                 )
                 + where_leixing
                 + where_diqu
-                + sql.SQL(' ORDER BY jq.id, fc.code_type, jq."calltime" DESC')
+                + sql.SQL(' ORDER BY jq.id, jq."calltime" DESC, zza."ajxx_lasj" DESC NULLS LAST, zza."ajxx_ajbh" DESC')
             )
             if limit_n:
                 q = q + sql.SQL(" LIMIT %s")
                 params.append(limit_n + 1)
             cur.execute(q, params)
             cols = [d[0] for d in cur.description]
-            rows_raw = cur.fetchall()
-            # 移除用于去重的 id 和 code_type 字段
-            display_cols = [c for c in cols if c not in ('id', 'code_type')]
-            rows = []
-            for r in rows_raw:
-                row_dict = dict(zip(cols, r))
-                # 仅保留显示字段
-                display_row = {k: v for k, v in row_dict.items() if k in display_cols}
-                rows.append(display_row)
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            if limit_n and len(rows) > limit_n:
+                truncated = True
+                rows = rows[:limit_n]
+            return rows, truncated
+
+        if metric == "转案数":
+            leixing_list2 = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
+            where_leixing = sql.SQL("")
+            params: List[Any] = [start_time, end_time]
+            if leixing_list2:
+                where_leixing = sql.SQL(' AND fc."leixing" = ANY(%s)')
+                params.append(leixing_list2)
+            where_diqu = sql.SQL("")
+            if not is_all:
+                where_diqu = sql.SQL(' AND LEFT(jq."cmdid", 6) = %s')
+                params.append(diqu)
+            q = (
+                sql.SQL(
+                    """
+                    WITH flat_config AS (
+                        SELECT
+                            ctc.leixing,
+                            unnest(ctc.newcharasubclass_list) AS single_code
+                        FROM ywdata.case_type_config ctc
+                    )
+                    SELECT DISTINCT ON (jq.id)
+                      jq."calltime" AS "报警时间",
+                      jq."caseno" AS "警情编号",
+                      jq."dutydeptname" AS "管辖单位",
+                      jq."cmdname" AS "分局",
+                      jq."occuraddress" AS "警情地址",
+                      jq."casecontents" AS "报警内容",
+                      jq."replies" AS "处警情况",
+                      jq."casemark" AS "警情标注",
+                      jq."lngofcriterion" AS "经度",
+                      jq."latofcriterion" AS "纬度",
+                      LEFT(jq."cmdid", 6) AS "地区",
+                      zza."ajxx_ajbh" AS "案件编号",
+                      zza."ajxx_lasj" AS "立案时间",
+                      zza."ajxx_cbdw_mc" AS "办案单位"
+                    FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
+                    JOIN flat_config fc ON jq.neworicharasubclass = fc.single_code
+                    LEFT JOIN "ywdata"."zq_zfba_ajxx" zza ON jq."caseno" = zza."ajxx_jqbh"
+                    WHERE jq."calltime" BETWEEN %s AND %s
+                      AND NULLIF(BTRIM(zza."ajxx_ajbh"), '') IS NOT NULL
+                      AND 1=1
+                    """
+                )
+                + where_leixing
+                + where_diqu
+                + sql.SQL(' ORDER BY jq.id, jq."calltime" DESC, zza."ajxx_lasj" DESC NULLS LAST, zza."ajxx_ajbh" DESC')
+            )
+            if limit_n:
+                q = q + sql.SQL(" LIMIT %s")
+                params.append(limit_n + 1)
+            cur.execute(q, params)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
             if limit_n and len(rows) > limit_n:
                 truncated = True
                 rows = rows[:limit_n]

@@ -28,6 +28,11 @@
             <button class="btn" id="jqajQueryBtn">查询</button>
         </div>
         <div class="row" style="gap:10px; align-items:center;">
+            <label class="ratio-switch" title="显示环比列">
+                <span class="ratio-switch-text">显示环比</span>
+                <input type="checkbox" id="jqajShowHb">
+                <span class="ratio-switch-slider"></span>
+            </label>
             <label class="ratio-switch" title="显示同比比例列">
                 <span class="ratio-switch-text">显示比例</span>
                 <input type="checkbox" id="jqajShowRatio">
@@ -116,22 +121,22 @@
 <script>
     (function() {
         const REGION_COL = "地区";
-        const BASE_COLS = [
-            "地区",
-            "警情","同比警情",
-            "案件数","同比案件数",
-            "行政","同比行政",
-            "刑事","同比刑事",
-            "治安处罚","同比治安处罚",
-            "刑拘","同比刑拘",
-            "逮捕","同比逮捕",
-            "起诉","同比起诉",
-            "移送案件","同比移送案件",
-            "办结","同比办结",
-            "破案","同比破案",
-            "高质量","同比高质量"
+        const CURRENT_METRIC_COLS = [
+            "警情",
+            "转案数",
+            "案件数",
+            "行政",
+            "刑事",
+            "治安处罚",
+            "刑拘",
+            "逮捕",
+            "起诉",
+            "移送案件",
+            "办结",
+            "破案",
+            "高质量",
         ];
-        const RATIO_META_BY_YOY_COL = {
+        const YOY_META_BY_COL = {
             "同比警情": {currentCol: "警情", unit: "起"},
             "同比案件数": {currentCol: "案件数", unit: "起"},
             "同比行政": {currentCol: "行政", unit: "起"},
@@ -145,36 +150,23 @@
             "同比破案": {currentCol: "破案", unit: "起"},
             "同比高质量": {currentCol: "高质量", unit: "起"},
         };
-        const RATIO_DEF_BY_COL = {};
-        Object.entries(RATIO_META_BY_YOY_COL).forEach(([yoyCol, meta]) => {
-            RATIO_DEF_BY_COL[`${yoyCol}比例`] = {yoyCol, currentCol: meta.currentCol, unit: meta.unit};
+        const HB_META_BY_COL = {};
+        Object.values(YOY_META_BY_COL).forEach((meta) => {
+            HB_META_BY_COL[`环比${meta.currentCol}`] = {currentCol: meta.currentCol, unit: meta.unit};
         });
-        const METRIC_BY_COL = {
-            "警情":"警情",
-            "案件数":"案件数",
-            "行政":"行政",
-            "刑事":"刑事",
-            "治安处罚":"治安处罚",
-            "刑拘":"刑拘",
-            "逮捕":"逮捕",
-            "起诉":"起诉",
-            "移送案件":"移送案件",
-            "办结":"办结",
-            "破案":"破案",
-            "高质量":"高质量",
-            "同比警情":"警情",
-            "同比案件数":"案件数",
-            "同比行政":"行政",
-            "同比刑事":"刑事",
-            "同比治安处罚":"治安处罚",
-            "同比刑拘":"刑拘",
-            "同比逮捕":"逮捕",
-            "同比起诉":"起诉",
-            "同比移送案件":"移送案件",
-            "同比办结":"办结",
-            "同比破案":"破案",
-            "同比高质量":"高质量",
-        };
+        const RATIO_DEF_BY_COL = {};
+        Object.entries(YOY_META_BY_COL).forEach(([compareCol, meta]) => {
+            RATIO_DEF_BY_COL[`${compareCol}比例`] = {compareCol, currentCol: meta.currentCol, unit: meta.unit};
+        });
+        Object.entries(HB_META_BY_COL).forEach(([compareCol, meta]) => {
+            RATIO_DEF_BY_COL[`${compareCol}比例`] = {compareCol, currentCol: meta.currentCol, unit: meta.unit};
+        });
+        const METRIC_BY_COL = {};
+        for (const metric of CURRENT_METRIC_COLS) {
+            METRIC_BY_COL[metric] = metric;
+            METRIC_BY_COL[`同比${metric}`] = metric;
+            METRIC_BY_COL[`环比${metric}`] = metric;
+        }
 
         const startEl = document.getElementById("jqajStart");
         const endEl = document.getElementById("jqajEnd");
@@ -185,6 +177,7 @@
         const tbl = document.getElementById("jqajTbl");
         const queryBtn = document.getElementById("jqajQueryBtn");
         const reportBtn = document.getElementById("jqajReportBtn");
+        const showHbEl = document.getElementById("jqajShowHb");
         const showRatioEl = document.getElementById("jqajShowRatio");
 
         let lastMeta = null;
@@ -376,22 +369,41 @@
         function buildQueryParams(metaOverride) {
             const st = (metaOverride && metaOverride.start_time) ? metaOverride.start_time : formatDateTime(startEl.value);
             const et = (metaOverride && metaOverride.end_time) ? metaOverride.end_time : formatDateTime(endEl.value);
+            const hbst = (metaOverride && metaOverride.hb_start_time) ? metaOverride.hb_start_time : formatDateTime(hbStartEl.value);
+            const hbet = (metaOverride && metaOverride.hb_end_time) ? metaOverride.hb_end_time : formatDateTime(hbEndEl.value);
             const types = selectedTypes();
             const zaTypes = selectedZaTypes();
             const usp = new URLSearchParams();
             if (st) usp.set("start_time", st);
             if (et) usp.set("end_time", et);
+            if (hbst) usp.set("hb_start_time", hbst);
+            if (hbet) usp.set("hb_end_time", hbet);
             for (const t of types) usp.append("leixing", t);
             for (const z of zaTypes) usp.append("za_type", z);
             return usp;
         }
 
         function getDisplayCols() {
-            if (!showRatioEl || !showRatioEl.checked) return BASE_COLS;
-            const cols = [];
-            for (const c of BASE_COLS) {
-                cols.push(c);
-                if (RATIO_META_BY_YOY_COL[c]) cols.push(`${c}比例`);
+            const showRatio = !!(showRatioEl && showRatioEl.checked);
+            const showHb = !!(showHbEl && showHbEl.checked);
+            const cols = [REGION_COL];
+            for (const metric of CURRENT_METRIC_COLS) {
+                const yoyCol = `同比${metric}`;
+                const hbCol = `环比${metric}`;
+                cols.push(metric);
+                cols.push(yoyCol);
+                if (showRatio) {
+                    if (metric === "转案数") {
+                        cols.push("转案率");
+                        cols.push("同比转案率");
+                    } else {
+                        cols.push(`${yoyCol}比例`);
+                    }
+                }
+                if (showHb) {
+                    cols.push(hbCol);
+                    if (showRatio && metric !== "转案数") cols.push(`${hbCol}比例`);
+                }
             }
             return cols;
         }
@@ -403,15 +415,22 @@
             return n.toFixed(2).replace(/\.?0+$/, "");
         }
 
-        function calcRatioText(currentValue, yoyValue, unit) {
+        function calcRatioText(currentValue, compareValue, unit) {
             const currentNum = Number(currentValue || 0);
-            const yoyNum = Number(yoyValue || 0);
-            if (currentNum === yoyNum) return "持平";
-            if (currentNum === 0 && yoyNum !== 0) return `下降${fmtPlainNumber(yoyNum)}${unit}`;
-            if (currentNum !== 0 && yoyNum === 0) return `上升${fmtPlainNumber(currentNum)}${unit}`;
-            if (yoyNum === 0) return "持平";
-            const ratio = ((currentNum - yoyNum) / yoyNum) * 100;
+            const compareNum = Number(compareValue || 0);
+            if (currentNum === compareNum) return "持平";
+            if (currentNum === 0 && compareNum !== 0) return `下降${fmtPlainNumber(compareNum)}${unit}`;
+            if (currentNum !== 0 && compareNum === 0) return `上升${fmtPlainNumber(currentNum)}${unit}`;
+            if (compareNum === 0) return "持平";
+            const ratio = ((currentNum - compareNum) / compareNum) * 100;
             return `${ratio.toFixed(2)}%`;
+        }
+
+        function calcPercentText(numerator, denominator) {
+            const num = Number(numerator || 0);
+            const den = Number(denominator || 0);
+            if (!Number.isFinite(num) || !Number.isFinite(den) || den <= 0) return "0.00%";
+            return `${((num / den) * 100).toFixed(2)}%`;
         }
 
         function renderTable(rows, meta) {
@@ -422,17 +441,24 @@
                 const diquCode = r["地区代码"] || "__ALL__";
                 const tds = cols.map(c => {
                     if (c === REGION_COL) return `<td class="rowh">${diquName}</td>`;
+                    if (c === "转案率") {
+                        return `<td class="num-cell ratio-cell">${calcPercentText(r["转案数"], r["警情"])}</td>`;
+                    }
+                    if (c === "同比转案率") {
+                        return `<td class="num-cell ratio-cell">${calcPercentText(r["同比转案数"], r["同比警情"])}</td>`;
+                    }
                     const ratioDef = RATIO_DEF_BY_COL[c];
                     if (ratioDef) {
-                        const ratioText = calcRatioText(r[ratioDef.currentCol], r[ratioDef.yoyCol], ratioDef.unit);
+                        const ratioText = calcRatioText(r[ratioDef.currentCol], r[ratioDef.compareCol], ratioDef.unit);
                         return `<td class="num-cell ratio-cell">${ratioText}</td>`;
                     }
                     const v = (r[c] == null) ? 0 : r[c];
                     if (!v || Number(v) <= 0) return `<td class="num-cell">${v || 0}</td>`;
                     const metric = METRIC_BY_COL[c] || "";
                     const isYoy = String(c).startsWith("同比");
-                    const st = isYoy ? (meta.yoy_start_time || "") : (meta.start_time || "");
-                    const et = isYoy ? (meta.yoy_end_time || "") : (meta.end_time || "");
+                    const isHb = String(c).startsWith("环比");
+                    const st = isYoy ? (meta.yoy_start_time || "") : (isHb ? (meta.hb_start_time || "") : (meta.start_time || ""));
+                    const et = isYoy ? (meta.yoy_end_time || "") : (isHb ? (meta.hb_end_time || "") : (meta.end_time || ""));
                     const usp = buildQueryParams({start_time: st, end_time: et});
                     usp.set("metric", metric);
                     usp.set("diqu", diquCode);
@@ -458,10 +484,11 @@
             queryBtn.disabled = true;
             try {
                 const usp = buildQueryParams();
+                usp.set("show_hb", "1");
                 const resp = await fetch(`{{ url_for('zfba_jq_aj.api_summary') }}?` + usp.toString());
                 const data = await resp.json();
                 if (!data.success) throw new Error(data.message || "查询失败");
-                statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}`;
+                statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}；环比：${data.meta.hb_start_time} ~ ${data.meta.hb_end_time}`;
                 lastMeta = data.meta || null;
                 lastRows = data.rows || [];
                 renderTable(lastRows, data.meta || {});
@@ -478,6 +505,7 @@
             const usp = buildQueryParams();
             usp.set("fmt", fmt);
             if (showRatioEl && showRatioEl.checked) usp.set("show_ratio", "1");
+            usp.set("show_hb", (showHbEl && showHbEl.checked) ? "1" : "0");
             const href = `{{ url_for('zfba_jq_aj.export_summary') }}?` + usp.toString();
             window.location.href = href;
         }
@@ -530,6 +558,11 @@
         queryBtn.addEventListener("click", (e) => { e.preventDefault(); query(); });
         if (showRatioEl) {
             showRatioEl.addEventListener("change", () => {
+                renderTable(lastRows, lastMeta || {});
+            });
+        }
+        if (showHbEl) {
+            showHbEl.addEventListener("change", () => {
                 renderTable(lastRows, lastMeta || {});
             });
         }
