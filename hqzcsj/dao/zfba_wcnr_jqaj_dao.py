@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from psycopg2 import sql
 
 from gonggong.config.database import DB_CONFIG
+from hqzcsj.dao import jzqk_tongji_dao
 from hqzcsj.dao.zfba_jq_aj_dao import fetch_ay_patterns, fetch_leixing_list
 
 
@@ -463,6 +464,15 @@ def count_songxiao_by_diqu(conn, *, start_time: str, end_time: str, patterns: Se
     return out
 
 
+def fetch_wcnr_jzqk_rows(
+    conn, *, start_time: str, end_time: str, leixing_list: Sequence[str]
+) -> List[Dict[str, Any]]:
+    """复用“矫治情况统计”数据源，返回同口径明细行。"""
+    return jzqk_tongji_dao.fetch_jzqk_data(
+        conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
+    )
+
+
 def fetch_detail_rows(
     conn,
     *,
@@ -475,17 +485,51 @@ def fetch_detail_rows(
     limit: Optional[int],
 ) -> Tuple[List[Dict[str, Any]], bool]:
     metric = (metric or "").strip()
+    # 后端兼容：历史链接仍可能传“训诫书”，统一映射到“矫治文书”
+    metric = "矫治文书" if metric == "训诫书" else metric
     diqu = (diqu or "").strip()
     is_all = diqu in ("", "__ALL__", "全市")
     leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
     za_types = [str(x).strip() for x in (za_types or []) if str(x).strip()]
     patterns = fetch_ay_patterns(conn, leixing_list=leixing_list)
-    subclasses = fetch_newcharasubclass_list(conn, leixing_list=leixing_list) if leixing_list else []
     if leixing_list and not patterns and metric != "警情":
         return [], False
 
     limit_n = int(limit) if limit and int(limit) > 0 else 0
     truncated = False
+
+    # 复用“矫治情况统计”口径：行政/刑事嫌疑人、矫治文书、加强监督教育、符合送校、送校
+    if metric in ("行政嫌疑人", "刑事嫌疑人", "矫治文书", "加强监督教育", "符合送校", "送校"):
+        rows = fetch_wcnr_jzqk_rows(
+            conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
+        )
+        filtered: List[Dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            diqu_code = str(item.get("地区") or "").strip()
+            if not is_all and diqu_code != diqu:
+                continue
+
+            ajlx = str(item.get("案件类型") or "").strip()
+            if metric == "行政嫌疑人" and ajlx != "行政":
+                continue
+            if metric == "刑事嫌疑人" and ajlx != "刑事":
+                continue
+            if metric == "矫治文书" and str(item.get("是否开具矫治文书") or "").strip() != "是":
+                continue
+            if metric == "加强监督教育" and str(item.get("是否开具家庭教育指导书") or "").strip() != "是":
+                continue
+            if metric == "符合送校" and str(item.get("是否符合送生") or "").strip() != "是":
+                continue
+            if metric == "送校" and str(item.get("是否送校") or "").strip() != "是":
+                continue
+            filtered.append(item)
+
+        filtered.sort(key=lambda r: str(r.get("立案时间") or ""), reverse=True)
+        if limit_n and len(filtered) > limit_n:
+            truncated = True
+            filtered = filtered[:limit_n]
+        return filtered, truncated
 
     def _exec(cur, q: sql.SQL, params: List[Any]) -> Tuple[List[Dict[str, Any]], bool]:
         nonlocal truncated

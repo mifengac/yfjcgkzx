@@ -56,6 +56,49 @@ def shift_year(dt: datetime, years: int = -1) -> datetime:
         raise
 
 
+def _build_wfry_stats_bundle(
+    rows: Sequence[Dict[str, Any]],
+) -> Tuple[Dict[str, Dict[str, int]], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int]]:
+    """基于“矫治情况统计”同口径明细，汇总未成年人统计所需指标。"""
+    xyr_seen: Dict[str, Dict[str, set]] = {"行政": {}, "刑事": {}}
+    jiaozhi_wenshu: Dict[str, int] = {}
+    jiating_jiaoyu: Dict[str, int] = {}
+    fuhe_songsheng: Dict[str, int] = {}
+    songxiao: Dict[str, int] = {}
+
+    def _inc(m: Dict[str, int], code: str) -> None:
+        m[code] = int(m.get(code) or 0) + 1
+
+    for row in rows:
+        diqu_code = str(row.get("地区") or "").strip()
+        if not diqu_code:
+            continue
+
+        ajlx = str(row.get("案件类型") or "").strip()
+        if ajlx in ("行政", "刑事"):
+            person_id = str(row.get("身份证号") or "").strip()
+            if not person_id:
+                person_id = f'{str(row.get("人员编号") or "").strip()}|{str(row.get("姓名") or "").strip()}'
+            if person_id.strip("|"):
+                xyr_seen[ajlx].setdefault(diqu_code, set()).add(person_id)
+
+        if str(row.get("是否开具矫治文书") or "").strip() == "是":
+            _inc(jiaozhi_wenshu, diqu_code)
+        if str(row.get("是否开具家庭教育指导书") or "").strip() == "是":
+            _inc(jiating_jiaoyu, diqu_code)
+        if str(row.get("是否符合送生") or "").strip() == "是":
+            _inc(fuhe_songsheng, diqu_code)
+        if str(row.get("是否送校") or "").strip() == "是":
+            _inc(songxiao, diqu_code)
+
+    xyr_count: Dict[str, Dict[str, int]] = {"行政": {}, "刑事": {}}
+    for ajlx in ("行政", "刑事"):
+        for diqu_code, people in (xyr_seen.get(ajlx) or {}).items():
+            xyr_count[ajlx][diqu_code] = len(people)
+
+    return xyr_count, jiaozhi_wenshu, jiating_jiaoyu, fuhe_songsheng, songxiao
+
+
 def build_summary(
     *, start_time: str, end_time: str, leixing_list: Sequence[str], za_types: Sequence[str]
 ) -> Tuple[SummaryMeta, List[Dict[str, Any]]]:
@@ -109,14 +152,17 @@ def build_summary(
                 lambda: zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
             )
         )
-        xyr_now = (
-            {"行政": {}, "刑事": {}}
+        wfry_rows_now = (
+            []
             if typed_patterns_empty
             else _call(
-                "当前-嫌疑人(行政/刑事)",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_xyr_by_diqu_and_ajlx(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+                "当前-v_wcnr_wfry_base",
+                lambda: zfba_wcnr_jqaj_dao.fetch_wcnr_jzqk_rows(
+                    conn, start_time=meta.start_time, end_time=meta.end_time, leixing_list=leixing_list
+                ),
             )
         )
+        xyr_now, jiaozhi_now, jtjyz_now, fh_sx_now, sx_now = _build_wfry_stats_bundle(wfry_rows_now)
         xz_now = (
             {}
             if typed_patterns_empty
@@ -145,14 +191,6 @@ def build_summary(
                 lambda: zfba_wcnr_jqaj_dao.count_wcnr_jlz_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
             )
         )
-        xjs_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-训诫书",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_xjs_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-            )
-        )
         # 新增：案件数(被侵害)
         shr_ajxx_now = (
             {}
@@ -162,33 +200,6 @@ def build_summary(
                 lambda: zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
             )
         )
-        jtjyz_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-加强监督教育",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_jtjyzdtzs_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-            )
-        )
-        fh_sx_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-符合送校",
-                lambda: zfba_wcnr_jqaj_dao.count_fuhe_songxiao_by_diqu(
-                    conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, za_types=za_types
-                ),
-            )
-        )
-        sx_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-送校",
-                lambda: zfba_wcnr_jqaj_dao.count_songxiao_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
-            )
-        )
-
         # 同比
         jq_yoy = (
             {}
@@ -206,14 +217,17 @@ def build_summary(
                 lambda: zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
             )
         )
-        xyr_yoy = (
-            {"行政": {}, "刑事": {}}
+        wfry_rows_yoy = (
+            []
             if typed_patterns_empty
             else _call(
-                "同比-嫌疑人(行政/刑事)",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_xyr_by_diqu_and_ajlx(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
+                "同比-v_wcnr_wfry_base",
+                lambda: zfba_wcnr_jqaj_dao.fetch_wcnr_jzqk_rows(
+                    conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, leixing_list=leixing_list
+                ),
             )
         )
+        xyr_yoy, jiaozhi_yoy, jtjyz_yoy, _fh_sx_yoy, sx_yoy = _build_wfry_stats_bundle(wfry_rows_yoy)
         xz_yoy = (
             {}
             if typed_patterns_empty
@@ -240,30 +254,6 @@ def build_summary(
             else _call(
                 "同比-刑拘",
                 lambda: zfba_wcnr_jqaj_dao.count_wcnr_jlz_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-            )
-        )
-        xjs_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-训诫书",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_xjs_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-            )
-        )
-        jtjyz_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-加强监督教育",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_jtjyzdtzs_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-            )
-        )
-        sx_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-送校",
-                lambda: zfba_wcnr_jqaj_dao.count_songxiao_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
             )
         )
         # 新增：案件数(被侵害)同比
@@ -304,8 +294,8 @@ def build_summary(
                     "同比治安处罚(不执行)": g(xz_noexec_yoy, code),
                     "刑拘": g(jlz_now, code),
                     "同比刑拘": g(jlz_yoy, code),
-                    "训诫书": g(xjs_now, code),
-                    "同比训诫书": g(xjs_yoy, code),
+                    "矫治文书": g(jiaozhi_now, code),
+                    "同比矫治文书": g(jiaozhi_yoy, code),
                     "加强监督教育": g(jtjyz_now, code),
                     "同比加强监督教育": g(jtjyz_yoy, code),
                     "符合送校": g(fh_sx_now, code),
