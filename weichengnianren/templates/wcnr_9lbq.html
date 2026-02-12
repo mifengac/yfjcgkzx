@@ -1,0 +1,179 @@
+<section class="card" style="margin-top:12px;">
+    <h2 style="margin:0 0 12px 0;">未成年人9类标签碰撞</h2>
+    <div class="row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+        <label>
+            上传文件(xlsx/csv)
+            <input type="file" id="wcnr9lbqFile" accept=".xlsx,.csv">
+        </label>
+        <label>
+            身份证列名
+            <input type="text" id="wcnr9lbqColumn" value="zjhm" placeholder="例如: zjhm">
+        </label>
+        <button class="btn" id="wcnr9lbqQueryBtn">查询</button>
+    </div>
+    <div class="row" style="gap:10px; margin-top:10px; align-items:center;">
+        <label>
+            每页条数
+            <select id="wcnr9lbqPageSize">
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="all">全部</option>
+            </select>
+        </label>
+        <button class="btn" id="wcnr9lbqPrevBtn" style="background:#666;">上一页</button>
+        <button class="btn" id="wcnr9lbqNextBtn" style="background:#666;">下一页</button>
+        <span class="muted" id="wcnr9lbqPageInfo"></span>
+    </div>
+    <div class="muted" id="wcnr9lbqStatus" style="margin-top:8px;"></div>
+    <div class="err" id="wcnr9lbqErr" style="margin-top:8px;"></div>
+</section>
+
+<section class="card">
+    <div class="table-wrap">
+        <table id="wcnr9lbqTbl"></table>
+    </div>
+</section>
+
+<style>
+    #wcnr9lbqTbl th { text-align: center; }
+    #wcnr9lbqTbl td { text-align: left; white-space: nowrap; }
+    #wcnr9lbqTbl td.num-cell { text-align: center; }
+</style>
+
+<script>
+    (function () {
+        const fileEl = document.getElementById("wcnr9lbqFile");
+        const colEl = document.getElementById("wcnr9lbqColumn");
+        const queryBtn = document.getElementById("wcnr9lbqQueryBtn");
+        const statusEl = document.getElementById("wcnr9lbqStatus");
+        const errEl = document.getElementById("wcnr9lbqErr");
+        const tbl = document.getElementById("wcnr9lbqTbl");
+        const pageSizeEl = document.getElementById("wcnr9lbqPageSize");
+        const prevBtn = document.getElementById("wcnr9lbqPrevBtn");
+        const nextBtn = document.getElementById("wcnr9lbqNextBtn");
+        const pageInfoEl = document.getElementById("wcnr9lbqPageInfo");
+
+        let allRows = [];
+        let currentPage = 1;
+
+        function getPageSize() {
+            const v = String(pageSizeEl.value || "20");
+            if (v === "all") return null;
+            const n = Number(v);
+            if (!Number.isFinite(n) || n <= 0) return 20;
+            return n;
+        }
+
+        function renderTable() {
+            const total = allRows.length;
+            const pageSize = getPageSize();
+            let totalPages = 1;
+            let pageRows = allRows;
+
+            if (pageSize != null) {
+                totalPages = Math.max(1, Math.ceil(total / pageSize));
+                if (currentPage > totalPages) currentPage = totalPages;
+                if (currentPage < 1) currentPage = 1;
+                const start = (currentPage - 1) * pageSize;
+                pageRows = allRows.slice(start, start + pageSize);
+            } else {
+                currentPage = 1;
+                totalPages = 1;
+                pageRows = allRows;
+            }
+
+            prevBtn.disabled = currentPage <= 1 || total === 0;
+            nextBtn.disabled = currentPage >= totalPages || total === 0;
+            pageInfoEl.textContent = `第 ${currentPage}/${totalPages} 页，共 ${total} 条`;
+
+            if (!pageRows.length) {
+                tbl.innerHTML = `<thead><tr><th>无数据</th></tr></thead><tbody><tr><td class="muted">无数据</td></tr></tbody>`;
+                return;
+            }
+
+            const headers = Object.keys(pageRows[0]);
+            const head = `<thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>`;
+            const body = pageRows.map(r => {
+                const tds = headers.map(h => {
+                    const v = r[h] == null ? "" : String(r[h]);
+                    return `<td>${v}</td>`;
+                }).join("");
+                return `<tr>${tds}</tr>`;
+            }).join("");
+            tbl.innerHTML = `${head}<tbody>${body}</tbody>`;
+        }
+
+        async function query() {
+            errEl.textContent = "";
+            statusEl.textContent = "";
+
+            const file = fileEl.files && fileEl.files[0];
+            const columnName = String(colEl.value || "").trim();
+            if (!file) {
+                errEl.textContent = "请先上传文件";
+                return;
+            }
+            if (!columnName) {
+                errEl.textContent = "请输入身份证列名";
+                return;
+            }
+
+            queryBtn.disabled = true;
+            statusEl.textContent = "查询中...";
+            try {
+                const fd = new FormData();
+                fd.append("file", file);
+                fd.append("column_name", columnName);
+
+                const resp = await fetch(`{{ url_for('wcnr_9lbq.api_query') }}`, {
+                    method: "POST",
+                    body: fd,
+                });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.message || "查询失败");
+
+                allRows = data.rows || [];
+                currentPage = 1;
+                renderTable();
+
+                const info = data.extract_info || {};
+                statusEl.textContent =
+                    `提取: 源数据行数 ${info["源数据行数"] || 0}，非空身份证 ${info["非空身份证数"] || 0}，` +
+                    `有效18位 ${info["有效18位身份证数"] || 0}，无效 ${info["无效身份证数"] || 0}，` +
+                    `去重后 ${info["去重后身份证数"] || 0}；查询结果 ${data.total || 0} 条`;
+            } catch (e) {
+                errEl.textContent = e.message || String(e);
+                allRows = [];
+                currentPage = 1;
+                renderTable();
+                statusEl.textContent = "";
+            } finally {
+                queryBtn.disabled = false;
+            }
+        }
+
+        queryBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            query();
+        });
+
+        pageSizeEl.addEventListener("change", () => {
+            currentPage = 1;
+            renderTable();
+        });
+        prevBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (currentPage > 1) currentPage -= 1;
+            renderTable();
+        });
+        nextBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            currentPage += 1;
+            renderTable();
+        });
+
+        renderTable();
+    })();
+</script>
+

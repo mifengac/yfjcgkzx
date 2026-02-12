@@ -43,6 +43,7 @@ from jingqing_anjian.service.case_service import CaseService  # noqa: E402
 from xunfang.routes.xunfang_routes import xunfang_bp  # noqa: E402
 from zhizong.routes.zhizong_routes import zhizong_bp  # noqa: E402
 from weichengnianren.routes.wcnr_routes import weichengnianren_bp  # noqa: E402
+from weichengnianren.routes.wcnr_9lbq_routes import wcnr_9lbq_bp  # noqa: E402
 from gzrzdd.routes.gzrzdd_routes import gzrzdd_bp  # noqa: E402
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp  # noqa: E402
 from mdjfxsyj.routes.mdjfxsyj_mdj_xsyj_routes import mdjfxsyj_bp  # noqa: E402
@@ -365,6 +366,7 @@ app.register_blueprint(xunfang_bp, url_prefix="/xunfang")
 app.register_blueprint(zhizong_bp, url_prefix="/zhizong")
 app.register_blueprint(jingqing_anjian_bp, url_prefix="/jingqing_anjian")
 app.register_blueprint(weichengnianren_bp, url_prefix="/weichengnianren")
+app.register_blueprint(wcnr_9lbq_bp, url_prefix="/weichengnianren")
 app.register_blueprint(gzrzdd_bp, url_prefix="/gzrzdd")
 app.register_blueprint(jszahzyj_bp, url_prefix="/jszahzyj")
 app.register_blueprint(mdjfxsyj_bp, url_prefix="/mdjfxsyj")
