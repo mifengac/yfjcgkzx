@@ -18,17 +18,48 @@ def query_9lbq_rows(conn, id_cards: Sequence[str]) -> List[Dict[str, Any]]:
         FROM temp_jztssjhc
         WHERE NULLIF(BTRIM(zjhm), '') IS NOT NULL
     ),
-    ls AS (SELECT DISTINCT zjhm FROM ywdata.b_per_qslswcnr),
-    ybbl AS (SELECT DISTINCT zjhm FROM ywdata.b_per_yfsjyjblxwwcnr),
-    sxcx AS (SELECT DISTINCT zjhm FROM ywdata.b_per_qscxwcnr),
-    kj AS (SELECT DISTINCT zjhm FROM ywdata.b_per_qskjwcnr),
-    yzjz AS (SELECT DISTINCT zjhm FROM ywdata.b_per_qsyzjszawcnr),
-    zljscj AS (SELECT DISTINCT zjhm FROM ywdata.b_per_qszljscjwcnr),
-    ld AS (SELECT DISTINCT sfzjh FROM ywdata.v_per_qsldwcnrxs),
+    -- 只保留与输入身份证集合匹配的数据，避免每次全表/全视图扫描
+    ls AS MATERIALIZED (
+        SELECT DISTINCT b.zjhm
+        FROM ywdata.b_per_qslswcnr b
+        INNER JOIN input_ids a ON a."证件号码" = b.zjhm
+    ),
+    ybbl AS MATERIALIZED (
+        SELECT DISTINCT c.zjhm
+        FROM ywdata.b_per_yfsjyjblxwwcnr c
+        INNER JOIN input_ids a ON a."证件号码" = c.zjhm
+    ),
+    sxcx AS MATERIALIZED (
+        SELECT DISTINCT d.zjhm
+        FROM ywdata.b_per_qscxwcnr d
+        INNER JOIN input_ids a ON a."证件号码" = d.zjhm
+    ),
+    kj AS MATERIALIZED (
+        SELECT DISTINCT e.zjhm
+        FROM ywdata.b_per_qskjwcnr e
+        INNER JOIN input_ids a ON a."证件号码" = e.zjhm
+    ),
+    yzjz AS MATERIALIZED (
+        SELECT DISTINCT f.zjhm
+        FROM ywdata.b_per_qsyzjszawcnr f
+        INNER JOIN input_ids a ON a."证件号码" = f.zjhm
+    ),
+    zljscj AS MATERIALIZED (
+        SELECT DISTINCT g.zjhm
+        FROM ywdata.b_per_qszljscjwcnr g
+        INNER JOIN input_ids a ON a."证件号码" = g.zjhm
+    ),
+    ld AS MATERIALIZED (
+        SELECT DISTINCT h.sfzjh
+        FROM ywdata.v_per_qsldwcnrxs h
+        WHERE h.sfzjh = ANY(%s::text[])
+    ),
     yzbl AS (
         SELECT DISTINCT zjhm
         FROM stdata.b_zdry_ryxx
-        WHERE "deleteflag" = 0 AND sflg = 1
+        WHERE "deleteflag" = 0
+          AND sflg = 1
+          AND zjhm = ANY(%s::text[])
     ),
     j AS (
         SELECT DISTINCT ON (aa.gmsfhm)
@@ -49,16 +80,17 @@ def query_9lbq_rows(conn, id_cards: Sequence[str]) -> List[Dict[str, Any]]:
         FROM ywdata.t_dsfb_czrk_jbxx aa
         LEFT JOIN ywdata.b_zzjgdm bb
             ON aa.sjgsdwdm = bb.sspcsdm
+        WHERE aa.gmsfhm = ANY(%s::text[])
         ORDER BY aa.gmsfhm, aa.zxsj DESC NULLS LAST
     )
     SELECT
         a."证件号码",
-        j.zxsj AS "户籍注销时间",
-        j.hjdz_qhnxxdz AS "户籍地址",
+        TO_CHAR(j.zxsj, 'YYYY-MM-DD HH24:MI:SS') AS "户籍注销时间",
         '云浮市公安局' AS "所属市局",
         '445300000000' AS "所属市局代码",
         j.ssfj AS "所属分局",
         j.ssfjdm AS "所属分局代码",
+        j.hjdz_qhnxxdz AS "户籍地址",
         j.sspcs AS "所属派出所",
         j.sspcsdm AS "所属派出所代码",
         CONCAT_WS(
@@ -86,6 +118,6 @@ def query_9lbq_rows(conn, id_cards: Sequence[str]) -> List[Dict[str, Any]]:
     """
 
     with conn.cursor() as cur:
-        cur.execute(sql, (list(id_cards),))
+        params = (list(id_cards), list(id_cards), list(id_cards), list(id_cards))
+        cur.execute(sql, params)
         return _as_dict_rows(cur)
-

@@ -386,7 +386,7 @@ except Exception:
 
 
 # ---------------------------------------------------------------------------
-# 开发调试入口
+# 生产启动入口
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     try:
@@ -396,4 +396,9 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"会话管理器初始化失败: {exc}")
 
-    app.run(host="0.0.0.0", port=5003, debug=True)
+    from waitress import serve
+
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    port = int(os.getenv("APP_PORT", "5003"))
+    threads = int(os.getenv("APP_THREADS", "8"))
+    serve(app, host=host, port=port, threads=threads)

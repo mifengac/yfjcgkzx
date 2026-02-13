@@ -15,11 +15,9 @@ def _is_yes(v: Any) -> bool:
     return str(v or "").strip() == "是"
 
 
-def _is_songxiao_or_juliu(row: Dict[str, Any]) -> bool:
-    # 兼容不同字段命名：是否拘留 / 是否刑拘
+def _is_songxiao_or_xingju(row: Dict[str, Any]) -> bool:
     return (
         _is_yes(row.get("是否送校"))
-        or _is_yes(row.get("是否拘留"))
         or _is_yes(row.get("是否刑拘"))
     )
 
@@ -27,18 +25,22 @@ def _is_songxiao_or_juliu(row: Dict[str, Any]) -> bool:
 def calc_songjiao_stats(
     rate_rows_all: Sequence[Dict[str, Any]],
     *,
-    include_juliu: bool = False,
+    include_xingju: bool = False,
+    denom_all_rows: bool = False,
 ) -> Tuple[Dict[str, int], Dict[str, int], int, int]:
     """
     送矫率口径：
-    - 分子：默认=是否送校=是；当 include_juliu=True 时，分子=是否送校=是 或 是否拘留/是否刑拘=是
-    - 分母：是否符合送生=是
+    - 分子：默认=是否送校=是；当 include_xingju=True 时，分子=是否送校=是 或 是否刑拘=是
+    - 分母：默认=是否符合送生=是；当 denom_all_rows=True 时，分母=全部明细
     """
-    if include_juliu:
-        sj_num_by = _count_by_diqu([r for r in rate_rows_all if _is_songxiao_or_juliu(r)])
+    if include_xingju:
+        sj_num_by = _count_by_diqu([r for r in rate_rows_all if _is_songxiao_or_xingju(r)])
     else:
         sj_num_by = _count_by_diqu([r for r in rate_rows_all if _is_yes(r.get("是否送校"))])
-    sj_denom_by = _count_by_diqu([r for r in rate_rows_all if _is_yes(r.get("是否符合送生"))])
+    if denom_all_rows:
+        sj_denom_by = _count_by_diqu(rate_rows_all)
+    else:
+        sj_denom_by = _count_by_diqu([r for r in rate_rows_all if _is_yes(r.get("是否符合送生"))])
     sj_num_total = sum(sj_num_by.values())
     sj_denom_total = sum(sj_denom_by.values())
     return sj_num_by, sj_denom_by, sj_num_total, sj_denom_total
@@ -77,9 +79,9 @@ def calc_rate_stats_bundle(
     # 适用专门（矫治）教育情形送矫率：是否送校 / 是否符合送生
     # 行政
     sj_xz_num_by, sj_xz_denom_by, sj_xz_num_total, sj_xz_denom_total = calc_songjiao_stats(xz_rows)
-    # 刑事（分子：是否送校=是 或 是否拘留/是否刑拘=是）
+    # 刑事（分子：是否送校=是 或 是否刑拘=是；分母：刑事全部明细）
     sj_xs_num_by, sj_xs_denom_by, sj_xs_num_total, sj_xs_denom_total = calc_songjiao_stats(
-        xs_rows, include_juliu=True
+        xs_rows, include_xingju=True, denom_all_rows=True
     )
 
     # 责令加强监护率：是否开具家庭教育指导书 / 同案件类型明细总数
