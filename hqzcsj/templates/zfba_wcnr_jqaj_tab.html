@@ -22,6 +22,11 @@
             <button class="btn" id="wcnrQueryBtn">查询</button>
         </div>
         <div class="row" style="gap:10px; align-items:center;">
+            <label class="ratio-switch" title="显示同比比例列">
+                <span class="ratio-switch-text">显示比例</span>
+                <input type="checkbox" id="wcnrShowRatio">
+                <span class="ratio-switch-slider"></span>
+            </label>
             <div class="dropdown" id="wcnrExportDd">
                 <button class="btn" id="wcnrExportBtn">导出</button>
                 <div class="dropdown-menu">
@@ -46,8 +51,50 @@
     #wcnrTbl th { text-align: center; }
     #wcnrTbl td.num-cell { text-align: center; font-variant-numeric: tabular-nums; }
     #wcnrTbl td.rowh { text-align: left; }
+    #wcnrTbl td.ratio-cell { white-space: nowrap; }
     #wcnrTbl tr.total-row td { background: #fff7e6; font-weight: 800; }
     #wcnrTbl tr.total-row td { border-top: 2px solid #ffe0b2; }
+
+    .ratio-switch {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
+    }
+    .ratio-switch input {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .ratio-switch-slider {
+        position: relative;
+        width: 42px;
+        height: 22px;
+        border-radius: 999px;
+        background: #c6ccd6;
+        transition: background .2s ease;
+    }
+    .ratio-switch-slider::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,.22);
+        transition: transform .2s ease;
+    }
+    .ratio-switch input:checked + .ratio-switch-slider {
+        background: #1e88e5;
+    }
+    .ratio-switch input:checked + .ratio-switch-slider::after {
+        transform: translateX(20px);
+    }
 </style>
 
 <div id="wcnrDetailModal" class="modal" onclick="wcnrCloseModal(event)" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index: 80; align-items:center; justify-content:center; padding: 16px;">
@@ -63,364 +110,12 @@
 </div>
 
 <script>
-    (function() {
-        const REGION_COL = "地区";
-        const COLS = [
-            "地区",
-            "警情","同比警情",
-            "转案数","同比转案数",
-            "案件数(被侵害)","同比案件数(被侵害)",
-            "场所案件(被侵害)","同比场所案件(被侵害)",
-            "行政","同比行政",
-            "刑事","同比刑事",
-            "嫌疑人(行政)","同比嫌疑人(行政)",
-            "嫌疑人(刑事)","同比嫌疑人(刑事)",
-            "场所案件","同比场所案件",
-            "治安处罚","同比治安处罚",
-            "治安处罚(不执行)","同比治安处罚(不执行)",
-            "刑拘","同比刑拘",
-            "矫治文书(行政)","同比矫治文书(行政)",
-            "矫治文书(刑事)","同比矫治文书(刑事)",
-            "加强监督教育(行政)","同比加强监督教育(行政)",
-            "加强监督教育(刑事)","同比加强监督教育(刑事)",
-            "符合送校",
-            "送校","同比送校"
-        ];
-        const METRIC_BY_COL = {
-            "警情":"警情",
-            "同比警情":"警情",
-            "转案数":"转案数",
-            "同比转案数":"转案数",
-            "案件数(被侵害)":"案件数(被侵害)",
-            "同比案件数(被侵害)":"案件数(被侵害)",
-            "场所案件(被侵害)":"场所案件(被侵害)",
-            "同比场所案件(被侵害)":"场所案件(被侵害)",
-            "行政":"行政",
-            "同比行政":"行政",
-            "刑事":"刑事",
-            "同比刑事":"刑事",
-            "嫌疑人(行政)":"嫌疑人(行政)",
-            "同比嫌疑人(行政)":"嫌疑人(行政)",
-            "嫌疑人(刑事)":"嫌疑人(刑事)",
-            "同比嫌疑人(刑事)":"嫌疑人(刑事)",
-            "场所案件":"场所案件",
-            "同比场所案件":"场所案件",
-            "治安处罚":"治安处罚",
-            "同比治安处罚":"治安处罚",
-            "治安处罚(不执行)":"治安处罚(不执行)",
-            "同比治安处罚(不执行)":"治安处罚(不执行)",
-            "刑拘":"刑拘",
-            "同比刑拘":"刑拘",
-            "矫治文书(行政)":"矫治文书(行政)",
-            "同比矫治文书(行政)":"矫治文书(行政)",
-            "矫治文书(刑事)":"矫治文书(刑事)",
-            "同比矫治文书(刑事)":"矫治文书(刑事)",
-            "加强监督教育(行政)":"加强监督教育(行政)",
-            "同比加强监督教育(行政)":"加强监督教育(行政)",
-            "加强监督教育(刑事)":"加强监督教育(刑事)",
-            "同比加强监督教育(刑事)":"加强监督教育(刑事)",
-            "符合送校":"符合送校",
-            "送校":"送校",
-            "同比送校":"送校",
-        };
-
-        const startEl = document.getElementById("wcnrStart");
-        const endEl = document.getElementById("wcnrEnd");
-        const statusEl = document.getElementById("wcnrStatus");
-        const errEl = document.getElementById("wcnrErr");
-        const tbl = document.getElementById("wcnrTbl");
-        const queryBtn = document.getElementById("wcnrQueryBtn");
-        const exportAllBtn = document.getElementById("wcnrExportAllBtn");
-
-        let lastMeta = null;
-
-        // dropdown
-        const dd = document.getElementById("wcnrExportDd");
-        const exportBtn = document.getElementById("wcnrExportBtn");
-        exportBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            dd.classList.toggle("open");
-        });
-        dd.querySelectorAll(".dropdown-menu a").forEach(a => {
-            a.addEventListener("click", (e) => {
-                e.preventDefault();
-                const fmt = a.getAttribute("data-fmt") || "xlsx";
-                doExport(fmt);
-                dd.classList.remove("open");
-            });
-        });
-        document.addEventListener("click", (e) => { if (!dd.contains(e.target)) dd.classList.remove("open"); });
-
-        // types multiselect
-        const ms = document.getElementById("wcnrTypesMs");
-        const msDisplay = document.getElementById("wcnrTypesDisplay");
-        const msDropdown = document.getElementById("wcnrTypesDropdown");
-
-        function selectedTypes() {
-            const boxes = Array.from(msDropdown.querySelectorAll('input[type="checkbox"]'));
-            return boxes.filter(b => b.value !== "_all" && b.checked).map(b => b.value);
-        }
-        function syncAllBox() {
-            const allBox = msDropdown.querySelector('input[value="_all"]');
-            if (!allBox) return;
-            const boxes = Array.from(msDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-            const allChecked = boxes.length > 0 && boxes.every(b => b.checked);
-            const noneChecked = boxes.length > 0 && boxes.every(b => !b.checked);
-            allBox.checked = allChecked;
-            allBox.indeterminate = !allChecked && !noneChecked;
-        }
-        function renderMsLabel() {
-            const boxes = Array.from(msDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-            const sel = selectedTypes();
-            if (boxes.length === 0) { msDisplay.textContent = "无类型"; return; }
-            if (sel.length === 0) { msDisplay.textContent = "未选择(默认全量)"; return; }
-            if (sel.length === boxes.length) { msDisplay.textContent = "全部"; return; }
-            msDisplay.textContent = `已选 ${sel.length} 项`;
-        }
-        function openMs() { msDropdown.classList.add("open"); }
-        function closeMs() { msDropdown.classList.remove("open"); }
-        msDisplay.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (msDropdown.classList.contains("open")) closeMs(); else openMs();
-        });
-        msDropdown.addEventListener("click", (e) => e.stopPropagation());
-        document.addEventListener("click", () => closeMs());
-        msDropdown.addEventListener("change", (e) => {
-            const t = e.target;
-            if (!t || t.tagName !== "INPUT") return;
-            if (t.value === "_all") {
-                const boxes = Array.from(msDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-                boxes.forEach(b => b.checked = t.checked);
-            } else {
-                syncAllBox();
-            }
-            renderMsLabel();
-        });
-
-        async function loadTypes() {
-            msDropdown.innerHTML = '<div class="muted" style="padding:8px;">加载中...</div>';
-            const resp = await fetch("{{ url_for('zfba_wcnr_jqaj.api_leixing') }}");
-            const data = await resp.json();
-            if (!data.success) throw new Error(data.message || "加载类型失败");
-            const items = data.data || [];
-            const html = [];
-            html.push('<label class="multi-select-option"><input type="checkbox" value="_all"><span>全选</span></label>');
-            for (const x of items) {
-                const s = String(x || "").trim();
-                if (!s) continue;
-                html.push(`<label class="multi-select-option"><input type="checkbox" value="${s.replace(/\"/g, '&quot;')}"><span>${s}</span></label>`);
-            }
-            msDropdown.innerHTML = html.join("");
-            syncAllBox();
-            renderMsLabel();
-        }
-
-        // za multiselect
-        const zaDisplay = document.getElementById("wcnrZaDisplay");
-        const zaDropdown = document.getElementById("wcnrZaDropdown");
-        const ZA_OPTS = ["警告","罚款","拘留"];
-
-        function selectedZaTypes() {
-            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]'));
-            return boxes.filter(b => b.value !== "_all" && b.checked).map(b => b.value);
-        }
-        function syncZaAllBox() {
-            const allBox = zaDropdown.querySelector('input[value="_all"]');
-            if (!allBox) return;
-            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-            const allChecked = boxes.length > 0 && boxes.every(b => b.checked);
-            const noneChecked = boxes.length > 0 && boxes.every(b => !b.checked);
-            allBox.checked = allChecked;
-            allBox.indeterminate = !allChecked && !noneChecked;
-        }
-        function renderZaLabel() {
-            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-            const sel = selectedZaTypes();
-            if (boxes.length === 0) { zaDisplay.textContent = "无选项"; return; }
-            if (sel.length === 0) { zaDisplay.textContent = "未选择(默认全量)"; return; }
-            if (sel.length === boxes.length) { zaDisplay.textContent = "全部"; return; }
-            zaDisplay.textContent = `已选 ${sel.length} 项`;
-        }
-        function openZa() { zaDropdown.classList.add("open"); }
-        function closeZa() { zaDropdown.classList.remove("open"); }
-        zaDisplay.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (zaDropdown.classList.contains("open")) closeZa(); else openZa();
-        });
-        zaDropdown.addEventListener("click", (e) => e.stopPropagation());
-        document.addEventListener("click", () => closeZa());
-        zaDropdown.addEventListener("change", (e) => {
-            const t = e.target;
-            if (!t || t.tagName !== "INPUT") return;
-            if (t.value === "_all") {
-                const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-                boxes.forEach(b => b.checked = t.checked);
-            } else {
-                syncZaAllBox();
-            }
-            renderZaLabel();
-        });
-
-        function initZaOptions() {
-            const html = [];
-            html.push('<label class="multi-select-option"><input type="checkbox" value="_all"><span>全选</span></label>');
-            for (const s of ZA_OPTS) {
-                html.push(`<label class="multi-select-option"><input type="checkbox" value="${s}"><span>${s}</span></label>`);
-            }
-            zaDropdown.innerHTML = html.join("");
-            syncZaAllBox();
-            renderZaLabel();
-        }
-
-        function formatDateTimeLocal(date) {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            const seconds = String(date.getSeconds()).padStart(2, '0');
-            return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-        }
-        function formatDateTime(v) {
-            if (!v) return "";
-            const raw = String(v).trim();
-            let s = raw.includes("T") ? raw.replace("T", " ") : raw;
-            // 兼容 datetime-local 可能不带秒：YYYY-MM-DD HH:MM
-            if (s.length === 16) s = s + ":00";
-            // 兜底：只到分钟/秒的截断
-            if (s.length > 19) s = s.slice(0, 19);
-            return s;
-        }
-        function setDefaultTimeRange() {
-            const now = new Date();
-            const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-            const start = new Date(today0);
-            start.setDate(start.getDate() - 7);
-            const end = new Date(today0);
-            startEl.value = formatDateTimeLocal(start);
-            endEl.value = formatDateTimeLocal(end);
-        }
-
-        function buildQueryParams(metaOverride) {
-            const st = (metaOverride && metaOverride.start_time) ? metaOverride.start_time : formatDateTime(startEl.value);
-            const et = (metaOverride && metaOverride.end_time) ? metaOverride.end_time : formatDateTime(endEl.value);
-            const types = selectedTypes();
-            const zaTypes = selectedZaTypes();
-            const usp = new URLSearchParams();
-            if (st) usp.set("start_time", st);
-            if (et) usp.set("end_time", et);
-            for (const t of types) usp.append("leixing", t);
-            for (const z of zaTypes) usp.append("za_type", z);
-            return usp;
-        }
-
-        function renderTable(rows, meta) {
-            const thead = `<thead><tr>${COLS.map(c => `<th>${c}</th>`).join("")}</tr></thead>`;
-            const tbodyRows = (rows || []).map(r => {
-                const diquName = r["地区"] || "";
-                const diquCode = r["地区代码"] || "__ALL__";
-                const rowClass = (diquName === "全市" || diquCode === "__ALL__") ? "total-row" : "";
-                const tds = COLS.map(c => {
-                    if (c === REGION_COL) return `<td class="rowh">${diquName}</td>`;
-                    const v = (r[c] == null) ? 0 : r[c];
-                    if (!v || Number(v) <= 0) return `<td class="num-cell">${v || 0}</td>`;
-                    const metric = METRIC_BY_COL[c] || "";
-                    const isYoy = String(c).startsWith("同比");
-                    const st = isYoy ? (meta.yoy_start_time || "") : (meta.start_time || "");
-                    const et = isYoy ? (meta.yoy_end_time || "") : (meta.end_time || "");
-                    const usp = buildQueryParams({start_time: st, end_time: et});
-                    usp.set("metric", metric);
-                    usp.set("diqu", diquCode);
-                    const href = `{{ url_for('zfba_wcnr_jqaj.detail_page') }}?` + usp.toString();
-                    return `<td class="num-cell clickable-cell" data-href="${href}" style="cursor:pointer; color:#1976d2; font-weight:800;">${v}</td>`;
-                });
-                return `<tr class="${rowClass}">${tds.join("")}</tr>`;
-            }).join("");
-            tbl.innerHTML = thead + `<tbody>${tbodyRows || `<tr><td colspan="${COLS.length}" class="muted">无数据</td></tr>`}</tbody>`;
-
-            tbl.querySelectorAll("td.clickable-cell").forEach(td => {
-                td.addEventListener("click", () => {
-                    const href = td.getAttribute("data-href");
-                    if (href) window.wcnrOpenDetail(href);
-                });
-            });
-        }
-
-        async function query() {
-            errEl.textContent = "";
-            statusEl.textContent = "查询中...";
-            queryBtn.disabled = true;
-            try {
-                const usp = buildQueryParams();
-                const resp = await fetch(`{{ url_for('zfba_wcnr_jqaj.api_summary') }}?` + usp.toString());
-                const data = await resp.json();
-                if (!data.success) throw new Error(data.message || "查询失败");
-                statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}`;
-                lastMeta = data.meta || null;
-                renderTable(data.rows || [], data.meta || {});
-            } catch (e) {
-                errEl.textContent = e.message || String(e);
-                statusEl.textContent = "";
-            } finally {
-                queryBtn.disabled = false;
-            }
-        }
-
-        function doExport(fmt) {
-            const usp = buildQueryParams();
-            usp.set("fmt", fmt);
-            const href = `{{ url_for('zfba_wcnr_jqaj.export_summary') }}?` + usp.toString();
-            window.location.href = href;
-        }
-
-        function exportAllDetail() {
-            errEl.textContent = "";
-            const usp = buildQueryParams();
-            const href = `{{ url_for('zfba_wcnr_jqaj.export_detail_all') }}?` + usp.toString();
-            window.location.href = href;
-        }
-
-        queryBtn.addEventListener("click", (e) => { e.preventDefault(); query(); });
-        exportAllBtn.addEventListener("click", (e) => { e.preventDefault(); exportAllDetail(); });
-
-        window.wcnrOpenDetail = function(href) {
-            const modal = document.getElementById("wcnrDetailModal");
-            const frame = document.getElementById("wcnrDetailFrame");
-            frame.src = href;
-            modal.style.display = "flex";
-        };
-        window.wcnrCloseModal = function(event) {
-            if (event && event.target && event.target.id !== "wcnrDetailModal") return;
-            const modal = document.getElementById("wcnrDetailModal");
-            const frame = document.getElementById("wcnrDetailFrame");
-            modal.style.display = "none";
-            frame.src = "about:blank";
-        };
-
-        setDefaultTimeRange();
-        initZaOptions();
-
-        let hasAutoQueried = false;
-        const typesLoaded = loadTypes().catch(e => {
-            errEl.textContent = e.message || String(e);
-            msDisplay.textContent = "加载失败";
-            throw e;
-        });
-
-        async function maybeAutoQuery() {
-            if (hasAutoQueried) return;
-            hasAutoQueried = true;
-            await typesLoaded;
-            await query();
-        }
-
-        const wcnrTabBtn = document.querySelector('#hqzcsjTabs .tab-btn[data-tab="wcnr"]');
-        if (wcnrTabBtn) {
-            wcnrTabBtn.addEventListener("click", () => maybeAutoQuery().catch(() => {}));
-        }
-        const wcnrPanel = document.getElementById("tab-wcnr");
-        if (wcnrPanel && wcnrPanel.classList.contains("active")) {
-            maybeAutoQuery().catch(() => {});
-        }
-    })();
+    window.WCNR_JQAJ_ENDPOINTS = {
+        apiLeixing: "{{ url_for('zfba_wcnr_jqaj.api_leixing') }}",
+        apiSummary: "{{ url_for('zfba_wcnr_jqaj.api_summary') }}",
+        detailPage: "{{ url_for('zfba_wcnr_jqaj.detail_page') }}",
+        exportSummary: "{{ url_for('zfba_wcnr_jqaj.export_summary') }}",
+        exportDetailAll: "{{ url_for('zfba_wcnr_jqaj.export_detail_all') }}",
+    };
 </script>
+<script src="{{ url_for('hqzcsj.static', filename='js/zfba_wcnr_jqaj_tab.js') }}"></script>

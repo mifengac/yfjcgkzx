@@ -75,7 +75,7 @@ def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequ
             SELECT LEFT(jq."cmdid", 6) AS diqu, COUNT(1) AS cnt
             FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
             WHERE jq."calltime" BETWEEN %s AND %s
-              AND jq."casemark" ~ '未成年'
+              AND (jq."casemark" ~ '未成年' OR jq."casemarkok" ~ '未成年')
               AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
               AND 1=1
             """
@@ -117,7 +117,7 @@ def count_zhuanan_by_diqu(conn, *, start_time: str, end_time: str, leixing_list:
             FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
             LEFT JOIN "ywdata"."zq_zfba_ajxx" zza ON jq."caseno" = zza."ajxx_jqbh"
             WHERE jq."calltime" BETWEEN %s AND %s
-              AND jq."casemark" ~ '未成年'
+              AND (jq."casemark" ~ '未成年' OR jq."casemarkok" ~ '未成年')
               AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
               AND NULLIF(BTRIM(zza."ajxx_ajbh"), '') IS NOT NULL
               AND 1=1
@@ -705,8 +705,6 @@ def fetch_detail_rows(
     metric = (metric or "").strip()
     metric_alias = {
         "训诫书": "矫治文书",
-        "行政嫌疑人": "嫌疑人(行政)",
-        "刑事嫌疑人": "嫌疑人(刑事)",
     }
     metric = metric_alias.get(metric, metric)
     diqu = (diqu or "").strip()
@@ -715,8 +713,6 @@ def fetch_detail_rows(
     za_types = [str(x).strip() for x in (za_types or []) if str(x).strip()]
     patterns = fetch_ay_patterns(conn, leixing_list=leixing_list)
     jzqk_metrics = {
-        "嫌疑人(行政)",
-        "嫌疑人(刑事)",
         "矫治文书",
         "矫治文书(行政)",
         "矫治文书(刑事)",
@@ -745,10 +741,6 @@ def fetch_detail_rows(
                 continue
 
             ajlx = str(item.get("案件类型") or "").strip()
-            if metric == "嫌疑人(行政)" and ajlx != "行政":
-                continue
-            if metric == "嫌疑人(刑事)" and ajlx != "刑事":
-                continue
             if metric in ("矫治文书", "矫治文书(行政)", "矫治文书(刑事)") and str(item.get("是否开具矫治文书") or "").strip() != "是":
                 continue
             if metric == "矫治文书(行政)" and ajlx != "行政":
@@ -822,7 +814,7 @@ def fetch_detail_rows(
                       LEFT(jq."cmdid", 6) AS "地区"
                     FROM ywdata."zq_kshddpt_dsjfx_jq" jq
                     WHERE jq."calltime" BETWEEN %s AND %s
-                      AND jq."casemark" ~ '未成年'
+                      AND (jq."casemark" ~ '未成年' OR jq."casemarkok" ~ '未成年')
                       AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
                       AND 1=1
                     """
@@ -872,7 +864,7 @@ def fetch_detail_rows(
                     FROM ywdata."zq_kshddpt_dsjfx_jq" jq
                     LEFT JOIN "ywdata"."zq_zfba_ajxx" zza ON jq."caseno" = zza."ajxx_jqbh"
                     WHERE jq."calltime" BETWEEN %s AND %s
-                      AND jq."casemark" ~ '未成年'
+                      AND (jq."casemark" ~ '未成年' OR jq."casemarkok" ~ '未成年')
                       AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
                       AND NULLIF(BTRIM(zza."ajxx_ajbh"), '') IS NOT NULL
                       AND 1=1
@@ -933,42 +925,6 @@ def fetch_detail_rows(
                 truncated = True
                 filtered = filtered[:limit_n]
             return filtered, truncated
-
-        if metric in ("行政嫌疑人", "刑事嫌疑人"):
-            ajlx = "行政" if metric == "行政嫌疑人" else "刑事"
-            params3: List[Any] = [start_time, end_time, ajlx]
-            where_pat, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.SQL('main."xyrxx_ay_mc"'))
-            params3 += pat_params
-            where_diqu = sql.SQL("")
-            if not is_all:
-                where_diqu = sql.SQL(' AND LEFT(main."ajxx_join_ajxx_cbdw_bh_dm", 6) = %s')
-                params3.append(diqu)
-            q = (
-                sql.SQL(
-                    """
-                    SELECT
-                      main."ajxx_ajbhs" AS "案件编号",
-                      main."xyrxx_xm" AS "姓名",
-                      main."xyrxx_sfzh" AS "证件号码",
-                      main."xyrxx_rybh" AS "人员编号",
-                      --main."xyrxx_bh" AS "办案嫌疑人编号",
-                      main."xyrxx_ay_mc" AS "案由",
-                      main."ajxx_join_ajxx_ajmc" AS "案件名称",
-                      main."ajxx_join_ajxx_ajlx" AS "案件类型",
-                      main."ajxx_join_ajxx_lasj" AS "立案时间",
-                      main."ajxx_join_ajxx_cbdw_bh" AS "办案单位",
-                      LEFT(main."ajxx_join_ajxx_cbdw_bh_dm", 6) AS "地区"
-                    FROM {schema}.zq_zfba_wcnr_xyr main
-                    WHERE main."ajxx_join_ajxx_lasj" BETWEEN %s AND %s
-                      AND main."ajxx_join_ajxx_ajlx" = %s
-                      AND 1=1
-                    """
-                ).format(schema=sql.Identifier(SCHEMA))
-                + where_pat
-                + where_diqu
-                + sql.SQL(' ORDER BY main."ajxx_join_ajxx_lasj" DESC')
-            )
-            return _exec(cur, q, params3)
 
         if metric in ("治安处罚", "治安处罚(不执行)"):
             params4: List[Any] = [start_time, end_time]

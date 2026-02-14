@@ -59,8 +59,6 @@ def shift_year(dt: datetime, years: int = -1) -> datetime:
 def _build_wfry_stats_bundle(rows: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
     """基于“矫治情况统计”同口径明细，按地区聚合未成年人统计相关指标。"""
     out: Dict[str, Dict[str, int]] = {
-        "嫌疑人(行政)": {},
-        "嫌疑人(刑事)": {},
         "矫治文书(行政)": {},
         "矫治文书(刑事)": {},
         "加强监督教育(行政)": {},
@@ -81,11 +79,6 @@ def _build_wfry_stats_bundle(rows: Sequence[Dict[str, Any]]) -> Dict[str, Dict[s
             continue
 
         ajlx = str(row.get("案件类型") or "").strip()
-        if ajlx == "行政":
-            _inc("嫌疑人(行政)", diqu_code)
-        elif ajlx == "刑事":
-            _inc("嫌疑人(刑事)", diqu_code)
-
         if str(row.get("是否开具矫治文书") or "").strip() == "是":
             if ajlx == "行政":
                 _inc("矫治文书(行政)", diqu_code)
@@ -360,10 +353,6 @@ def build_summary(
                     "同比行政": g2(ajxx_yoy, "行政", code),
                     "刑事": g2(ajxx_now, "刑事", code),
                     "同比刑事": g2(ajxx_yoy, "刑事", code),
-                    "嫌疑人(行政)": gm(wfry_stats_now, "嫌疑人(行政)", code),
-                    "同比嫌疑人(行政)": gm(wfry_stats_yoy, "嫌疑人(行政)", code),
-                    "嫌疑人(刑事)": gm(wfry_stats_now, "嫌疑人(刑事)", code),
-                    "同比嫌疑人(刑事)": gm(wfry_stats_yoy, "嫌疑人(刑事)", code),
                     "场所案件": g(changsuo_now, code),
                     "同比场所案件": g(changsuo_yoy, code),
                     "治安处罚": g(xz_now, code),

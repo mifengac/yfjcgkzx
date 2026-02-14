@@ -11,6 +11,8 @@ hqzcsj - 获取综查数据模块路由。
 
 from __future__ import annotations
 
+import hmac
+import os
 from datetime import datetime
 from typing import Any, Dict
 
@@ -23,7 +25,22 @@ from hqzcsj.service.tqws_service import get_tqws_job_status, get_tqws_sources, s
 from hqzcsj.service.zfba_jq_aj_service import default_time_range_for_page as jqaj_default_range
 
 
-hqzcsj_bp = Blueprint("hqzcsj", __name__, template_folder="../templates")
+hqzcsj_bp = Blueprint("hqzcsj", __name__, template_folder="../templates", static_folder="../static")
+FETCH_TAB_SESSION_KEY = "hqzcsj_fetch_tab_unlocked"
+
+
+def _fetch_tab_password() -> str:
+    return os.getenv("HQZCSJ_FETCH_TAB_PASSWORD", "qqq")
+
+
+def _is_fetch_tab_unlocked() -> bool:
+    return bool(session.get(FETCH_TAB_SESSION_KEY))
+
+
+def _guard_fetch_tab_api() -> Any:
+    if _is_fetch_tab_unlocked():
+        return None
+    return jsonify({"success": False, "message": "请先输入“获取综查数据”页面密码"}), 403
 
 
 @hqzcsj_bp.before_request
@@ -56,11 +73,26 @@ def zongcha_index() -> str:
         default_end=default_end,
         jqaj_default_start=jqaj_default_start,
         jqaj_default_end=jqaj_default_end,
+        fetch_tab_unlocked=_is_fetch_tab_unlocked(),
     )
+
+
+@hqzcsj_bp.route("/zongcha/api/fetch-auth", methods=["POST"])
+def zongcha_fetch_auth() -> Any:
+    payload: Dict[str, Any] = request.get_json(silent=True) or {}
+    password = str(payload.get("password") or "")
+    if hmac.compare_digest(password, _fetch_tab_password()):
+        session[FETCH_TAB_SESSION_KEY] = True
+        return jsonify({"success": True})
+    return jsonify({"success": False, "message": "密码错误"}), 400
 
 
 @hqzcsj_bp.route("/zongcha/api/start", methods=["POST"])
 def zongcha_start() -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
     payload: Dict[str, Any] = request.get_json(silent=True) or {}
     cookie = (payload.get("cookie") or "").strip()
     authorization = (payload.get("authorization") or "").strip()
@@ -98,6 +130,10 @@ def zongcha_start() -> Any:
 
 @hqzcsj_bp.route("/zongcha/api/status/<job_id>")
 def zongcha_status(job_id: str) -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
     username = session.get("username") or ""
     status = get_zongcha_job_status(username=username, job_id=job_id)
     if not status:
@@ -107,6 +143,10 @@ def zongcha_status(job_id: str) -> Any:
 
 @hqzcsj_bp.route("/zongcha/tqws/api/start", methods=["POST"])
 def tqws_start() -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
     payload: Dict[str, Any] = request.get_json(silent=True) or {}
     access_token = (payload.get("access_token") or "").strip()
     sources = payload.get("sources") or []
@@ -136,6 +176,10 @@ def tqws_start() -> Any:
 
 @hqzcsj_bp.route("/zongcha/tqws/api/status/<job_id>")
 def tqws_status(job_id: str) -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
     username = session.get("username") or ""
     status = get_tqws_job_status(username=username, job_id=job_id)
     if not status:
@@ -145,11 +189,19 @@ def tqws_status(job_id: str) -> Any:
 
 @hqzcsj_bp.route("/zongcha/tqws/api/sources")
 def tqws_sources() -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
     return jsonify({"success": True, "data": get_tqws_sources()})
 
 
 @hqzcsj_bp.route("/zongcha/jsxx/api/start", methods=["POST"])
 def jsxx_start() -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
     payload: Dict[str, Any] = request.get_json(silent=True) or {}
     session_cookie = (payload.get("session_cookie") or "").strip()
     start_date = (payload.get("start_date") or "").strip()
@@ -200,6 +252,10 @@ def jsxx_start() -> Any:
 
 @hqzcsj_bp.route("/zongcha/jsxx/api/status/<job_id>")
 def jsxx_status(job_id: str) -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
     username = session.get("username") or ""
     status = get_jsxx_job_status(username=username, job_id=job_id)
     if not status:
@@ -209,4 +265,8 @@ def jsxx_status(job_id: str) -> Any:
 
 @hqzcsj_bp.route("/zongcha/jsxx/api/sources")
 def jsxx_sources() -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
     return jsonify({"success": True, "data": get_jsxx_sources()})

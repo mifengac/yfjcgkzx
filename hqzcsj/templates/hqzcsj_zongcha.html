@@ -253,6 +253,9 @@
 </div>
 
 <script>
+    let fetchTabUnlocked = {{ 'true' if fetch_tab_unlocked else 'false' }};
+    let tqwsSourcesLoaded = false;
+
     const modal = document.getElementById('modal');
     const backdrop = document.getElementById('modalBackdrop');
     const openBtn = document.getElementById('openModalBtn');
@@ -434,10 +437,61 @@
         });
     }
 
-    loadTqwsSources().catch(e => {
-        if (tqwsSourceMsDisplay) tqwsSourceMsDisplay.textContent = '加载失败';
-        console.error(e);
-    });
+    async function tryLoadTqwsSources() {
+        if (tqwsSourcesLoaded || !fetchTabUnlocked) {
+            if (!fetchTabUnlocked && tqwsSourceMsDisplay) tqwsSourceMsDisplay.textContent = '请输入密码后加载';
+            return;
+        }
+        tqwsSourcesLoaded = true;
+        try {
+            await loadTqwsSources();
+        } catch (e) {
+            tqwsSourcesLoaded = false;
+            if (tqwsSourceMsDisplay) tqwsSourceMsDisplay.textContent = '加载失败';
+            console.error(e);
+        }
+    }
+
+    async function verifyFetchTabPassword() {
+        if (fetchTabUnlocked) return true;
+        const input = window.prompt('请输入“获取综查数据”页面密码');
+        if (input === null) return false;
+        const password = String(input || '').trim();
+        if (!password) {
+            alert('密码不能为空');
+            return false;
+        }
+        try {
+            const resp = await fetch(`{{ url_for('hqzcsj.zongcha_fetch_auth') }}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ password }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                alert(data.message || '密码错误');
+                return false;
+            }
+            fetchTabUnlocked = true;
+            await tryLoadTqwsSources();
+            return true;
+        } catch (e) {
+            alert(e.message || '验证失败');
+            return false;
+        }
+    }
+
+    function activateTab(t) {
+        const tabs = document.getElementById("hqzcsjTabs");
+        tabs.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.getAttribute("data-tab") === t));
+        document.getElementById("tab-fetch").classList.toggle("active", t === "fetch");
+        document.getElementById("tab-jqaj").classList.toggle("active", t === "jqaj");
+        document.getElementById("tab-wcnr").classList.toggle("active", t === "wcnr");
+        document.getElementById("tab-jzqk").classList.toggle("active", t === "jzqk");
+        document.getElementById("tab-wcnr1393").classList.toggle("active", t === "wcnr1393");
+    }
+
+    tryLoadTqwsSources();
 
     function openModal() {
         backdrop.style.display = 'block';
@@ -683,15 +737,13 @@
         const tabs = document.getElementById("hqzcsjTabs");
         if (!tabs) return;
         tabs.querySelectorAll(".tab-btn").forEach(btn => {
-            btn.addEventListener("click", () => {
-                tabs.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
+            btn.addEventListener("click", async () => {
                 const t = btn.getAttribute("data-tab");
-                document.getElementById("tab-fetch").classList.toggle("active", t === "fetch");
-                document.getElementById("tab-jqaj").classList.toggle("active", t === "jqaj");
-                document.getElementById("tab-wcnr").classList.toggle("active", t === "wcnr");
-                document.getElementById("tab-jzqk").classList.toggle("active", t === "jzqk");
-                document.getElementById("tab-wcnr1393").classList.toggle("active", t === "wcnr1393");
+                if (t === "fetch") {
+                    const ok = await verifyFetchTabPassword();
+                    if (!ok) return;
+                }
+                activateTab(t);
             });
         });
     })();
