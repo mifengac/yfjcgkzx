@@ -46,6 +46,9 @@
                 </div>
             </div>
             <button class="btn" id="jqajReportBtn" style="background:#ff9800;">导出报表</button>
+            {% if session.get('username') == 'admin' %}
+            <button class="btn" id="jqajDailyReportBtn" style="background:#ff9800;">导出警情日报</button>
+            {% endif %}
         </div>
     </div>
     <div class="muted" id="jqajStatus" style="margin-top:10px;"></div>
@@ -104,6 +107,44 @@
     .ratio-switch input:checked + .ratio-switch-slider::after {
         transform: translateX(20px);
     }
+
+    .jqaj-busy-mask {
+        position: fixed;
+        inset: 0;
+        display: none;
+        z-index: 2000;
+        background: rgba(15, 23, 42, 0.45);
+        align-items: center;
+        justify-content: center;
+        pointer-events: all;
+    }
+    .jqaj-busy-mask.active {
+        display: flex;
+    }
+    .jqaj-busy-card {
+        min-width: 280px;
+        padding: 18px 20px;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+    .jqaj-busy-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #1976d2;
+        animation: jqaj-pulse 1s ease-in-out infinite;
+    }
+    @keyframes jqaj-pulse {
+        0%, 100% { transform: scale(0.75); opacity: 0.55; }
+        50% { transform: scale(1); opacity: 1; }
+    }
 </style>
 
 <div id="jqajDetailModal" class="modal" onclick="jqajCloseModal(event)" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index: 80; align-items:center; justify-content:center; padding: 16px;">
@@ -118,472 +159,25 @@
     </div>
 </div>
 
+<div id="jqajBusyMask" class="jqaj-busy-mask" aria-live="polite" aria-busy="true">
+    <div class="jqaj-busy-card">
+        <span class="jqaj-busy-dot"></span>
+        <span>日报生成中，请等待...</span>
+    </div>
+</div>
+
 <script>
-    (function() {
-        const REGION_COL = "地区";
-        const CURRENT_METRIC_COLS = [
-            "警情",
-            "转案数",
-            "案件数",
-            "行政",
-            "刑事",
-            "治安处罚",
-            "刑拘",
-            "逮捕",
-            "起诉",
-            "移送案件",
-            "办结",
-            "破案",
-            "高质量",
-        ];
-        const YOY_META_BY_COL = {
-            "同比警情": {currentCol: "警情", unit: "起"},
-            "同比案件数": {currentCol: "案件数", unit: "起"},
-            "同比行政": {currentCol: "行政", unit: "起"},
-            "同比刑事": {currentCol: "刑事", unit: "起"},
-            "同比治安处罚": {currentCol: "治安处罚", unit: "人次"},
-            "同比刑拘": {currentCol: "刑拘", unit: "人次"},
-            "同比逮捕": {currentCol: "逮捕", unit: "人次"},
-            "同比起诉": {currentCol: "起诉", unit: "人次"},
-            "同比移送案件": {currentCol: "移送案件", unit: "起"},
-            "同比办结": {currentCol: "办结", unit: "起"},
-            "同比破案": {currentCol: "破案", unit: "起"},
-            "同比高质量": {currentCol: "高质量", unit: "起"},
-        };
-        const HB_META_BY_COL = {};
-        Object.values(YOY_META_BY_COL).forEach((meta) => {
-            HB_META_BY_COL[`环比${meta.currentCol}`] = {currentCol: meta.currentCol, unit: meta.unit};
-        });
-        const RATIO_DEF_BY_COL = {};
-        Object.entries(YOY_META_BY_COL).forEach(([compareCol, meta]) => {
-            RATIO_DEF_BY_COL[`${compareCol}比例`] = {compareCol, currentCol: meta.currentCol, unit: meta.unit};
-        });
-        Object.entries(HB_META_BY_COL).forEach(([compareCol, meta]) => {
-            RATIO_DEF_BY_COL[`${compareCol}比例`] = {compareCol, currentCol: meta.currentCol, unit: meta.unit};
-        });
-        const METRIC_BY_COL = {};
-        for (const metric of CURRENT_METRIC_COLS) {
-            METRIC_BY_COL[metric] = metric;
-            METRIC_BY_COL[`同比${metric}`] = metric;
-            METRIC_BY_COL[`环比${metric}`] = metric;
-        }
-
-        const startEl = document.getElementById("jqajStart");
-        const endEl = document.getElementById("jqajEnd");
-        const hbStartEl = document.getElementById("jqajHbStart");
-        const hbEndEl = document.getElementById("jqajHbEnd");
-        const statusEl = document.getElementById("jqajStatus");
-        const errEl = document.getElementById("jqajErr");
-        const tbl = document.getElementById("jqajTbl");
-        const queryBtn = document.getElementById("jqajQueryBtn");
-        const reportBtn = document.getElementById("jqajReportBtn");
-        const showHbEl = document.getElementById("jqajShowHb");
-        const showRatioEl = document.getElementById("jqajShowRatio");
-
-        let lastMeta = null;
-        let lastRows = [];
-
-        // dropdown
-        const dd = document.getElementById("jqajExportDd");
-        const exportBtn = document.getElementById("jqajExportBtn");
-        exportBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            dd.classList.toggle("open");
-        });
-        dd.querySelectorAll(".dropdown-menu a").forEach(a => {
-            a.addEventListener("click", (e) => {
-                e.preventDefault();
-                const fmt = a.getAttribute("data-fmt") || "xlsx";
-                doExport(fmt);
-                dd.classList.remove("open");
-            });
-        });
-        document.addEventListener("click", (e) => {
-            if (!dd.contains(e.target)) dd.classList.remove("open");
-        });
-
-        // types multiselect
-        const ms = document.getElementById("jqajTypesMs");
-        const msDisplay = document.getElementById("jqajTypesDisplay");
-        const msDropdown = document.getElementById("jqajTypesDropdown");
-
-        function selectedTypes() {
-            const boxes = Array.from(msDropdown.querySelectorAll('input[type="checkbox"]'));
-            return boxes.filter(b => b.value !== "_all" && b.checked).map(b => b.value);
-        }
-        function syncAllBox() {
-            const allBox = msDropdown.querySelector('input[value="_all"]');
-            if (!allBox) return;
-            const boxes = Array.from(msDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-            const allChecked = boxes.length > 0 && boxes.every(b => b.checked);
-            const noneChecked = boxes.length > 0 && boxes.every(b => !b.checked);
-            allBox.checked = allChecked;
-            allBox.indeterminate = !allChecked && !noneChecked;
-        }
-        function renderMsLabel() {
-            const boxes = Array.from(msDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-            const sel = selectedTypes();
-            if (boxes.length === 0) { msDisplay.textContent = "无类型"; return; }
-            if (sel.length === 0) { msDisplay.textContent = "未选择(默认全量)"; return; }
-            if (sel.length === boxes.length) { msDisplay.textContent = "全部"; return; }
-            msDisplay.textContent = `已选 ${sel.length} 项`;
-        }
-        function openMs() { msDropdown.classList.add("open"); }
-        function closeMs() { msDropdown.classList.remove("open"); }
-        msDisplay.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (msDropdown.classList.contains("open")) closeMs(); else openMs();
-        });
-        msDropdown.addEventListener("click", (e) => e.stopPropagation());
-        document.addEventListener("click", () => closeMs());
-        msDropdown.addEventListener("change", (e) => {
-            const t = e.target;
-            if (!t || t.tagName !== "INPUT") return;
-            if (t.value === "_all") {
-                const boxes = Array.from(msDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-                boxes.forEach(b => b.checked = t.checked);
-            } else {
-                syncAllBox();
-            }
-            renderMsLabel();
-        });
-
-        async function loadTypes() {
-            msDropdown.innerHTML = '<div class="muted" style="padding:8px;">加载中...</div>';
-            const resp = await fetch("{{ url_for('zfba_jq_aj.api_leixing') }}");
-            const data = await resp.json();
-            if (!data.success) throw new Error(data.message || "加载类型失败");
-            const items = data.data || [];
-            const html = [];
-            html.push('<label class="multi-select-option"><input type="checkbox" value="_all" checked><span>全选</span></label>');
-            for (const x of items) {
-                const s = String(x || "").trim();
-                if (!s) continue;
-                html.push(`<label class="multi-select-option"><input type="checkbox" value="${s.replace(/\"/g, '&quot;')}" checked><span>${s}</span></label>`);
-            }
-            msDropdown.innerHTML = html.join("");
-            syncAllBox();
-            renderMsLabel();
-        }
-
-        function formatDateTimeLocal(date) {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            const seconds = String(date.getSeconds()).padStart(2, '0');
-            return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-        }
-
-        function formatDateTime(dateStr) {
-            const date = new Date(dateStr);
-            if (isNaN(date.getTime())) return '';
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            const seconds = String(date.getSeconds()).padStart(2, '0');
-            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-        }
-
-        function setDefaultTimeRange() {
-            // 当前：前7天00:00:00 ~ 当天00:00:00
-            const now = new Date();
-            const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-            const start = new Date(today0);
-            start.setDate(start.getDate() - 7);
-            const end = new Date(today0);
-
-            // 环比：前14天00:00:00 ~ 前7天23:59:59（避免与当前开始重叠）
-            const hbStart = new Date(today0);
-            hbStart.setDate(hbStart.getDate() - 14);
-            const hbEnd = new Date(today0);
-            hbEnd.setDate(hbEnd.getDate() - 7);
-            hbEnd.setSeconds(hbEnd.getSeconds() - 1);
-
-            startEl.value = formatDateTimeLocal(start);
-            endEl.value = formatDateTimeLocal(end);
-            hbStartEl.value = formatDateTimeLocal(hbStart);
-            hbEndEl.value = formatDateTimeLocal(hbEnd);
-        }
-
-        // za_types multiselect
-        const zaDisplay = document.getElementById("jqajZaDisplay");
-        const zaDropdown = document.getElementById("jqajZaDropdown");
-        const ZA_OPTS = ["警告","罚款","拘留"];
-
-        function selectedZaTypes() {
-            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]'));
-            return boxes.filter(b => b.value !== "_all" && b.checked).map(b => b.value);
-        }
-        function syncZaAllBox() {
-            const allBox = zaDropdown.querySelector('input[value="_all"]');
-            if (!allBox) return;
-            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-            const allChecked = boxes.length > 0 && boxes.every(b => b.checked);
-            const noneChecked = boxes.length > 0 && boxes.every(b => !b.checked);
-            allBox.checked = allChecked;
-            allBox.indeterminate = !allChecked && !noneChecked;
-        }
-        function renderZaLabel() {
-            const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-            const sel = selectedZaTypes();
-            if (boxes.length === 0) { zaDisplay.textContent = "无选项"; return; }
-            if (sel.length === 0) { zaDisplay.textContent = "未选择(默认全量)"; return; }
-            if (sel.length === boxes.length) { zaDisplay.textContent = "全部"; return; }
-            zaDisplay.textContent = `已选 ${sel.length} 项`;
-        }
-        function openZa() { zaDropdown.classList.add("open"); }
-        function closeZa() { zaDropdown.classList.remove("open"); }
-        zaDisplay.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (zaDropdown.classList.contains("open")) closeZa(); else openZa();
-        });
-        zaDropdown.addEventListener("click", (e) => e.stopPropagation());
-        document.addEventListener("click", () => closeZa());
-        zaDropdown.addEventListener("change", (e) => {
-            const t = e.target;
-            if (!t || t.tagName !== "INPUT") return;
-            if (t.value === "_all") {
-                const boxes = Array.from(zaDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== "_all");
-                boxes.forEach(b => b.checked = t.checked);
-            } else {
-                syncZaAllBox();
-            }
-            renderZaLabel();
-        });
-
-        function initZaOptions() {
-            const html = [];
-            html.push('<label class="multi-select-option"><input type="checkbox" value="_all"><span>全选</span></label>');
-            for (const s of ZA_OPTS) {
-                html.push(`<label class="multi-select-option"><input type="checkbox" value="${s}"><span>${s}</span></label>`);
-            }
-            zaDropdown.innerHTML = html.join("");
-            syncZaAllBox();
-            renderZaLabel();
-        }
-
-        function buildQueryParams(metaOverride) {
-            const st = (metaOverride && metaOverride.start_time) ? metaOverride.start_time : formatDateTime(startEl.value);
-            const et = (metaOverride && metaOverride.end_time) ? metaOverride.end_time : formatDateTime(endEl.value);
-            const hbst = (metaOverride && metaOverride.hb_start_time) ? metaOverride.hb_start_time : formatDateTime(hbStartEl.value);
-            const hbet = (metaOverride && metaOverride.hb_end_time) ? metaOverride.hb_end_time : formatDateTime(hbEndEl.value);
-            const types = selectedTypes();
-            const zaTypes = selectedZaTypes();
-            const usp = new URLSearchParams();
-            if (st) usp.set("start_time", st);
-            if (et) usp.set("end_time", et);
-            if (hbst) usp.set("hb_start_time", hbst);
-            if (hbet) usp.set("hb_end_time", hbet);
-            for (const t of types) usp.append("leixing", t);
-            for (const z of zaTypes) usp.append("za_type", z);
-            return usp;
-        }
-
-        function getDisplayCols() {
-            const showRatio = !!(showRatioEl && showRatioEl.checked);
-            const showHb = !!(showHbEl && showHbEl.checked);
-            const cols = [REGION_COL];
-            for (const metric of CURRENT_METRIC_COLS) {
-                const yoyCol = `同比${metric}`;
-                const hbCol = `环比${metric}`;
-                cols.push(metric);
-                cols.push(yoyCol);
-                if (showRatio) {
-                    if (metric === "转案数") {
-                        cols.push("转案率");
-                        cols.push("同比转案率");
-                    } else {
-                        cols.push(`${yoyCol}比例`);
-                    }
-                }
-                if (showHb) {
-                    cols.push(hbCol);
-                    if (showRatio && metric !== "转案数") cols.push(`${hbCol}比例`);
-                }
-            }
-            return cols;
-        }
-
-        function fmtPlainNumber(v) {
-            const n = Number(v || 0);
-            if (Number.isNaN(n)) return "0";
-            if (Number.isInteger(n)) return String(n);
-            return n.toFixed(2).replace(/\.?0+$/, "");
-        }
-
-        function calcRatioText(currentValue, compareValue, unit) {
-            const currentNum = Number(currentValue || 0);
-            const compareNum = Number(compareValue || 0);
-            if (currentNum === compareNum) return "持平";
-            if (currentNum === 0 && compareNum !== 0) return `下降${fmtPlainNumber(compareNum)}${unit}`;
-            if (currentNum !== 0 && compareNum === 0) return `上升${fmtPlainNumber(currentNum)}${unit}`;
-            if (compareNum === 0) return "持平";
-            const ratio = ((currentNum - compareNum) / compareNum) * 100;
-            return `${ratio.toFixed(2)}%`;
-        }
-
-        function calcPercentText(numerator, denominator) {
-            const num = Number(numerator || 0);
-            const den = Number(denominator || 0);
-            if (!Number.isFinite(num) || !Number.isFinite(den) || den <= 0) return "0.00%";
-            return `${((num / den) * 100).toFixed(2)}%`;
-        }
-
-        function renderTable(rows, meta) {
-            const cols = getDisplayCols();
-            const thead = `<thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead>`;
-            const tbodyRows = (rows || []).map(r => {
-                const diquName = r["地区"] || "";
-                const diquCode = r["地区代码"] || "__ALL__";
-                const tds = cols.map(c => {
-                    if (c === REGION_COL) return `<td class="rowh">${diquName}</td>`;
-                    if (c === "转案率") {
-                        return `<td class="num-cell ratio-cell">${calcPercentText(r["转案数"], r["警情"])}</td>`;
-                    }
-                    if (c === "同比转案率") {
-                        return `<td class="num-cell ratio-cell">${calcPercentText(r["同比转案数"], r["同比警情"])}</td>`;
-                    }
-                    const ratioDef = RATIO_DEF_BY_COL[c];
-                    if (ratioDef) {
-                        const ratioText = calcRatioText(r[ratioDef.currentCol], r[ratioDef.compareCol], ratioDef.unit);
-                        return `<td class="num-cell ratio-cell">${ratioText}</td>`;
-                    }
-                    const v = (r[c] == null) ? 0 : r[c];
-                    if (!v || Number(v) <= 0) return `<td class="num-cell">${v || 0}</td>`;
-                    const metric = METRIC_BY_COL[c] || "";
-                    const isYoy = String(c).startsWith("同比");
-                    const isHb = String(c).startsWith("环比");
-                    const st = isYoy ? (meta.yoy_start_time || "") : (isHb ? (meta.hb_start_time || "") : (meta.start_time || ""));
-                    const et = isYoy ? (meta.yoy_end_time || "") : (isHb ? (meta.hb_end_time || "") : (meta.end_time || ""));
-                    const usp = buildQueryParams({start_time: st, end_time: et});
-                    usp.set("metric", metric);
-                    usp.set("diqu", diquCode);
-                    const href = `{{ url_for('zfba_jq_aj.detail_page') }}?` + usp.toString();
-                    return `<td class="num-cell clickable-cell" data-href="${href}" style="cursor:pointer; color:#1976d2; font-weight:800;">${v}</td>`;
-                });
-                return `<tr>${tds.join("")}</tr>`;
-            }).join("");
-            tbl.innerHTML = thead + `<tbody>${tbodyRows || `<tr><td colspan="${cols.length}" class="muted">无数据</td></tr>`}</tbody>`;
-
-            // bind click for detail modal
-            tbl.querySelectorAll("td.clickable-cell").forEach(td => {
-                td.addEventListener("click", () => {
-                    const href = td.getAttribute("data-href");
-                    if (href) window.jqajOpenDetail(href);
-                });
-            });
-        }
-
-        async function query() {
-            errEl.textContent = "";
-            statusEl.textContent = "查询中...";
-            queryBtn.disabled = true;
-            try {
-                const usp = buildQueryParams();
-                usp.set("show_hb", "1");
-                const resp = await fetch(`{{ url_for('zfba_jq_aj.api_summary') }}?` + usp.toString());
-                const data = await resp.json();
-                if (!data.success) throw new Error(data.message || "查询失败");
-                statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}；环比：${data.meta.hb_start_time} ~ ${data.meta.hb_end_time}`;
-                lastMeta = data.meta || null;
-                lastRows = data.rows || [];
-                renderTable(lastRows, data.meta || {});
-            } catch (e) {
-                errEl.textContent = e.message || String(e);
-                statusEl.textContent = "";
-                lastRows = [];
-            } finally {
-                queryBtn.disabled = false;
-            }
-        }
-
-        function doExport(fmt) {
-            const usp = buildQueryParams();
-            usp.set("fmt", fmt);
-            if (showRatioEl && showRatioEl.checked) usp.set("show_ratio", "1");
-            usp.set("show_hb", (showHbEl && showHbEl.checked) ? "1" : "0");
-            const href = `{{ url_for('zfba_jq_aj.export_summary') }}?` + usp.toString();
-            window.location.href = href;
-        }
-
-        async function exportReport() {
-            errEl.textContent = "";
-            const kssj = formatDateTime(startEl.value);
-            const jssj = formatDateTime(endEl.value);
-            const hbkssj = formatDateTime(hbStartEl.value);
-            const hbjssj = formatDateTime(hbEndEl.value);
-            const zaTypes = selectedZaTypes();
-            if (!kssj || !jssj || !hbkssj || !hbjssj) {
-                errEl.textContent = "请填写开始/结束/环比开始/环比结束时间";
-                return;
-            }
-            reportBtn.disabled = true;
-            statusEl.textContent = "正在导出报表...";
-            try {
-                const resp = await fetch(`{{ url_for('zfba_jq_aj.report_export') }}`, {
-                    method: "POST",
-                    headers: {"Content-Type":"application/json"},
-                    body: JSON.stringify({kssj, jssj, hbkssj, hbjssj, za_types: zaTypes})
-                });
-                if (!resp.ok) {
-                    let msg = "导出报表失败";
-                    try { const js = await resp.json(); msg = (js && js.message) ? js.message : msg; } catch (e) {}
-                    throw new Error(msg);
-                }
-                const blob = await resp.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                const cd = resp.headers.get("content-disposition") || "";
-                const m = cd.match(/filename\\*=UTF-8''([^;]+)/i) || cd.match(/filename=\"?([^;\"]+)\"?/i);
-                a.download = m ? decodeURIComponent(m[1]) : `警情案件统计报表_${new Date().getTime()}.xls`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                statusEl.textContent = "导出成功";
-            } catch (e) {
-                errEl.textContent = e.message || String(e);
-                statusEl.textContent = "";
-            } finally {
-                reportBtn.disabled = false;
-            }
-        }
-
-        reportBtn.addEventListener("click", (e) => { e.preventDefault(); exportReport(); });
-        queryBtn.addEventListener("click", (e) => { e.preventDefault(); query(); });
-        if (showRatioEl) {
-            showRatioEl.addEventListener("change", () => {
-                renderTable(lastRows, lastMeta || {});
-            });
-        }
-        if (showHbEl) {
-            showHbEl.addEventListener("change", () => {
-                renderTable(lastRows, lastMeta || {});
-            });
-        }
-
-        // detail modal helpers (iframe)
-        window.jqajOpenDetail = function(href) {
-            const modal = document.getElementById("jqajDetailModal");
-            const frame = document.getElementById("jqajDetailFrame");
-            frame.src = href;
-            modal.style.display = "flex";
-        };
-        window.jqajCloseModal = function(event) {
-            if (event && event.target && event.target.id !== "jqajDetailModal") return;
-            const modal = document.getElementById("jqajDetailModal");
-            const frame = document.getElementById("jqajDetailFrame");
-            modal.style.display = "none";
-            frame.src = "about:blank";
-        };
-
-        setDefaultTimeRange();
-        initZaOptions();
-        loadTypes().then(() => query()).catch(e => { errEl.textContent = e.message || String(e); msDisplay.textContent = "加载失败"; });
-    })();
+    window.ZFBA_JQ_AJ_ENDPOINTS = {
+        apiLeixing: "{{ url_for('zfba_jq_aj.api_leixing') }}",
+        apiSummary: "{{ url_for('zfba_jq_aj.api_summary') }}",
+        detailPage: "{{ url_for('zfba_jq_aj.detail_page') }}",
+        exportSummary: "{{ url_for('zfba_jq_aj.export_summary') }}",
+        reportExport: "{{ url_for('zfba_jq_aj.report_export') }}",
+        dailyReportExport: "{{ url_for('zfba_jq_aj.daily_report_export') }}",
+        canExportDailyReport: {{ (session.get('username') == 'admin') | tojson }},
+    };
 </script>
+<script src="{{ url_for('hqzcsj.static', filename='js/zfba_jq_aj_tab.constants.js') }}"></script>
+<script src="{{ url_for('hqzcsj.static', filename='js/zfba_jq_aj_tab.helpers.js') }}"></script>
+<script src="{{ url_for('hqzcsj.static', filename='js/zfba_jq_aj_tab.app.js') }}"></script>
+

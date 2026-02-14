@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>治安警情研判日报</title>
+    <style>
+        body {
+            /* 字体设置：优先使用仿宋 */
+            font-family: "FangSong", "FangSong_GB2312", "SimSun", serif;
+            background-color: #f4f4f4;
+            color: #333;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 50px 60px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        }
+        
+        /* 红头标题 (一级) */
+        h1 {
+            text-align: center;
+            color: #0f0f0f;
+            font-family: "SimHei", sans-serif;
+            font-size: 28px;
+            border-bottom: 2px solid #d63031;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        
+        /* 概况/重点问题标题 (二级) */
+        h2 {
+            font-family: "SimHei", sans-serif;
+            font-size: 20px;
+            color: #333;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            /* 二级标题通常不缩进，或者根据习惯调整，这里维持不缩进以示区分 */
+            text-indent: 2em; /* 【修改点】H3 增加首行缩进 */
+        }
+
+        /* 警情分类标题 (三级) - 这里按您的要求加入了缩进 */
+        h3 {
+            font-family: "KaiTi", "楷体", serif;
+            font-weight: bold;
+            font-size: 18px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            text-indent: 2em; /* 【修改点】H3 增加首行缩进 */
+        }
+        
+        /* 正文段落通用样式 */
+        p {
+            text-indent: 2em; 
+            margin: 5px 0; 
+            text-align: justify; 
+        }
+
+        /* 统计卡片样式 */
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            text-align: center;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+        .stat-card {
+            background: #fff;
+            border: 1px solid #eee;
+            width: 30%;
+            padding: 15px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .stat-num { font-size: 24px; color: #d63031; font-weight: bold; }
+        .stat-compare { font-size: 13px; color: #666; margin-top: 5px; }
+        .stat-up { color: #d63031; font-weight: bold;}
+        .stat-down { color: #27ae60; font-weight: bold;}
+
+        /* --- 警情详情相关样式 --- */
+        
+        /* 地区名称（如 A市） */
+        .region-name {
+            font-weight: bold;
+            margin-top: 15px;
+            color: #000;
+            text-indent: 2em; /* 地区名缩进 */
+        }
+        
+        /* 派出所详情块 - 这里按您的要求加入了缩进 */
+        .station-block {
+            text-indent: 2em;  /* 【修改点】详情块首行缩进 */
+            margin-bottom: 8px;
+            text-align: justify;
+        }
+
+        /* --- LLM 生成内容区域 --- */
+        .llm-content {
+            padding: 0;
+            font-family: "FangSong", "SimSun", serif;
+            font-size: 16px;
+            color: #333;
+        }
+
+        /* JS 生成的标准公文段落样式 */
+        .gongwen-p {
+            text-indent: 2em;    
+            margin-bottom: 10px; 
+            line-height: 1.8;
+            text-align: justify; 
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>涉黄、赌、打架斗殴警情研判日报 ({{ report_date }})</h1>
+
+    <h2>一、当日警情概况</h2>
+    <h3>（一）总体情况</h3>
+    <p>全市共接报涉黄、赌、打架斗殴类警情 {{ total_count }} 起。其中：{{ type_summary_str }}</p>
+    <div class="stats-row">
+        <div class="stat-card">
+            <div style="font-weight:bold;color:#555;">涉黄警情</div>
+            <div class="stat-num">{{ stats_mock.yellow.count }} 起</div>
+            <div class="stat-compare">
+                同比: <span class="{{ 'stat-up' if '↑' in stats_mock.yellow.yoy else 'stat-down' }}">{{ stats_mock.yellow.yoy }}</span>
+                环比: <span class="{{ 'stat-up' if '↑' in stats_mock.yellow.mom else 'stat-down' }}">{{ stats_mock.yellow.mom }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div style="font-weight:bold;color:#555;">涉赌警情</div>
+            <div class="stat-num">{{ stats_mock.gamble.count }} 起</div>
+            <div class="stat-compare">
+                同比: <span class="{{ 'stat-up' if '↑' in stats_mock.gamble.yoy else 'stat-down' }}">{{ stats_mock.gamble.yoy }}</span>
+                环比: <span class="{{ 'stat-up' if '↑' in stats_mock.gamble.mom else 'stat-down' }}">{{ stats_mock.gamble.mom }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div style="font-weight:bold;color:#555;">打架斗殴</div>
+            <div class="stat-num">{{ stats_mock.fight.count }} 起</div>
+            <div class="stat-compare">
+                同比: <span class="{{ 'stat-up' if '↑' in stats_mock.fight.yoy else 'stat-down' }}">{{ stats_mock.fight.yoy }}</span>
+                环比: <span class="{{ 'stat-up' if '↑' in stats_mock.fight.mom else 'stat-down' }}">{{ stats_mock.fight.mom }}</span>
+            </div>
+        </div>
+    </div>
+    <h3>（二）打架斗殴类警情</h3>
+    {% if fight_list|length == 0 %}
+        <p>无相关警情。</p>
+    {% else %}
+        {% for region in fight_list %}
+            <div class="region-name">{{ region.cmdname }}</div>
+            {% for station in region.stations %}
+                <div class="station-block">
+                    <b>{{ station.name }}（{{ station.count }}）起：</b>{{ station.summary_text }}
+                </div>
+            {% endfor %}
+        {% endfor %}
+    {% endif %}
+
+    <h3>（三）赌博类警情</h3>
+    {% if gamble_list|length == 0 %}
+        <p>无相关警情。</p>
+    {% else %}
+        {% for region in gamble_list %}
+            <div class="region-name">{{ region.cmdname }}</div>
+            {% for station in region.stations %}
+                <div class="station-block">
+                    <!-- 首行会因为 class="station-block" 缩进 -->
+                    <b>{{ station.name }}（{{ station.count }}）起：</b><br>
+                    {% for case in station.cases %}
+                        <!-- 这里的案件列表如果不加特殊处理，除了第一行外不会自动缩进。
+                             为了保证每一行案件都缩进，这里手动加了空格 -->
+                        &emsp;&emsp;{{ loop.index }}. {{ case }}<br>
+                    {% endfor %}
+                </div>
+            {% endfor %}
+        {% endfor %}
+    {% endif %}
+
+    <h3>（四）涉黄类警情</h3>
+    {% if sex_list|length == 0 %}
+        <p>无相关警情。</p>
+    {% else %}
+        {% for region in sex_list %}
+            <div class="region-name">{{ region.cmdname }}</div>
+            {% for station in region.stations %}
+                <div class="station-block">
+                    <b>{{ station.name }}（{{ station.count }}）起：</b>{{ station.summary_text }}
+                </div>
+            {% endfor %}
+        {% endfor %}
+    {% endif %}
+
+    <h2>二、重复报警电话（{{ repeat_min_count }}次及以上）</h2>
+    <h3>（一）打架斗殴</h3>
+    {% if repeat_fight|length == 0 %}
+        <p>无重复报警电话。</p>
+    {% else %}
+        {% for it in repeat_fight %}
+            <div class="station-block">
+                <b>{{ it.phone }}（{{ it.count }}次）：</b><br>
+                {{ it.html }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <h3>（二）赌博</h3>
+    {% if repeat_gamble|length == 0 %}
+        <p>无重复报警电话。</p>
+    {% else %}
+        {% for it in repeat_gamble %}
+            <div class="station-block">
+                <b>{{ it.phone }}（{{ it.count }}次）：</b><br>
+                {{ it.html }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <h3>（三）涉黄</h3>
+    {% if repeat_yellow|length == 0 %}
+        <p>无重复报警电话。</p>
+    {% else %}
+        {% for it in repeat_yellow %}
+            <div class="station-block">
+                <b>{{ it.phone }}（{{ it.count }}次）：</b><br>
+                {{ it.html }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <h2>三、多次报警地址（近3个月半径50米）</h2>
+    <h3>（一）打架斗殴</h3>
+    {% if multi_addr_fight|length == 0 %}
+        <p>无多次报警地址。</p>
+    {% else %}
+        {% for it in multi_addr_fight %}
+            <div class="station-block">
+                <b>{{ it.occurAddress }}（{{ it.count }}次）：</b>{{ it.examples|join('；') }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <h3>（二）赌博</h3>
+    {% if multi_addr_gamble|length == 0 %}
+        <p>无多次报警地址。</p>
+    {% else %}
+        {% for it in multi_addr_gamble %}
+            <div class="station-block">
+                <b>{{ it.occurAddress }}（{{ it.count }}次）：</b>{{ it.examples|join('；') }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <h3>（三）涉黄</h3>
+    {% if multi_addr_yellow|length == 0 %}
+        <p>无多次报警地址。</p>
+    {% else %}
+        {% for it in multi_addr_yellow %}
+            <div class="station-block">
+                <b>{{ it.occurAddress }}（{{ it.count }}次）：</b>{{ it.examples|join('；') }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <h2>四、重点问题</h2>
+    <div class="llm-content">{{ llm_analysis_problems }}</div>
+
+    <h2>五、下一步措施</h2>
+    <div class="llm-content">{{ llm_analysis_measures }}</div>
+
+</div>
+
+<!-- 自动格式化脚本：强制分割连在一起的序号 -->
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var llmDivs = document.querySelectorAll('.llm-content');
+        
+        llmDivs.forEach(function(div) {
+            var rawText = div.innerText;
+            if (!rawText.trim()) return;
+
+            // 正则匹配 "1." "2、" 等序号，并在前面加换行
+            var formattedText = rawText.replace(/(\d+[.、．])/g, '\n$1');
+
+            var lines = formattedText.split('\n');
+            var html = '';
+            
+            lines.forEach(function(line) {
+                line = line.trim();
+                if (!line) return; 
+                html += '<div class="gongwen-p">' + line + '</div>';
+            });
+            
+            div.innerHTML = html;
+        });
+    });
+</script>
+
+</body>
+</html>

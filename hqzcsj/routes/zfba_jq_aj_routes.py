@@ -4,6 +4,11 @@ import csv
 from datetime import datetime
 from io import BytesIO, StringIO
 import logging
+from pathlib import Path
+import subprocess
+import tempfile
+import os
+import sys
 from typing import Any, Dict, List
 
 from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, send_file, session, url_for
@@ -250,6 +255,100 @@ def report_export() -> Response:
     except Exception as exc:
         logging.error("导出报表失败: %s", exc)
         return jsonify({"success": False, "message": f"导出报表失败: {exc}"}), 500
+
+
+def _normalize_to_script_date(value: str) -> str:
+    text = (value or "").strip().replace("T", " ")
+    if not text:
+        raise ValueError("开始时间和结束时间不能为空")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    raise ValueError(f"无法解析时间: {value}")
+
+
+@zfba_jq_aj_bp.route("/zfba_jq_aj/daily_report_export", methods=["POST"])
+def daily_report_export() -> Response:
+    """
+    导出警情日报（HTML）。
+    逻辑直接复用 hqzcsj/service/0111_hddj_ypbg.py 脚本。
+    """
+    if (session.get("username") or "").strip() != "admin":
+        return jsonify({"success": False, "message": "仅 admin 用户可导出警情日报"}), 403
+
+    params = request.get_json(silent=True) or {}
+    start_time = (params.get("start_time") or "").strip()
+    end_time = (params.get("end_time") or "").strip()
+    try:
+        start_date = _normalize_to_script_date(start_time)
+        end_date = _normalize_to_script_date(end_time)
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+
+    script_path = Path(__file__).resolve().parents[1] / "service" / "0111_hddj_ypbg.py"
+    if not script_path.exists():
+        return jsonify({"success": False, "message": f"脚本不存在: {script_path}"}), 500
+    template_path = Path(__file__).resolve().parents[1] / "templates" / "report_template.html"
+    if not template_path.exists():
+        return jsonify({"success": False, "message": f"模板不存在: {template_path}"}), 500
+
+    tmp_dir = tempfile.mkdtemp(prefix="jq_daily_report_")
+    output_path = os.path.join(tmp_dir, f"警情日报_{start_date}.html")
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--start-date",
+        start_date,
+        "--end-date",
+        end_date,
+        "--output",
+        output_path,
+        "--template",
+        str(template_path),
+        "--quiet",
+    ]
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=1800,
+        )
+        if proc.returncode != 0:
+            msg = (proc.stderr or proc.stdout or "").strip() or "生成失败"
+            logging.error("导出警情日报失败: %s", msg)
+            return jsonify({"success": False, "message": f"导出警情日报失败: {msg}"}), 500
+
+        if not os.path.exists(output_path):
+            return jsonify({"success": False, "message": "脚本执行成功但未生成HTML文件"}), 500
+
+        with open(output_path, "rb") as f:
+            html_bytes = f.read()
+
+        return send_file(
+            BytesIO(html_bytes),
+            as_attachment=True,
+            download_name=f"警情日报_{start_date}.html",
+            mimetype="text/html; charset=utf-8",
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "message": "生成超时，请缩小时间范围后重试"}), 500
+    except Exception as exc:
+        logging.exception("导出警情日报失败: %s", exc)
+        return jsonify({"success": False, "message": f"导出警情日报失败: {exc}"}), 500
+    finally:
+        try:
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            os.rmdir(tmp_dir)
+        except Exception:
+            pass
 
 
 def _download_csv(rows: List[Dict[str, Any]], filename: str) -> Response:
