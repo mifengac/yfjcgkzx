@@ -47,7 +47,14 @@
             </div>
             <button class="btn" id="jqajReportBtn" style="background:#ff9800;">导出报表</button>
             {% if session.get('username') == 'admin' %}
-            <button class="btn" id="jqajDailyReportBtn" style="background:#ff9800;">导出警情日报</button>
+            <div class="dropdown" id="jqajDailyReportDd">
+                <button class="btn" id="jqajDailyReportBtn" style="background:#ff9800;">导出警情日报</button>
+                <div class="dropdown-menu">
+                    <a href="#" data-fmt="html">导出 html</a>
+                    <a href="#" data-fmt="docx">导出 docx</a>
+                    <a href="#" data-fmt="pdf">导出 pdf</a>
+                </div>
+            </div>
             {% endif %}
         </div>
     </div>

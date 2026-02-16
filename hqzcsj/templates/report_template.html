@@ -80,6 +80,46 @@
         .stat-compare { font-size: 13px; color: #666; margin-top: 5px; }
         .stat-up { color: #d63031; font-weight: bold;}
         .stat-down { color: #27ae60; font-weight: bold;}
+        .srr-table-title {
+            margin: 12px 0 6px 0;
+            font-family: "SimHei", sans-serif;
+            font-size: 16px;
+            color: #222;
+            text-align: center;
+        }
+        .srr-table-wrap {
+            margin: 8px 0 18px 0;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .srr-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+        .srr-table th,
+        .srr-table td {
+            border: 1px solid #e5e7eb;
+            padding: 8px 10px;
+            font-size: 13px;
+            text-align: center;
+            word-break: break-word;
+        }
+        .srr-table th {
+            background: #f8fafc;
+            color: #334155;
+            font-weight: 700;
+        }
+        .srr-table .name-col {
+            text-align: left;
+            padding-left: 12px;
+        }
+        .srr-table .total-row {
+            background: #fff7ed;
+            font-weight: 700;
+        }
 
         /* --- 警情详情相关样式 --- */
         
@@ -123,33 +163,114 @@
     <h2>一、当日警情概况</h2>
     <h3>（一）总体情况</h3>
     <p>全市共接报涉黄、赌、打架斗殴类警情 {{ total_count }} 起。其中：{{ type_summary_str }}</p>
-    <div class="stats-row">
-        <div class="stat-card">
-            <div style="font-weight:bold;color:#555;">涉黄警情</div>
-            <div class="stat-num">{{ stats_mock.yellow.count }} 起</div>
-            <div class="stat-compare">
-                同比: <span class="{{ 'stat-up' if '↑' in stats_mock.yellow.yoy else 'stat-down' }}">{{ stats_mock.yellow.yoy }}</span>
-                环比: <span class="{{ 'stat-up' if '↑' in stats_mock.yellow.mom else 'stat-down' }}">{{ stats_mock.yellow.mom }}</span>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div style="font-weight:bold;color:#555;">涉赌警情</div>
-            <div class="stat-num">{{ stats_mock.gamble.count }} 起</div>
-            <div class="stat-compare">
-                同比: <span class="{{ 'stat-up' if '↑' in stats_mock.gamble.yoy else 'stat-down' }}">{{ stats_mock.gamble.yoy }}</span>
-                环比: <span class="{{ 'stat-up' if '↑' in stats_mock.gamble.mom else 'stat-down' }}">{{ stats_mock.gamble.mom }}</span>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div style="font-weight:bold;color:#555;">打架斗殴</div>
-            <div class="stat-num">{{ stats_mock.fight.count }} 起</div>
-            <div class="stat-compare">
-                同比: <span class="{{ 'stat-up' if '↑' in stats_mock.fight.yoy else 'stat-down' }}">{{ stats_mock.fight.yoy }}</span>
-                环比: <span class="{{ 'stat-up' if '↑' in stats_mock.fight.mom else 'stat-down' }}">{{ stats_mock.fight.mom }}</span>
-            </div>
-        </div>
+
+    <h3>（二）分类警情统计表</h3>
+    <div class="srr-table-title">{{ srr_table_start_date }}至{{ srr_table_end_date }}打架斗殴警情统计</div>
+    <div class="srr-table-wrap">
+        <table class="srr-table">
+            <thead>
+                <tr>
+                    <th style="width:52px;">序号</th>
+                    <th class="name-col">单位</th>
+                    <th style="width:96px;">本期数</th>
+                    <th style="width:96px;">同比值</th>
+                    <th style="width:88px;">同比</th>
+                    <th style="width:96px;">环比值</th>
+                    <th style="width:88px;">环比</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if srr_rows_by_cat.fight|length == 0 %}
+                    <tr><td colspan="7">无数据</td></tr>
+                {% else %}
+                    {% for row in srr_rows_by_cat.fight %}
+                        {% set is_total = (row.name == '合计') %}
+                        <tr class="{{ 'total-row' if is_total else '' }}">
+                            <td>{{ loop.index }}</td>
+                            <td class="name-col">{{ row.name or '' }}</td>
+                            <td>{{ row.presentCycle or 0 }}</td>
+                            <td>{{ row.upperY2yCycle or 0 }}</td>
+                            <td><span class="{{ 'stat-up' if '↑' in (row.y2yProportion or '') else 'stat-down' }}">{{ row.y2yProportion or '持平' }}</span></td>
+                            <td>{{ row.upperM2mCycle or 0 }}</td>
+                            <td><span class="{{ 'stat-up' if '↑' in (row.m2mProportion or '') else 'stat-down' }}">{{ row.m2mProportion or '持平' }}</span></td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
     </div>
-    <h3>（二）打架斗殴类警情</h3>
+
+    <div class="srr-table-title">{{ srr_table_start_date }}至{{ srr_table_end_date }}涉黄警情统计</div>
+    <div class="srr-table-wrap">
+        <table class="srr-table">
+            <thead>
+                <tr>
+                    <th style="width:52px;">序号</th>
+                    <th class="name-col">单位</th>
+                    <th style="width:96px;">本期数</th>
+                    <th style="width:96px;">同比值</th>
+                    <th style="width:88px;">同比</th>
+                    <th style="width:96px;">环比值</th>
+                    <th style="width:88px;">环比</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if srr_rows_by_cat.yellow|length == 0 %}
+                    <tr><td colspan="7">无数据</td></tr>
+                {% else %}
+                    {% for row in srr_rows_by_cat.yellow %}
+                        {% set is_total = (row.name == '合计') %}
+                        <tr class="{{ 'total-row' if is_total else '' }}">
+                            <td>{{ loop.index }}</td>
+                            <td class="name-col">{{ row.name or '' }}</td>
+                            <td>{{ row.presentCycle or 0 }}</td>
+                            <td>{{ row.upperY2yCycle or 0 }}</td>
+                            <td><span class="{{ 'stat-up' if '↑' in (row.y2yProportion or '') else 'stat-down' }}">{{ row.y2yProportion or '持平' }}</span></td>
+                            <td>{{ row.upperM2mCycle or 0 }}</td>
+                            <td><span class="{{ 'stat-up' if '↑' in (row.m2mProportion or '') else 'stat-down' }}">{{ row.m2mProportion or '持平' }}</span></td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="srr-table-title">{{ srr_table_start_date }}至{{ srr_table_end_date }}赌博警情统计</div>
+    <div class="srr-table-wrap">
+        <table class="srr-table">
+            <thead>
+                <tr>
+                    <th style="width:52px;">序号</th>
+                    <th class="name-col">单位</th>
+                    <th style="width:96px;">本期数</th>
+                    <th style="width:96px;">同比值</th>
+                    <th style="width:88px;">同比</th>
+                    <th style="width:96px;">环比值</th>
+                    <th style="width:88px;">环比</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if srr_rows_by_cat.gamble|length == 0 %}
+                    <tr><td colspan="7">无数据</td></tr>
+                {% else %}
+                    {% for row in srr_rows_by_cat.gamble %}
+                        {% set is_total = (row.name == '合计') %}
+                        <tr class="{{ 'total-row' if is_total else '' }}">
+                            <td>{{ loop.index }}</td>
+                            <td class="name-col">{{ row.name or '' }}</td>
+                            <td>{{ row.presentCycle or 0 }}</td>
+                            <td>{{ row.upperY2yCycle or 0 }}</td>
+                            <td><span class="{{ 'stat-up' if '↑' in (row.y2yProportion or '') else 'stat-down' }}">{{ row.y2yProportion or '持平' }}</span></td>
+                            <td>{{ row.upperM2mCycle or 0 }}</td>
+                            <td><span class="{{ 'stat-up' if '↑' in (row.m2mProportion or '') else 'stat-down' }}">{{ row.m2mProportion or '持平' }}</span></td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <h3>（三）打架斗殴类警情</h3>
     {% if fight_list|length == 0 %}
         <p>无相关警情。</p>
     {% else %}
@@ -163,7 +284,7 @@
         {% endfor %}
     {% endif %}
 
-    <h3>（三）赌博类警情</h3>
+    <h3>（四）赌博类警情</h3>
     {% if gamble_list|length == 0 %}
         <p>无相关警情。</p>
     {% else %}
@@ -183,7 +304,7 @@
         {% endfor %}
     {% endif %}
 
-    <h3>（四）涉黄类警情</h3>
+    <h3>（五）涉黄类警情</h3>
     {% if sex_list|length == 0 %}
         <p>无相关警情。</p>
     {% else %}

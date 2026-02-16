@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from psycopg2 import sql
@@ -10,6 +11,32 @@ from hqzcsj.dao.zfba_jq_aj_dao import fetch_ay_patterns, fetch_leixing_list
 
 
 SCHEMA = DB_CONFIG.get("schema") or "ywdata"
+_ADDR_MODEL_UNAVAILABLE = False
+_KEY_INDUSTRY_ADDR_KEYWORDS = (
+    "ktv",
+    "酒吧",
+    "网吧",
+    "酒店",
+    "宾馆",
+    "旅馆",
+    "民宿",
+    "出租屋",
+    "出租房",
+    "公寓",
+    "会所",
+    "沐足",
+    "足疗",
+    "按摩",
+    "洗浴",
+    "桑拿",
+    "棋牌",
+    "麻将",
+    "歌舞",
+    "夜总会",
+    "台球",
+    "电竞",
+    "游戏厅",
+)
 
 
 def fetch_newcharasubclass_list(conn, *, leixing_list: Sequence[str]) -> List[str]:
@@ -173,10 +200,14 @@ def count_wcnr_ajxx_by_diqu_and_ajlx(
 
 
 def _append_addr_predictions(rows: List[Dict[str, Any]], *, addr_col: str = "发案地点") -> None:
-    try:
-        from xunfang.service.jiemiansanlei_service import predict_addresses
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"无法加载地址分类模型（xunfang/5lei_dizhi_model）：{exc}") from exc
+    def _fallback_predict(text: str) -> Tuple[str, float]:
+        t = str(text or "").strip().lower()
+        if not t:
+            return ("", 0.0)
+        for kw in _KEY_INDUSTRY_ADDR_KEYWORDS:
+            if kw in t:
+                return ("重点管控行业", 0.0)
+        return ("", 0.0)
 
     unique_texts: List[str] = []
     seen = set()
@@ -189,7 +220,22 @@ def _append_addr_predictions(rows: List[Dict[str, Any]], *, addr_col: str = "发
 
     pred_map: Dict[str, Tuple[str, float]] = {}
     if unique_texts:
-        preds = predict_addresses(unique_texts)
+        global _ADDR_MODEL_UNAVAILABLE  # noqa: PLW0603
+        preds: List[Tuple[str, float]]
+        if _ADDR_MODEL_UNAVAILABLE:
+            preds = [_fallback_predict(x) for x in unique_texts]
+        else:
+            try:
+                from xunfang.service.jiemiansanlei_service import predict_addresses
+
+                preds = predict_addresses(unique_texts)
+            except Exception as exc:  # noqa: BLE001
+                _ADDR_MODEL_UNAVAILABLE = True
+                logging.exception(
+                    "地址分类模型不可用，已降级为规则分类（可能导致场所案件统计偏低）: %s",
+                    exc,
+                )
+                preds = [_fallback_predict(x) for x in unique_texts]
         for text, (label, prob) in zip(unique_texts, preds):
             pred_map[text] = (str(label or "").strip(), float(prob or 0.0))
 

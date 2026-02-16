@@ -13,6 +13,7 @@
     const tbl = document.getElementById("jqajTbl");
     const queryBtn = document.getElementById("jqajQueryBtn");
     const reportBtn = document.getElementById("jqajReportBtn");
+    const dailyReportDd = document.getElementById("jqajDailyReportDd");
     const dailyReportBtn = document.getElementById("jqajDailyReportBtn");
     const busyMask = document.getElementById("jqajBusyMask");
     const showHbEl = document.getElementById("jqajShowHb");
@@ -40,9 +41,11 @@
     function initDailyReportPermission() {
         if (!dailyReportBtn) return;
         if (canExportDailyReport) {
+            if (dailyReportDd) dailyReportDd.style.display = "";
             dailyReportBtn.style.display = "";
             return;
         }
+        if (dailyReportDd) dailyReportDd.style.display = "none";
         dailyReportBtn.style.display = "none";
         dailyReportBtn.disabled = true;
     }
@@ -65,6 +68,24 @@
     document.addEventListener("click", (e) => {
         if (!dd.contains(e.target)) dd.classList.remove("open");
     });
+
+    if (dailyReportDd && dailyReportBtn) {
+        dailyReportBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            dailyReportDd.classList.toggle("open");
+        });
+        dailyReportDd.querySelectorAll(".dropdown-menu a").forEach((a) => {
+            a.addEventListener("click", (e) => {
+                e.preventDefault();
+                const fmt = (a.getAttribute("data-fmt") || "html").toLowerCase();
+                exportDailyReport(fmt);
+                dailyReportDd.classList.remove("open");
+            });
+        });
+        document.addEventListener("click", (e) => {
+            if (!dailyReportDd.contains(e.target)) dailyReportDd.classList.remove("open");
+        });
+    }
 
     const ms = document.getElementById("jqajTypesMs");
     const msDisplay = document.getElementById("jqajTypesDisplay");
@@ -332,10 +353,15 @@
         }
     }
 
-    async function exportDailyReport() {
+    async function exportDailyReport(fmt) {
         errEl.textContent = "";
         if (!canExportDailyReport) {
             errEl.textContent = "当前用户无权导出警情日报";
+            return;
+        }
+        const outFmt = (fmt || "html").toLowerCase();
+        if (!["html", "docx", "pdf"].includes(outFmt)) {
+            errEl.textContent = "不支持的导出格式";
             return;
         }
         const startTime = H.formatDateTime(startEl.value);
@@ -351,12 +377,12 @@
 
         if (dailyReportBtn) dailyReportBtn.disabled = true;
         setDailyReportBusy(true);
-        statusEl.textContent = "日报生成中，请等待...";
+        statusEl.textContent = `日报生成中，请等待...（${outFmt.toUpperCase()}）`;
         try {
             const resp = await fetch(endpoints.dailyReportExport, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ start_time: startTime, end_time: endTime }),
+                body: JSON.stringify({ start_time: startTime, end_time: endTime, fmt: outFmt }),
             });
 
             const contentType = resp.headers.get("content-type") || "";
@@ -377,12 +403,12 @@
             a.href = url;
             const cd = resp.headers.get("content-disposition") || "";
             const m = cd.match(/filename\*=UTF-8''([^;]+)/i) || cd.match(/filename="?([^;"]+)"?/i);
-            a.download = m ? decodeURIComponent(m[1]) : `警情日报_${new Date().getTime()}.html`;
+            a.download = m ? decodeURIComponent(m[1]) : `警情日报_${new Date().getTime()}.${outFmt}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            statusEl.textContent = "导出警情日报成功";
+            statusEl.textContent = `导出警情日报成功（${outFmt.toUpperCase()}）`;
         } catch (e) {
             errEl.textContent = e.message || String(e);
             statusEl.textContent = "";
@@ -394,9 +420,6 @@
 
     reportBtn.addEventListener("click", (e) => { e.preventDefault(); exportReport(); });
     queryBtn.addEventListener("click", (e) => { e.preventDefault(); query(); });
-    if (dailyReportBtn) {
-        dailyReportBtn.addEventListener("click", (e) => { e.preventDefault(); exportDailyReport(); });
-    }
 
     if (showRatioEl) {
         showRatioEl.addEventListener("change", () => {

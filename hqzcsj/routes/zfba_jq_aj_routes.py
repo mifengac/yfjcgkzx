@@ -272,7 +272,7 @@ def _normalize_to_script_date(value: str) -> str:
 @zfba_jq_aj_bp.route("/zfba_jq_aj/daily_report_export", methods=["POST"])
 def daily_report_export() -> Response:
     """
-    导出警情日报（HTML）。
+    导出警情日报（HTML/DOCX/PDF）。
     逻辑直接复用 hqzcsj/service/0111_hddj_ypbg.py 脚本。
     """
     if (session.get("username") or "").strip() != "admin":
@@ -281,6 +281,9 @@ def daily_report_export() -> Response:
     params = request.get_json(silent=True) or {}
     start_time = (params.get("start_time") or "").strip()
     end_time = (params.get("end_time") or "").strip()
+    fmt = (params.get("fmt") or "html").strip().lower()
+    if fmt not in ("html", "docx", "pdf"):
+        return jsonify({"success": False, "message": "fmt 仅支持 html/docx/pdf"}), 400
     try:
         start_date = _normalize_to_script_date(start_time)
         end_date = _normalize_to_script_date(end_time)
@@ -295,7 +298,7 @@ def daily_report_export() -> Response:
         return jsonify({"success": False, "message": f"模板不存在: {template_path}"}), 500
 
     tmp_dir = tempfile.mkdtemp(prefix="jq_daily_report_")
-    output_path = os.path.join(tmp_dir, f"警情日报_{start_date}.html")
+    output_path = os.path.join(tmp_dir, f"警情日报_{start_date}.{fmt}")
     cmd = [
         sys.executable,
         str(script_path),
@@ -303,6 +306,8 @@ def daily_report_export() -> Response:
         start_date,
         "--end-date",
         end_date,
+        "--format",
+        fmt,
         "--output",
         output_path,
         "--template",
@@ -329,13 +334,19 @@ def daily_report_export() -> Response:
             return jsonify({"success": False, "message": "脚本执行成功但未生成HTML文件"}), 500
 
         with open(output_path, "rb") as f:
-            html_bytes = f.read()
+            file_bytes = f.read()
+
+        mime_map = {
+            "html": "text/html; charset=utf-8",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "pdf": "application/pdf",
+        }
 
         return send_file(
-            BytesIO(html_bytes),
+            BytesIO(file_bytes),
             as_attachment=True,
-            download_name=f"警情日报_{start_date}.html",
-            mimetype="text/html; charset=utf-8",
+            download_name=f"警情日报_{start_date}.{fmt}",
+            mimetype=mime_map.get(fmt, "application/octet-stream"),
         )
     except subprocess.TimeoutExpired:
         return jsonify({"success": False, "message": "生成超时，请缩小时间范围后重试"}), 500

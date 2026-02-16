@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+from io import BytesIO
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -507,10 +508,13 @@ def summarize_one_case(llm: "LLMClient", case_contents: str, replies: str) -> st
 
 def make_case_summary(llm: Optional["LLMClient"], case_contents: Any, replies: Any) -> str:
     contents = "" if case_contents is None else str(case_contents)
-    rep = clean_replies(replies)
     if llm is None:
-        return f"{contents} (处理:{rep})".strip()
-    return summarize_one_case(llm, contents, rep)
+        return contents.strip()
+    rep = clean_replies(replies)
+    try:
+        return summarize_one_case(llm, contents, rep)
+    except Exception:
+        return contents.strip()
 
 
 def analyze_problems(llm: "LLMClient", summaries_text: str) -> str:
@@ -670,6 +674,351 @@ def render_html(template_path: str, context: Dict[str, Any]) -> str:
     return template.render(context)
 
 
+def _text(v: Any) -> str:
+    return "" if v is None else str(v)
+
+
+def _iter_non_empty_lines(text: Any) -> List[str]:
+    lines = []
+    for line in _text(text).replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        s = line.strip()
+        if s:
+            lines.append(s)
+    return lines
+
+
+def render_report_docx(context: Dict[str, Any]) -> bytes:
+    try:
+        from docx import Document  # type: ignore
+        from docx.enum.text import WD_ALIGN_PARAGRAPH  # type: ignore
+        from docx.oxml.ns import qn  # type: ignore
+        from docx.shared import Pt  # type: ignore
+    except Exception as e:
+        raise RuntimeError(f"缺少依赖 python-docx，无法导出 DOCX：{e}")
+
+    doc = Document()
+    normal_style = doc.styles["Normal"]
+    normal_style.font.size = Pt(11)
+    normal_style.font.name = "FangSong"
+    try:
+        normal_style._element.rPr.rFonts.set(qn("w:eastAsia"), "仿宋")
+    except Exception:
+        pass
+
+    def add_h1(text: str) -> None:
+        p = doc.add_paragraph()
+        r = p.add_run(text)
+        r.bold = True
+        r.font.size = Pt(16)
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    def add_h2(text: str) -> None:
+        p = doc.add_paragraph()
+        r = p.add_run(text)
+        r.bold = True
+        r.font.size = Pt(13)
+
+    def add_text(text: str, indent: bool = False) -> None:
+        p = doc.add_paragraph(text)
+        if indent:
+            p.paragraph_format.first_line_indent = Pt(24)
+
+    def add_srr_table(title: str, rows: List[Dict[str, Any]]) -> None:
+        add_text(title)
+        headers = ["序号", "单位", "本期数", "同比值", "同比", "环比值", "环比"]
+        table = doc.add_table(rows=1, cols=len(headers))
+        table.style = "Table Grid"
+        hdr = table.rows[0].cells
+        for i, h in enumerate(headers):
+            hdr[i].text = h
+        if not rows:
+            row_cells = table.add_row().cells
+            row_cells[0].text = "-"
+            row_cells[1].text = "无数据"
+            for i in range(2, len(headers)):
+                row_cells[i].text = "-"
+            return
+        for idx, row in enumerate(rows, start=1):
+            cells = table.add_row().cells
+            cells[0].text = str(idx)
+            cells[1].text = _text(row.get("name", ""))
+            cells[2].text = str(row.get("presentCycle", 0) or 0)
+            cells[3].text = str(row.get("upperY2yCycle", 0) or 0)
+            cells[4].text = _text(row.get("y2yProportion", "持平")) or "持平"
+            cells[5].text = str(row.get("upperM2mCycle", 0) or 0)
+            cells[6].text = _text(row.get("m2mProportion", "持平")) or "持平"
+            if _text(row.get("name", "")) == "合计":
+                for c in cells:
+                    for p in c.paragraphs:
+                        for r in p.runs:
+                            r.bold = True
+
+    def add_nested_section(title: str, regions: List[Dict[str, Any]]) -> None:
+        add_h2(title)
+        if not regions:
+            add_text("无相关警情。")
+            return
+        for region in regions:
+            add_text(_text(region.get("cmdname", "")))
+            for station in region.get("stations", []) or []:
+                summary = _text(station.get("summary_text", ""))
+                add_text(f"{_text(station.get('name', ''))}（{_text(station.get('count', 0))}）起：{summary}", indent=True)
+
+    def add_repeat_section(title: str, items: List[Dict[str, Any]], empty_text: str) -> None:
+        add_h2(title)
+        if not items:
+            add_text(empty_text)
+            return
+        for it in items:
+            add_text(f"{_text(it.get('phone', ''))}（{_text(it.get('count', 0))}次）：")
+            for line in it.get("lines", []) or []:
+                add_text(_text(line), indent=True)
+
+    def add_multi_addr_section(title: str, items: List[Dict[str, Any]]) -> None:
+        add_h2(title)
+        if not items:
+            add_text("无多次报警地址。")
+            return
+        for it in items:
+            examples = "；".join(_text(x) for x in (it.get("examples", []) or []))
+            add_text(f"{_text(it.get('occurAddress', ''))}（{_text(it.get('count', 0))}次）：{examples}", indent=True)
+
+    add_h1(f"涉黄、赌、打架斗殴警情研判日报 ({_text(context.get('report_date', ''))})")
+    add_h2("一、当日警情概况")
+    add_text(
+        f"全市共接报涉黄、赌、打架斗殴类警情 {_text(context.get('total_count', 0))} 起。"
+        f"其中：{_text(context.get('type_summary_str', ''))}",
+        indent=True,
+    )
+
+    srr_start = _text(context.get("srr_table_start_date", ""))
+    srr_end = _text(context.get("srr_table_end_date", ""))
+    srr_rows_by_cat = context.get("srr_rows_by_cat", {}) or {}
+    add_h2("二、分类警情统计表")
+    add_srr_table(f"{srr_start}至{srr_end}打架斗殴警情统计", list(srr_rows_by_cat.get("fight", []) or []))
+    add_srr_table(f"{srr_start}至{srr_end}涉黄警情统计", list(srr_rows_by_cat.get("yellow", []) or []))
+    add_srr_table(f"{srr_start}至{srr_end}赌博警情统计", list(srr_rows_by_cat.get("gamble", []) or []))
+
+    add_nested_section("三、打架斗殴类警情", list(context.get("fight_list", []) or []))
+    add_nested_section("四、赌博类警情", list(context.get("gamble_list", []) or []))
+    add_nested_section("五、涉黄类警情", list(context.get("sex_list", []) or []))
+
+    repeat_min_count = _text(context.get("repeat_min_count", 2))
+    add_repeat_section(
+        f"六、重复报警电话（{repeat_min_count}次及以上）- 打架斗殴",
+        list(context.get("repeat_fight", []) or []),
+        "无重复报警电话。",
+    )
+    add_repeat_section(
+        f"七、重复报警电话（{repeat_min_count}次及以上）- 赌博",
+        list(context.get("repeat_gamble", []) or []),
+        "无重复报警电话。",
+    )
+    add_repeat_section(
+        f"八、重复报警电话（{repeat_min_count}次及以上）- 涉黄",
+        list(context.get("repeat_yellow", []) or []),
+        "无重复报警电话。",
+    )
+
+    add_multi_addr_section("九、多次报警地址（近3个月半径50米）- 打架斗殴", list(context.get("multi_addr_fight", []) or []))
+    add_multi_addr_section("十、多次报警地址（近3个月半径50米）- 赌博", list(context.get("multi_addr_gamble", []) or []))
+    add_multi_addr_section("十一、多次报警地址（近3个月半径50米）- 涉黄", list(context.get("multi_addr_yellow", []) or []))
+
+    add_h2("十二、重点问题")
+    probs = _iter_non_empty_lines(context.get("llm_analysis_problems", ""))
+    if probs:
+        for line in probs:
+            add_text(line, indent=True)
+    else:
+        add_text("")
+
+    add_h2("十三、下一步措施")
+    measures = _iter_non_empty_lines(context.get("llm_analysis_measures", ""))
+    if measures:
+        for line in measures:
+            add_text(line, indent=True)
+    else:
+        add_text("")
+
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio.read()
+
+
+def render_report_pdf(context: Dict[str, Any]) -> bytes:
+    try:
+        from reportlab.lib import colors  # type: ignore
+        from reportlab.lib.pagesizes import A4  # type: ignore
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore
+        from reportlab.pdfbase import pdfmetrics  # type: ignore
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont  # type: ignore
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle  # type: ignore
+    except Exception as e:
+        raise RuntimeError(f"缺少依赖 reportlab，无法导出 PDF：{e}")
+
+    font_name = "STSong-Light"
+    try:
+        pdfmetrics.registerFont(UnicodeCIDFont(font_name))
+    except Exception:
+        font_name = "Helvetica"
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "RptTitle",
+        parent=styles["Title"],
+        fontName=font_name,
+        fontSize=18,
+        leading=24,
+        alignment=1,
+    )
+    h_style = ParagraphStyle(
+        "RptHeading",
+        parent=styles["Heading2"],
+        fontName=font_name,
+        fontSize=13,
+        leading=18,
+    )
+    n_style = ParagraphStyle(
+        "RptNormal",
+        parent=styles["Normal"],
+        fontName=font_name,
+        fontSize=10.5,
+        leading=16,
+    )
+
+    def para(text: Any, style: ParagraphStyle) -> Paragraph:
+        safe = html_escape(_text(text)).replace("\n", "<br/>")
+        return Paragraph(safe, style)
+
+    def make_srr_table(title: str, rows: List[Dict[str, Any]]) -> List[Any]:
+        out: List[Any] = [para(title, h_style), Spacer(1, 4)]
+        data = [["序号", "单位", "本期数", "同比值", "同比", "环比值", "环比"]]
+        if not rows:
+            data.append(["-", "无数据", "-", "-", "-", "-", "-"])
+        else:
+            for idx, row in enumerate(rows, start=1):
+                data.append(
+                    [
+                        str(idx),
+                        _text(row.get("name", "")),
+                        str(row.get("presentCycle", 0) or 0),
+                        str(row.get("upperY2yCycle", 0) or 0),
+                        _text(row.get("y2yProportion", "持平")) or "持平",
+                        str(row.get("upperM2mCycle", 0) or 0),
+                        _text(row.get("m2mProportion", "持平")) or "持平",
+                    ]
+                )
+        table = Table(data, repeatRows=1, colWidths=[28, 140, 58, 58, 58, 58, 58])
+        style = TableStyle(
+            [
+                ("FONT", (0, 0), (-1, -1), font_name, 9.5),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f8fafc")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+        for i, row in enumerate(rows, start=1):
+            if _text(row.get("name", "")) == "合计":
+                style.add("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fff7ed"))
+                style.add("FONTNAME", (0, i), (-1, i), font_name)
+        table.setStyle(style)
+        out.append(table)
+        out.append(Spacer(1, 10))
+        return out
+
+    story: List[Any] = []
+    story.append(para(f"涉黄、赌、打架斗殴警情研判日报 ({_text(context.get('report_date', ''))})", title_style))
+    story.append(Spacer(1, 10))
+
+    story.append(para("一、当日警情概况", h_style))
+    story.append(
+        para(
+            f"全市共接报涉黄、赌、打架斗殴类警情 {_text(context.get('total_count', 0))} 起。"
+            f"其中：{_text(context.get('type_summary_str', ''))}",
+            n_style,
+        )
+    )
+    story.append(Spacer(1, 8))
+
+    srr_start = _text(context.get("srr_table_start_date", ""))
+    srr_end = _text(context.get("srr_table_end_date", ""))
+    srr_rows_by_cat = context.get("srr_rows_by_cat", {}) or {}
+    story.append(para("二、分类警情统计表", h_style))
+    story.extend(make_srr_table(f"{srr_start}至{srr_end}打架斗殴警情统计", list(srr_rows_by_cat.get("fight", []) or [])))
+    story.extend(make_srr_table(f"{srr_start}至{srr_end}涉黄警情统计", list(srr_rows_by_cat.get("yellow", []) or [])))
+    story.extend(make_srr_table(f"{srr_start}至{srr_end}赌博警情统计", list(srr_rows_by_cat.get("gamble", []) or [])))
+
+    def add_nested(title: str, regions: List[Dict[str, Any]]) -> None:
+        story.append(para(title, h_style))
+        if not regions:
+            story.append(para("无相关警情。", n_style))
+            return
+        for region in regions:
+            story.append(para(_text(region.get("cmdname", "")), n_style))
+            for station in region.get("stations", []) or []:
+                story.append(
+                    para(
+                        f"{_text(station.get('name', ''))}（{_text(station.get('count', 0))}）起：{_text(station.get('summary_text', ''))}",
+                        n_style,
+                    )
+                )
+
+    add_nested("三、打架斗殴类警情", list(context.get("fight_list", []) or []))
+    add_nested("四、赌博类警情", list(context.get("gamble_list", []) or []))
+    add_nested("五、涉黄类警情", list(context.get("sex_list", []) or []))
+
+    def add_repeat(title: str, items: List[Dict[str, Any]], empty_text: str) -> None:
+        story.append(para(title, h_style))
+        if not items:
+            story.append(para(empty_text, n_style))
+            return
+        for it in items:
+            story.append(para(f"{_text(it.get('phone', ''))}（{_text(it.get('count', 0))}次）：", n_style))
+            for line in it.get("lines", []) or []:
+                story.append(para(_text(line), n_style))
+
+    min_cnt = _text(context.get("repeat_min_count", 2))
+    add_repeat(f"六、重复报警电话（{min_cnt}次及以上）- 打架斗殴", list(context.get("repeat_fight", []) or []), "无重复报警电话。")
+    add_repeat(f"七、重复报警电话（{min_cnt}次及以上）- 赌博", list(context.get("repeat_gamble", []) or []), "无重复报警电话。")
+    add_repeat(f"八、重复报警电话（{min_cnt}次及以上）- 涉黄", list(context.get("repeat_yellow", []) or []), "无重复报警电话。")
+
+    def add_multi(title: str, items: List[Dict[str, Any]]) -> None:
+        story.append(para(title, h_style))
+        if not items:
+            story.append(para("无多次报警地址。", n_style))
+            return
+        for it in items:
+            examples = "；".join(_text(x) for x in (it.get("examples", []) or []))
+            story.append(para(f"{_text(it.get('occurAddress', ''))}（{_text(it.get('count', 0))}次）：{examples}", n_style))
+
+    add_multi("九、多次报警地址（近3个月半径50米）- 打架斗殴", list(context.get("multi_addr_fight", []) or []))
+    add_multi("十、多次报警地址（近3个月半径50米）- 赌博", list(context.get("multi_addr_gamble", []) or []))
+    add_multi("十一、多次报警地址（近3个月半径50米）- 涉黄", list(context.get("multi_addr_yellow", []) or []))
+
+    story.append(para("十二、重点问题", h_style))
+    probs = _iter_non_empty_lines(context.get("llm_analysis_problems", ""))
+    if probs:
+        for line in probs:
+            story.append(para(line, n_style))
+    else:
+        story.append(para("", n_style))
+    story.append(para("十三、下一步措施", h_style))
+    measures = _iter_non_empty_lines(context.get("llm_analysis_measures", ""))
+    if measures:
+        for line in measures:
+            story.append(para(line, n_style))
+    else:
+        story.append(para("", n_style))
+
+    bio = BytesIO()
+    doc = SimpleDocTemplate(bio, pagesize=A4, leftMargin=28, rightMargin=28, topMargin=28, bottomMargin=28)
+    doc.build(story)
+    bio.seek(0)
+    return bio.read()
+
+
 def build_repeat_phone_list(
     opener: urllib.request.OpenerDirector,
     *,
@@ -824,6 +1173,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date", default="2026-02-02")
     parser.add_argument("--end-date", default="2026-02-02")
+    parser.add_argument("--format", default="html", help="输出格式：html/docx/pdf")
     parser.add_argument("--login-url", default=DEFAULT_LOGIN_URL)
     parser.add_argument("--srr-url", default=DEFAULT_SRR_URL)
     parser.add_argument("--case-url", default=DEFAULT_CASE_URL)
@@ -841,6 +1191,19 @@ def main() -> None:
     parser.add_argument("--repeat_min_count", type=int, default=2, help="重复报警电话最小次数（默认2=2次及以上）")
     parser.add_argument("--topn_repeat_phone", type=int, default=200, help="参与重复查询的手机号去重后最多取前N个")
     parser.add_argument("--repeat_recent_n", type=int, default=2, help="每个重复手机号仅展示最近N条（默认2）")
+    parser.add_argument(
+        "--srr-from-year-start",
+        dest="srr_from_year_start",
+        action="store_true",
+        help="仅对 srr/list 生效：将开始时间固定为 end-date 当年的 1 月 1 日 00:00:00（默认开启）",
+    )
+    parser.add_argument(
+        "--no-srr-from-year-start",
+        dest="srr_from_year_start",
+        action="store_false",
+        help="仅对 srr/list 生效：使用 --start-date 作为开始时间",
+    )
+    parser.set_defaults(srr_from_year_start=True)
     args = parser.parse_args()
     quiet = bool(args.quiet)
 
@@ -849,11 +1212,16 @@ def main() -> None:
     end_dt = _parse_dt(args.end_date)
     start_dt = datetime(start_dt.year, start_dt.month, start_dt.day, 0, 0, 0)
     end_dt = datetime(end_dt.year, end_dt.month, end_dt.day, 23, 59, 59)
+    if args.srr_from_year_start:
+        srr_start_dt = datetime(end_dt.year, 1, 1, 0, 0, 0)
+    else:
+        srr_start_dt = start_dt
 
     report_date_str = start_dt.strftime("%Y年%m月%d日")
-    y2y_start, y2y_end = compute_y2y_window(start_dt, end_dt)
-    m2m_start, m2m_end = compute_m2m_window(start_dt, end_dt)
+    y2y_start, y2y_end = compute_y2y_window(srr_start_dt, end_dt)
+    m2m_start, m2m_end = compute_m2m_window(srr_start_dt, end_dt)
     log(f"时间段：{start_dt} ~ {end_dt}", quiet=quiet)
+    log(f"srr统计区间：{srr_start_dt} ~ {end_dt}", quiet=quiet)
     log(f"同比区间：{y2y_start} ~ {y2y_end}", quiet=quiet)
     log(f"环比区间：{m2m_start} ~ {m2m_end}", quiet=quiet)
 
@@ -939,6 +1307,7 @@ def main() -> None:
     log("登录请求已提交（后续接口以返回为准校验）", quiet=quiet)
 
     stats_mock: Dict[str, Any] = {"yellow": {}, "gamble": {}, "fight": {}}
+    srr_rows_by_cat: Dict[str, List[Dict[str, Any]]] = {"yellow": [], "gamble": [], "fight": []}
     cases: List[Dict[str, Any]] = []
     seed_phones_by_cat: Dict[str, List[str]] = {c.key: [] for c in categories}
 
@@ -948,7 +1317,7 @@ def main() -> None:
         rows = fetch_srr_rows(
             opener,
             args.srr_url,
-            start_dt=start_dt,
+            start_dt=srr_start_dt,
             end_dt=end_dt,
             y2y_start=y2y_start,
             y2y_end=y2y_end,
@@ -957,6 +1326,7 @@ def main() -> None:
             chara_no_csv=chara_no_csv,
             timeout=args.timeout,
         )
+        srr_rows_by_cat[cat.key] = rows
         total_row = _extract_total_row(rows)
         stats_mock[cat.key] = build_stats_mock_from_srr_total(total_row)
 
@@ -1000,15 +1370,23 @@ def main() -> None:
         llm_probs = "1. 重点区域存在治安风险点。\n2. 涉赌警情有聚集趋势。\n3. 深夜打架斗殴警情仍需关注。"
         llm_measures = "1. 加强巡逻防控。\n2. 开展专项打击。\n3. 强化宣传教育。"
     else:
-        log("步骤：逐条摘要（LLM）", quiet=quiet)
-        for c in cases:
-            c["case_summary"] = summarize_one_case(
-                llm, str(c.get("报警内容", "")), str(c.get("处警情况", ""))
-            )
-        all_summaries = "\n".join(str(c.get("case_summary", "")) for c in cases)[:MAX_ANALYSIS_CHARS]
-        log("步骤：生成研判分析（LLM）- 重点问题/下一步措施", quiet=quiet)
-        llm_probs = analyze_problems(llm, all_summaries)
-        llm_measures = analyze_measures(llm, all_summaries, llm_probs)
+        try:
+            log("步骤：逐条摘要（LLM）", quiet=quiet)
+            for c in cases:
+                c["case_summary"] = summarize_one_case(
+                    llm, str(c.get("报警内容", "")), str(c.get("处警情况", ""))
+                )
+            all_summaries = "\n".join(str(c.get("case_summary", "")) for c in cases)[:MAX_ANALYSIS_CHARS]
+            log("步骤：生成研判分析（LLM）- 重点问题/下一步措施", quiet=quiet)
+            llm_probs = analyze_problems(llm, all_summaries)
+            llm_measures = analyze_measures(llm, all_summaries, llm_probs)
+        except Exception as exc:
+            log(f"LLM不可用，降级为规则摘要：{exc}", quiet=quiet)
+            for c in cases:
+                c["case_summary"] = str(c.get("报警内容", "") or "").strip()
+            llm_probs = ""
+            llm_measures = ""
+            llm = None
 
     log("步骤：重复报警电话（2次及以上）统计", quiet=quiet)
     repeat_by_cat: Dict[str, List[Dict[str, Any]]] = {"yellow": [], "gamble": [], "fight": []}
@@ -1076,6 +1454,9 @@ def main() -> None:
 
     context = {
         "report_date": report_date_str,
+        "srr_table_start_date": srr_start_dt.strftime("%Y-%m-%d"),
+        "srr_table_end_date": end_dt.strftime("%Y-%m-%d"),
+        "srr_rows_by_cat": srr_rows_by_cat,
         "total_count": basic_stats["total_count"],
         "type_summary_str": basic_stats["type_summary_str"],
         "stats_mock": stats_mock,
@@ -1093,14 +1474,28 @@ def main() -> None:
         "llm_analysis_measures": llm_measures,
     }
 
-    log(f"步骤：渲染HTML模板 {args.template}", quiet=quiet)
-    html_out = render_html(args.template, context)
+    fmt = str(args.format or "html").strip().lower()
+    if fmt not in ("html", "docx", "pdf"):
+        raise ValueError(f"不支持的输出格式: {fmt}（仅支持 html/docx/pdf）")
 
-    out_path = args.output.strip() or f"涉黄、赌、打架斗殴警情研判分析_{args.start_date}.html"
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(html_out)
+    out_path = args.output.strip() or f"涉黄、赌、打架斗殴警情研判分析_{args.start_date}.{fmt}"
+    if fmt == "html":
+        log(f"步骤：渲染HTML模板 {args.template}", quiet=quiet)
+        html_out = render_html(args.template, context)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(html_out)
+    elif fmt == "docx":
+        log("步骤：渲染DOCX", quiet=quiet)
+        docx_bytes = render_report_docx(context)
+        with open(out_path, "wb") as f:
+            f.write(docx_bytes)
+    else:
+        log("步骤：渲染PDF", quiet=quiet)
+        pdf_bytes = render_report_pdf(context)
+        with open(out_path, "wb") as f:
+            f.write(pdf_bytes)
 
-    print(f"HTML 日报已生成: {out_path}")
+    print(f"{fmt.upper()} 日报已生成: {out_path}")
 
 
 if __name__ == "__main__":
