@@ -3,21 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>后台管理 - 批量导入</title>
+  <title>后台管理</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
-    .box { max-width: 720px; margin: 6vh auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+    .box { max-width: 1180px; margin: 4vh auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
     .row { display:flex; gap:12px; align-items:center; }
     .row a.btn, button.btn { background:#1976d2; color:#fff; padding:10px 16px; border:none; border-radius:4px; text-decoration:none; cursor:pointer; }
     .row a.btn:hover, button.btn:hover { background:#125ea3; }
     .hint { color:#666; margin-top:8px; }
     .msg { color:#e65100; margin-top:8px; }
+    .tabs { display:flex; gap:8px; margin: 16px 0; border-bottom: 1px solid #e8e8e8; }
+    .tab-btn { padding: 10px 14px; cursor: pointer; border: none; background: #f5f7fb; border-top-left-radius: 6px; border-top-right-radius: 6px; }
+    .tab-btn.active { background:#1976d2; color:#fff; }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+    .grid { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    .grid th, .grid td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
+    .grid th { background: #f8f9fb; }
+    .toolbar { display:flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+    .toolbar input[type="text"] { min-width: 260px; padding: 6px 8px; }
+    .toolbar .danger { background:#c62828; }
+    .toolbar .danger:hover { background:#a51f1f; }
+    .pager { margin-top: 10px; display:flex; align-items:center; gap:8px; }
+    .form-grid { display:grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 8px; }
+    .form-grid label { font-size: 12px; color: #555; display:flex; flex-direction:column; gap:4px; }
+    .form-grid input { padding: 7px; }
   </style>
-  <!-- 简体中文注释：后台页面，提供下载模板与上传Excel功能 -->
 </head>
 <body>
   <div class="box">
-    <h2>后台管理 - 用户与权限批量导入</h2>
+    <h2>后台管理</h2>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         <div class="msg">{{ messages[0] }}</div>
@@ -30,13 +45,81 @@
       <a class="btn" href="{{ url_for('logout') }}">退出登录</a>
     </div>
 
-    <form action="{{ url_for('houtai.upload_import') }}" method="post" enctype="multipart/form-data">
-      <label for="file">选择Excel文件（xlsx/xlsm）：</label>
-      <input type="file" id="file" name="file" accept=".xlsx,.xlsm" required>
-      <button type="submit" class="btn" style="margin-top:12px;">上传并导入</button>
-    </form>
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-tab="tab-user-import">用户权限导入</button>
+      <button type="button" class="tab-btn" data-tab="tab-sms-manage">短信发送管理</button>
+    </div>
 
-    <p class="hint">Excel需包含三列：username、password、module；支持的module值为：巡防、治综、警情、后台。</p>
+    <section id="tab-user-import" class="tab-panel active">
+      <h3>用户与权限批量导入</h3>
+      <form action="{{ url_for('houtai.upload_import') }}" method="post" enctype="multipart/form-data">
+        <label for="file">选择Excel文件（xlsx/xlsm）：</label>
+        <input type="file" id="file" name="file" accept=".xlsx,.xlsm" required>
+        <button type="submit" class="btn" style="margin-top:12px;">上传并导入</button>
+      </form>
+
+      <p class="hint">Excel需包含三列：username、password、module；支持的module值为：巡防、治综、警情、后台。</p>
+    </section>
+
+    <section id="tab-sms-manage" class="tab-panel">
+      <h3>短信发送管理</h3>
+      <div class="toolbar">
+        <input id="sms-keyword" type="text" placeholder="输入县区/所属派出所/姓名/联系电话等关键词查询">
+        <button id="sms-search-btn" type="button" class="btn">查询</button>
+        <button id="sms-reset-btn" type="button" class="btn">重置</button>
+        <button id="sms-add-btn" type="button" class="btn">新增/保存</button>
+        <button id="sms-batch-delete-btn" type="button" class="btn danger">批量删除</button>
+        <a class="btn" href="{{ url_for('houtai.download_sms_template') }}">下载短信模板</a>
+      </div>
+
+      <form action="{{ url_for('houtai.upload_sms') }}" method="post" enctype="multipart/form-data" class="row" style="margin:8px 0 16px 0;">
+        <label for="sms-file">批量导入（xlsx/xlsm）：</label>
+        <input type="file" id="sms-file" name="file" accept=".xlsx,.xlsm" required>
+        <button type="submit" class="btn">上传并导入</button>
+      </form>
+
+      <div class="form-grid">
+        <label>县区<input id="sms-xq" type="text"></label>
+        <label>县区代码<input id="sms-xqdm" type="text"></label>
+        <label>所属派出所<input id="sms-sspcs" type="text"></label>
+        <label>所属派出所代码<input id="sms-sspcsdm" type="text" required></label>
+        <label>姓名<input id="sms-xm" type="text" required></label>
+        <label>职务<input id="sms-zw" type="text"></label>
+        <label>联系电话<input id="sms-lxdh" type="text" placeholder="支持多号，逗号分隔"></label>
+        <label>备注<input id="sms-bz" type="text"></label>
+        <label>xh(展示列，可空)<input id="sms-xh" type="number"></label>
+      </div>
+
+      <table class="grid" id="sms-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="sms-check-all"></th>
+            <th>xh</th>
+            <th>县区</th>
+            <th>县区代码</th>
+            <th>所属派出所</th>
+            <th>所属派出所代码</th>
+            <th>姓名</th>
+            <th>职务</th>
+            <th>联系电话</th>
+            <th>备注</th>
+            <th>lrsj</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="pager">
+        <button id="sms-prev-btn" type="button" class="btn">上一页</button>
+        <span id="sms-page-text">第 1 页</span>
+        <button id="sms-next-btn" type="button" class="btn">下一页</button>
+      </div>
+
+      <p class="hint">规则：按 (sspcsdm, xm) 唯一覆盖；lrsj 由后端自动写入系统时间；lxdh 自动标准化为英文逗号并去重；xh 仅展示，不作为导入必填字段。</p>
+    </section>
   </div>
+
+  <script src="{{ url_for('static', filename='js/houtai_sms_manage.js') }}"></script>
 </body>
 </html>
