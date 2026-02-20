@@ -1210,8 +1210,8 @@ def main() -> None:
     log("步骤：解析时间参数", quiet=quiet)
     start_dt = _parse_dt(args.start_date)
     end_dt = _parse_dt(args.end_date)
-    start_dt = datetime(start_dt.year, start_dt.month, start_dt.day, 0, 0, 0)
-    end_dt = datetime(end_dt.year, end_dt.month, end_dt.day, 23, 59, 59)
+    # start_dt = datetime(start_dt.year, start_dt.month, start_dt.day, 0, 0, 0)
+    # end_dt = datetime(end_dt.year, end_dt.month, end_dt.day, 23, 59, 59)
     if args.srr_from_year_start:
         srr_start_dt = datetime(end_dt.year, 1, 1, 0, 0, 0)
     else:
