@@ -253,7 +253,7 @@
 </div>
 
 <script>
-    let fetchTabUnlocked = {{ 'true' if fetch_tab_unlocked else 'false' }};
+    let fetchTabUnlocked = {{ fetch_tab_unlocked | default(false) | tojson }};
     let tqwsSourcesLoaded = false;
 
     const modal = document.getElementById('modal');
