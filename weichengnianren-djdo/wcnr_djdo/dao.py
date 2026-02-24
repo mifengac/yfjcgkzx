@@ -194,6 +194,17 @@ def _query_jzjy_base_details(
                         ELSE '否'
                     END AS "治拘大于4天",
                     CASE
+                        WHEN vw."案件类型" = '行政' AND EXISTS (
+                            SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
+                            WHERE x."ajxx_ajbh" = vw."案件编号"
+                              AND x."xzcfjds_rybh" = vw."人员编号"
+                              AND NULLIF(TRIM(x."xzcfjds_tj_jlts"), '') ~ '^\\d+$'
+                              AND CAST(x."xzcfjds_tj_jlts" AS INTEGER) > 4
+                              AND x."xzcfjds_zxqk_text" ~ '(不送|不执行)'
+                        ) THEN '是'
+                        ELSE '否'
+                    END AS "是否治拘不送",
+                    CASE
                         WHEN vw."案件类型" = '行政'
                              AND COALESCE(vc."违法次数", 0) = 2
                              AND COALESCE(vc."不同案由数", 0) = 1
@@ -212,6 +223,13 @@ def _query_jzjy_base_details(
                         ) THEN '是'
                         ELSE '否'
                     END AS "是否刑拘",
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM "ywdata"."zq_zfba_byxzcfjds" b
+                            WHERE b."ajxx_ajbh" = vw."案件编号" AND b."byxzcfjds_rybh" = vw."人员编号"
+                        ) THEN '是'
+                        ELSE '否'
+                    END AS "是否不予行政处罚",
                     CASE
                         WHEN EXISTS (
                             SELECT 1 FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs" z

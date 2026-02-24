@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao import zfba_wcnr_jqaj_dao
@@ -17,6 +17,29 @@ REGION_ORDER: List[Tuple[str, str]] = [
     ("445300", "市局"),
 ]
 
+RATIO_RULES: List[Tuple[str, str, str]] = [
+    ("警情", "同比警情", "起"),
+    ("案件数(被侵害)", "同比案件数(被侵害)", "起"),
+    ("场所案件(被侵害)", "同比场所案件(被侵害)", "起"),
+    ("行政", "同比行政", "起"),
+    ("刑事", "同比刑事", "起"),
+    ("场所案件", "同比场所案件", "起"),
+    ("治安处罚", "同比治安处罚", "人次"),
+    ("治安处罚(不执行)", "同比治安处罚(不执行)", "人次"),
+    ("刑拘", "同比刑拘", "人次"),
+    ("矫治文书(行政)", "同比矫治文书(行政)", "人次"),
+    ("矫治文书(刑事)", "同比矫治文书(刑事)", "人次"),
+    ("加强监督教育(行政)", "同比加强监督教育(行政)", "人次"),
+    ("加强监督教育(刑事)", "同比加强监督教育(刑事)", "人次"),
+    ("送校", "同比送校", "人次"),
+]
+RATIO_HB_RULES: List[Tuple[str, str, str]] = [
+    (cur_col, f"环比{cur_col}", unit) for cur_col, _yoy_col, unit in RATIO_RULES
+]
+RATIO_RULE_BY_COMPARE: Dict[str, Tuple[str, str]] = {
+    compare_col: (cur_col, unit) for cur_col, compare_col, unit in (RATIO_RULES + RATIO_HB_RULES)
+}
+
 
 @dataclass(frozen=True)
 class SummaryMeta:
@@ -24,6 +47,8 @@ class SummaryMeta:
     end_time: str
     yoy_start_time: str
     yoy_end_time: str
+    hb_start_time: str
+    hb_end_time: str
 
 
 def default_time_range_for_page() -> Tuple[str, str]:
@@ -47,6 +72,60 @@ def fmt_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _to_num(v: Any) -> float:
+    try:
+        if v is None:
+            return 0.0
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def _fmt_num(v: float) -> str:
+    return str(int(v)) if float(v).is_integer() else f"{v:.2f}".rstrip("0").rstrip(".")
+
+
+def calc_percent_text(numerator: Any, denominator: Any) -> str:
+    den = _to_num(denominator)
+    if den <= 0:
+        return "0.00%"
+    num = _to_num(numerator)
+    return f"{(num / den) * 100:.2f}%"
+
+
+def calc_ratio_text(current_value: Any, compare_value: Any, unit: str) -> str:
+    current_num = _to_num(current_value)
+    compare_num = _to_num(compare_value)
+
+    if current_num == compare_num:
+        return "持平"
+    if current_num == 0 and compare_num != 0:
+        return f"下降{_fmt_num(compare_num)}{unit}"
+    if current_num != 0 and compare_num == 0:
+        return f"上升{_fmt_num(current_num)}{unit}"
+
+    ratio = ((current_num - compare_num) / compare_num) * 100
+    return f"{ratio:.2f}%"
+
+
+def append_ratio_columns(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        new_row: Dict[str, Any] = {}
+        for key, value in row.items():
+            new_row[key] = value
+            rule = RATIO_RULE_BY_COMPARE.get(key)
+            if rule:
+                current_col, unit = rule
+                ratio_col = f"{key}比例"
+                new_row[ratio_col] = calc_ratio_text(row.get(current_col), row.get(key), unit)
+        new_row["转案率"] = calc_percent_text(row.get("转案数"), row.get("警情"))
+        new_row["同比转案率"] = calc_percent_text(row.get("同比转案数"), row.get("同比警情"))
+        new_row["环比转案率"] = calc_percent_text(row.get("环比转案数"), row.get("环比警情"))
+        out.append(new_row)
+    return out
+
+
 def shift_year(dt: datetime, years: int = -1) -> datetime:
     try:
         return dt.replace(year=dt.year + years)
@@ -54,6 +133,13 @@ def shift_year(dt: datetime, years: int = -1) -> datetime:
         if dt.month == 2 and dt.day == 29:
             return dt.replace(year=dt.year + years, day=28)
         raise
+
+
+def infer_hb_range(start_dt: datetime, end_dt: datetime) -> Tuple[datetime, datetime]:
+    delta = end_dt - start_dt
+    hb_end = start_dt - timedelta(seconds=1)
+    hb_start = hb_end - delta
+    return hb_start, hb_end
 
 
 def _build_wfry_stats_bundle(rows: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
@@ -100,7 +186,13 @@ def _build_wfry_stats_bundle(rows: Sequence[Dict[str, Any]]) -> Dict[str, Dict[s
 
 
 def build_summary(
-    *, start_time: str, end_time: str, leixing_list: Sequence[str], za_types: Sequence[str]
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    za_types: Sequence[str],
+    hb_start_time: Optional[str] = None,
+    hb_end_time: Optional[str] = None,
 ) -> Tuple[SummaryMeta, List[Dict[str, Any]]]:
     start_dt = parse_dt(start_time)
     end_dt = parse_dt(end_time)
@@ -109,11 +201,21 @@ def build_summary(
 
     yoy_start = shift_year(start_dt, -1)
     yoy_end = shift_year(end_dt, -1)
+    if hb_start_time and hb_end_time:
+        hb_start_dt = parse_dt(hb_start_time)
+        hb_end_dt = parse_dt(hb_end_time)
+    else:
+        hb_start_dt, hb_end_dt = infer_hb_range(start_dt, end_dt)
+    if hb_end_dt < hb_start_dt:
+        raise ValueError("环比结束时间不能早于环比开始时间")
+
     meta = SummaryMeta(
         start_time=fmt_dt(start_dt),
         end_time=fmt_dt(end_dt),
         yoy_start_time=fmt_dt(yoy_start),
         yoy_end_time=fmt_dt(yoy_end),
+        hb_start_time=fmt_dt(hb_start_dt),
+        hb_end_time=fmt_dt(hb_end_dt),
     )
 
     leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
@@ -135,247 +237,157 @@ def build_summary(
         typed_patterns_empty = bool(leixing_list) and not patterns
         typed_subclass_empty = bool(leixing_list) and not subclasses
 
-        # 当前
-        jq_now = (
-            {}
-            if typed_subclass_empty
-            else _call(
-                "当前-警情",
-                lambda: zfba_wcnr_jqaj_dao.count_jq_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, leixing_list=leixing_list),
+        def _collect_period_stats(stage_prefix: str, period_start: str, period_end: str) -> Dict[str, Dict[str, int]]:
+            jq = (
+                {}
+                if typed_subclass_empty
+                else _call(
+                    f"{stage_prefix}-警情",
+                    lambda: zfba_wcnr_jqaj_dao.count_jq_by_diqu(conn, start_time=period_start, end_time=period_end, leixing_list=leixing_list),
+                )
             )
-        )
-        zhuanan_now = (
-            {}
-            if typed_subclass_empty
-            else _call(
-                "当前-转案数",
-                lambda: zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu(
-                    conn, start_time=meta.start_time, end_time=meta.end_time, leixing_list=leixing_list
-                ),
+            zhuanan = (
+                {}
+                if typed_subclass_empty
+                else _call(
+                    f"{stage_prefix}-转案数",
+                    lambda: zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu(
+                        conn, start_time=period_start, end_time=period_end, leixing_list=leixing_list
+                    ),
+                )
             )
-        )
-        ajxx_now = (
-            {"行政": {}, "刑事": {}}
-            if typed_patterns_empty
-            else _call(
-                "当前-案件(行政/刑事)",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+            ajxx = (
+                {"行政": {}, "刑事": {}}
+                if typed_patterns_empty
+                else _call(
+                    f"{stage_prefix}-案件(行政/刑事)",
+                    lambda: zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(conn, start_time=period_start, end_time=period_end, patterns=patterns),
+                )
             )
-        )
-        changsuo_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-场所案件",
-                lambda: zfba_wcnr_jqaj_dao.count_changsuo_ajxx_by_diqu(
-                    conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns
-                ),
+            changsuo = (
+                {}
+                if typed_patterns_empty
+                else _call(
+                    f"{stage_prefix}-场所案件",
+                    lambda: zfba_wcnr_jqaj_dao.count_changsuo_ajxx_by_diqu(
+                        conn, start_time=period_start, end_time=period_end, patterns=patterns
+                    ),
+                )
             )
-        )
-        wfry_rows_now = (
-            []
-            if typed_patterns_empty
-            else _call(
-                "当前-v_wcnr_wfry_base",
-                lambda: zfba_wcnr_jqaj_dao.fetch_wcnr_jzqk_rows(
-                    conn, start_time=meta.start_time, end_time=meta.end_time, leixing_list=leixing_list
-                ),
+            wfry_rows = (
+                []
+                if typed_patterns_empty
+                else _call(
+                    f"{stage_prefix}-v_wcnr_wfry_base",
+                    lambda: zfba_wcnr_jqaj_dao.fetch_wcnr_jzqk_rows(
+                        conn, start_time=period_start, end_time=period_end, leixing_list=leixing_list
+                    ),
+                )
             )
-        )
-        wfry_stats_now = _build_wfry_stats_bundle(wfry_rows_now)
-        xz_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-治安处罚",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_xzcfjds_by_diqu(
-                    conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, za_types=za_types, not_execute_only=False
-                ),
+            wfry_stats = _build_wfry_stats_bundle(wfry_rows)
+            xz = (
+                {}
+                if typed_patterns_empty
+                else _call(
+                    f"{stage_prefix}-治安处罚",
+                    lambda: zfba_wcnr_jqaj_dao.count_wcnr_xzcfjds_by_diqu(
+                        conn, start_time=period_start, end_time=period_end, patterns=patterns, za_types=za_types, not_execute_only=False
+                    ),
+                )
             )
-        )
-        xz_noexec_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-治安处罚(不执行)",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_xzcfjds_by_diqu(
-                    conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns, za_types=za_types, not_execute_only=True
-                ),
+            xz_noexec = (
+                {}
+                if typed_patterns_empty
+                else _call(
+                    f"{stage_prefix}-治安处罚(不执行)",
+                    lambda: zfba_wcnr_jqaj_dao.count_wcnr_xzcfjds_by_diqu(
+                        conn, start_time=period_start, end_time=period_end, patterns=patterns, za_types=za_types, not_execute_only=True
+                    ),
+                )
             )
-        )
-        jlz_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-刑拘",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_jlz_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+            jlz = (
+                {}
+                if typed_patterns_empty
+                else _call(
+                    f"{stage_prefix}-刑拘",
+                    lambda: zfba_wcnr_jqaj_dao.count_wcnr_jlz_by_diqu(conn, start_time=period_start, end_time=period_end, patterns=patterns),
+                )
             )
-        )
-        # 新增：案件数(被侵害)
-        shr_ajxx_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-案件数(被侵害)",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns),
+            shr_ajxx = (
+                {}
+                if typed_patterns_empty
+                else _call(
+                    f"{stage_prefix}-案件数(被侵害)",
+                    lambda: zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(conn, start_time=period_start, end_time=period_end, patterns=patterns),
+                )
             )
-        )
-        shr_changsuo_now = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "当前-场所案件(被侵害)",
-                lambda: zfba_wcnr_jqaj_dao.count_changsuo_shr_ajxx_by_diqu(
-                    conn, start_time=meta.start_time, end_time=meta.end_time, patterns=patterns
-                ),
+            shr_changsuo = (
+                {}
+                if typed_patterns_empty
+                else _call(
+                    f"{stage_prefix}-场所案件(被侵害)",
+                    lambda: zfba_wcnr_jqaj_dao.count_changsuo_shr_ajxx_by_diqu(
+                        conn, start_time=period_start, end_time=period_end, patterns=patterns
+                    ),
+                )
             )
-        )
-        # 同比
-        jq_yoy = (
-            {}
-            if typed_subclass_empty
-            else _call(
-                "同比-警情",
-                lambda: zfba_wcnr_jqaj_dao.count_jq_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, leixing_list=leixing_list),
-            )
-        )
-        zhuanan_yoy = (
-            {}
-            if typed_subclass_empty
-            else _call(
-                "同比-转案数",
-                lambda: zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu(
-                    conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, leixing_list=leixing_list
-                ),
-            )
-        )
-        ajxx_yoy = (
-            {"行政": {}, "刑事": {}}
-            if typed_patterns_empty
-            else _call(
-                "同比-案件(行政/刑事)",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-            )
-        )
-        changsuo_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-场所案件",
-                lambda: zfba_wcnr_jqaj_dao.count_changsuo_ajxx_by_diqu(
-                    conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns
-                ),
-            )
-        )
-        wfry_rows_yoy = (
-            []
-            if typed_patterns_empty
-            else _call(
-                "同比-v_wcnr_wfry_base",
-                lambda: zfba_wcnr_jqaj_dao.fetch_wcnr_jzqk_rows(
-                    conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, leixing_list=leixing_list
-                ),
-            )
-        )
-        wfry_stats_yoy = _build_wfry_stats_bundle(wfry_rows_yoy)
-        xz_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-治安处罚",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_xzcfjds_by_diqu(
-                    conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns, za_types=za_types, not_execute_only=False
-                ),
-            )
-        )
-        xz_noexec_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-治安处罚(不执行)",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_xzcfjds_by_diqu(
-                    conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns, za_types=za_types, not_execute_only=True
-                ),
-            )
-        )
-        jlz_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-刑拘",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_jlz_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-            )
-        )
-        # 新增：案件数(被侵害)同比
-        shr_ajxx_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-案件数(被侵害)",
-                lambda: zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns),
-            )
-        )
-        shr_changsuo_yoy = (
-            {}
-            if typed_patterns_empty
-            else _call(
-                "同比-场所案件(被侵害)",
-                lambda: zfba_wcnr_jqaj_dao.count_changsuo_shr_ajxx_by_diqu(
-                    conn, start_time=meta.yoy_start_time, end_time=meta.yoy_end_time, patterns=patterns
-                ),
-            )
-        )
+
+            return {
+                "警情": jq,
+                "转案数": zhuanan,
+                "案件数(被侵害)": shr_ajxx,
+                "场所案件(被侵害)": shr_changsuo,
+                "行政": ajxx.get("行政", {}),
+                "刑事": ajxx.get("刑事", {}),
+                "场所案件": changsuo,
+                "治安处罚": xz,
+                "治安处罚(不执行)": xz_noexec,
+                "刑拘": jlz,
+                "矫治文书(行政)": wfry_stats.get("矫治文书(行政)", {}),
+                "矫治文书(刑事)": wfry_stats.get("矫治文书(刑事)", {}),
+                "加强监督教育(行政)": wfry_stats.get("加强监督教育(行政)", {}),
+                "加强监督教育(刑事)": wfry_stats.get("加强监督教育(刑事)", {}),
+                "符合送校": wfry_stats.get("符合送校", {}),
+                "送校": wfry_stats.get("送校", {}),
+            }
+
+        now_stats = _collect_period_stats("当前", meta.start_time, meta.end_time)
+        yoy_stats = _collect_period_stats("同比", meta.yoy_start_time, meta.yoy_end_time)
+        hb_stats = _collect_period_stats("环比", meta.hb_start_time, meta.hb_end_time)
 
         def g(m: Dict[str, int], code: str) -> int:
             return int(m.get(code) or 0)
 
-        def g2(m: Dict[str, Dict[str, int]], key: str, code: str) -> int:
-            return int((m.get(key) or {}).get(code) or 0)
-
-        def gm(m: Dict[str, Dict[str, int]], metric: str, code: str) -> int:
-            return int((m.get(metric) or {}).get(code) or 0)
+        ratio_metrics = [
+            "警情",
+            "转案数",
+            "案件数(被侵害)",
+            "场所案件(被侵害)",
+            "行政",
+            "刑事",
+            "场所案件",
+            "治安处罚",
+            "治安处罚(不执行)",
+            "刑拘",
+            "矫治文书(行政)",
+            "矫治文书(刑事)",
+            "加强监督教育(行政)",
+            "加强监督教育(刑事)",
+        ]
 
         rows: List[Dict[str, Any]] = []
         for code, name in REGION_ORDER:
-            rows.append(
-                {
-                    "地区": name,
-                    "地区代码": code,
-                    "警情": g(jq_now, code),
-                    "同比警情": g(jq_yoy, code),
-                    "转案数": g(zhuanan_now, code),
-                    "同比转案数": g(zhuanan_yoy, code),
-                    "案件数(被侵害)": g(shr_ajxx_now, code),
-                    "同比案件数(被侵害)": g(shr_ajxx_yoy, code),
-                    "场所案件(被侵害)": g(shr_changsuo_now, code),
-                    "同比场所案件(被侵害)": g(shr_changsuo_yoy, code),
-                    "行政": g2(ajxx_now, "行政", code),
-                    "同比行政": g2(ajxx_yoy, "行政", code),
-                    "刑事": g2(ajxx_now, "刑事", code),
-                    "同比刑事": g2(ajxx_yoy, "刑事", code),
-                    "场所案件": g(changsuo_now, code),
-                    "同比场所案件": g(changsuo_yoy, code),
-                    "治安处罚": g(xz_now, code),
-                    "同比治安处罚": g(xz_yoy, code),
-                    "治安处罚(不执行)": g(xz_noexec_now, code),
-                    "同比治安处罚(不执行)": g(xz_noexec_yoy, code),
-                    "刑拘": g(jlz_now, code),
-                    "同比刑拘": g(jlz_yoy, code),
-                    "矫治文书(行政)": gm(wfry_stats_now, "矫治文书(行政)", code),
-                    "同比矫治文书(行政)": gm(wfry_stats_yoy, "矫治文书(行政)", code),
-                    "矫治文书(刑事)": gm(wfry_stats_now, "矫治文书(刑事)", code),
-                    "同比矫治文书(刑事)": gm(wfry_stats_yoy, "矫治文书(刑事)", code),
-                    "加强监督教育(行政)": gm(wfry_stats_now, "加强监督教育(行政)", code),
-                    "同比加强监督教育(行政)": gm(wfry_stats_yoy, "加强监督教育(行政)", code),
-                    "加强监督教育(刑事)": gm(wfry_stats_now, "加强监督教育(刑事)", code),
-                    "同比加强监督教育(刑事)": gm(wfry_stats_yoy, "加强监督教育(刑事)", code),
-                    "符合送校": gm(wfry_stats_now, "符合送校", code),
-                    "送校": gm(wfry_stats_now, "送校", code),
-                    "同比送校": gm(wfry_stats_yoy, "送校", code),
-                }
-            )
+            row: Dict[str, Any] = {"地区": name, "地区代码": code}
+            for metric in ratio_metrics:
+                row[metric] = g(now_stats.get(metric, {}), code)
+                row[f"同比{metric}"] = g(yoy_stats.get(metric, {}), code)
+                row[f"环比{metric}"] = g(hb_stats.get(metric, {}), code)
+            row["符合送校"] = g(now_stats.get("符合送校", {}), code)
+            row["送校"] = g(now_stats.get("送校", {}), code)
+            row["同比送校"] = g(yoy_stats.get("送校", {}), code)
+            row["环比送校"] = g(hb_stats.get("送校", {}), code)
+            rows.append(row)
 
-        # 全市：按 6 个地区（含市局 445300）合计，放在最后一行
         if rows:
             total: Dict[str, Any] = {"地区": "全市", "地区代码": "__ALL__"}
             for k in rows[0].keys():

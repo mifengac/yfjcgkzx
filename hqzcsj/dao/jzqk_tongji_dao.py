@@ -166,6 +166,16 @@ def fetch_jzqk_data(
                     ELSE 0
                 END AS is_zhiju_gt4,
                 CASE
+                    WHEN bd.案件类型 = '行政' AND EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
+                        WHERE x.ajxx_ajbh = bd.案件编号
+                          AND x.xzcfjds_rybh = bd.人员编号
+                          AND CAST(x.xzcfjds_tj_jlts AS INTEGER) > 4
+                          AND x.xzcfjds_zxqk_text ~ '(不送|不执行)'
+                    ) THEN 1
+                    ELSE 0
+                END AS is_zhiju_busong,
+                CASE
                     WHEN bd.案件类型 = '行政'
                          AND bd.违法次数 = 2
                          AND bd.不同案由数 = 1
@@ -184,6 +194,13 @@ def fetch_jzqk_data(
                     ) THEN 1
                     ELSE 0
                 END AS is_xingju,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1 FROM "ywdata"."zq_zfba_byxzcfjds" b
+                        WHERE b.ajxx_ajbh = bd.案件编号 AND b.byxzcfjds_rybh = bd.人员编号
+                    ) THEN 1
+                    ELSE 0
+                END AS is_buyu_xingzheng_chufa,
                 CASE
                     WHEN EXISTS (
                         SELECT 1 FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs" z
@@ -247,9 +264,11 @@ def fetch_jzqk_data(
             fd.年龄,
             fd.居住地,
             CASE WHEN fd.is_zhiju_gt4 = 1 THEN '是' ELSE '否' END AS 治拘大于4天,
+            CASE WHEN fd.is_zhiju_busong = 1 THEN '是' ELSE '否' END AS 是否治拘不送,
             CASE WHEN fd.is_second_same_ay_with_xjs = 1 THEN '是' ELSE '否' END AS "2次违法且案由相同且第一次违法开具了训诫书",
             CASE WHEN fd.is_third_plus = 1 THEN '是' ELSE '否' END AS "3次及以上违法",
             CASE WHEN fd.is_xingju = 1 THEN '是' ELSE '否' END AS 是否刑拘,
+            CASE WHEN fd.is_buyu_xingzheng_chufa = 1 THEN '是' ELSE '否' END AS 是否不予行政处罚,
             CASE WHEN fd.is_jiaozhi_wenshu = 1 THEN '是' ELSE '否' END AS 是否开具矫治文书,
             CASE
                 WHEN fd.is_xunjieshu = 1 AND fd.is_zeling_tongzhishu = 1 THEN '训诫书/责令未成年人遵守特定行为规范通知书'

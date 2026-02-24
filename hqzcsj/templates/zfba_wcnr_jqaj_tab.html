@@ -7,6 +7,12 @@
             <label>结束时间
                 <input type="datetime-local" id="wcnrEnd" step="1">
             </label>
+            <label>环比开始
+                <input type="datetime-local" id="wcnrHbStart" step="1">
+            </label>
+            <label>环比结束
+                <input type="datetime-local" id="wcnrHbEnd" step="1">
+            </label>
             <label>类型
                 <div class="multi-select" id="wcnrTypesMs">
                     <div class="multi-select-display" id="wcnrTypesDisplay">加载中...</div>
@@ -22,6 +28,11 @@
             <button class="btn" id="wcnrQueryBtn">查询</button>
         </div>
         <div class="row" style="gap:10px; align-items:center;">
+            <label class="ratio-switch" title="显示环比列">
+                <span class="ratio-switch-text">显示环比</span>
+                <input type="checkbox" id="wcnrShowHb">
+                <span class="ratio-switch-slider"></span>
+            </label>
             <label class="ratio-switch" title="显示同比比例列">
                 <span class="ratio-switch-text">显示比例</span>
                 <input type="checkbox" id="wcnrShowRatio">
@@ -118,4 +129,6 @@
         exportDetailAll: "{{ url_for('zfba_wcnr_jqaj.export_detail_all') }}",
     };
 </script>
-<script src="{{ url_for('hqzcsj.static', filename='js/zfba_wcnr_jqaj_tab.js') }}"></script>
+<script src="{{ url_for('hqzcsj.static', filename='js/zfba_wcnr_jqaj_tab.constants.js') }}"></script>
+<script src="{{ url_for('hqzcsj.static', filename='js/zfba_wcnr_jqaj_tab.helpers.js') }}"></script>
+<script src="{{ url_for('hqzcsj.static', filename='js/zfba_wcnr_jqaj_tab.app.js') }}"></script>
