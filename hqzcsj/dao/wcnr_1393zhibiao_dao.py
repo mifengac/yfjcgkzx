@@ -229,7 +229,7 @@ def count_jyh_after_cases_by_diqu(
             ON zws."sfzhm" = zzx."身份证号"
            AND COALESCE(zws.{sfz_case_col}::text, '') = COALESCE(zzx."案件编号"::text, '')
         WHERE zws."lx_time" BETWEEN %s AND %s
-          AND zws."lx_time" < zzx."立案时间"
+          AND TO_CHAR(zws."lx_time", 'YYYY-MM-DD') <= TO_CHAR(zzx."立案时间", 'YYYY-MM-DD')
           {xingshi_condition}
           {type_condition}
         GROUP BY COALESCE(LEFT(COALESCE(zws."hjdq", ''), 6), '未知')
@@ -311,7 +311,7 @@ def fetch_jyh_after_cases_detail(
             ON zws."sfzhm" = zzx."身份证号"
            AND COALESCE(zws.{sfz_case_col}::text, '') = COALESCE(zzx."案件编号"::text, '')
         WHERE zws."lx_time" BETWEEN %s AND %s
-          AND zws."lx_time" < zzx."立案时间"
+          AND TO_CHAR(zws."lx_time", 'YYYY-MM-DD') <= TO_CHAR(zzx."立案时间", 'YYYY-MM-DD')
           {xingshi_condition}
           {type_condition}
           {diqu_condition}

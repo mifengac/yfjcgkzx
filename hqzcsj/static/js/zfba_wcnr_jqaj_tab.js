@@ -359,7 +359,16 @@
         tbl.querySelectorAll("td.clickable-cell").forEach((td) => {
             td.addEventListener("click", () => {
                 const href = td.getAttribute("data-href");
-                if (href) window.wcnrOpenDetail(href);
+                if (!href) return;
+                try {
+                    const openedInModal = typeof window.wcnrOpenDetail === "function" ? window.wcnrOpenDetail(href) : false;
+                    if (openedInModal === false) {
+                        window.open(href, "_blank");
+                    }
+                } catch (e) {
+                    errEl.textContent = `打开明细失败：${e && e.message ? e.message : String(e)}`;
+                    window.open(href, "_blank");
+                }
             });
         });
     }
@@ -411,8 +420,11 @@
     window.wcnrOpenDetail = function(href) {
         const modal = document.getElementById("wcnrDetailModal");
         const frame = document.getElementById("wcnrDetailFrame");
+        if (!href) return false;
+        if (!modal || !frame) return false;
         frame.src = href;
         modal.style.display = "flex";
+        return true;
     };
     window.wcnrCloseModal = function(event) {
         if (event && event.target && event.target.id !== "wcnrDetailModal") return;

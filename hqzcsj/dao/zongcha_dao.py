@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, Mapping, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 from psycopg2 import sql
-from psycopg2.extras import Json, execute_values
+from psycopg2.extras import execute_values
 
 
 _TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
@@ -107,119 +107,123 @@ def ensure_table_and_columns(
     return col_types
 
 
-def ensure_table_jsonb(
-    *,
-    conn,
-    schema: str,
-    table: str,
-    pk_fields: Sequence[str],
-    table_comment: str = "",
-) -> None:
+def ensure_qsryxx_composite_pk(*, conn, schema: str, table: str = "zq_zfba_qsryxx") -> Tuple[int, int]:
     """
-    快速模式：只建主键 + data(jsonb) + fetched_at。
+    将 zq_zfba_qsryxx 主键统一为 (ajxx_ajbh, qsryxx_rybh)。
+    返回：(清理空主键条数, 去重条数)。
+    去重策略：同一 (ajxx_ajbh, qsryxx_rybh) 仅保留 qsryxx_tfsj 最新记录。
     """
-    pk_fields = [f for f in pk_fields if f]
-    if not pk_fields:
-        raise ValueError("pk_fields 不能为空")
-
+    dropped_empty_pk = 0
+    dropped_dup = 0
     with conn.cursor() as cur:
-        # 若表不存在：创建主键列 + data + fetched_at
-        pk_cols = [sql.SQL("{} TEXT").format(sql.Identifier(f)) for f in pk_fields]
-        pk_constraint = sql.SQL("PRIMARY KEY ({})").format(sql.SQL(", ").join(sql.Identifier(f) for f in pk_fields))
-        create_stmt = sql.SQL(
-            "CREATE TABLE IF NOT EXISTS {}.{} ({}, data JSONB, fetched_at TIMESTAMP DEFAULT NOW(), {})"
-        ).format(
-            sql.Identifier(schema),
-            sql.Identifier(table),
-            sql.SQL(", ").join(pk_cols),
-            pk_constraint,
-        )
-        cur.execute(create_stmt)
-
-        # 若表已存在（比如之前是“宽表”模式）：补齐 data/fetched_at 字段即可，无需删表
         cur.execute(
-            sql.SQL("ALTER TABLE {}.{} ADD COLUMN IF NOT EXISTS data JSONB").format(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema=%s AND table_name=%s
+            LIMIT 1
+            """,
+            (schema, table),
+        )
+        if cur.fetchone() is None:
+            conn.commit()
+            return dropped_empty_pk, dropped_dup
+
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema=%s AND table_name=%s
+            """,
+            (schema, table),
+        )
+        cols = {str(r[0]) for r in cur.fetchall() if r and r[0]}
+        required = {"ajxx_ajbh", "qsryxx_rybh"}
+        missing = required - cols
+        if missing:
+            raise RuntimeError(f"{schema}.{table} 缺少主键列: {','.join(sorted(missing))}")
+
+        cur.execute(
+            sql.SQL(
+                """
+                DELETE FROM {}.{}
+                WHERE NULLIF(BTRIM(COALESCE(ajxx_ajbh::text, '')), '') IS NULL
+                   OR NULLIF(BTRIM(COALESCE(qsryxx_rybh::text, '')), '') IS NULL
+                """
+            ).format(sql.Identifier(schema), sql.Identifier(table))
+        )
+        dropped_empty_pk = int(cur.rowcount or 0)
+
+        order_parts = []
+        if "qsryxx_tfsj" in cols:
+            order_parts.append(sql.SQL("qsryxx_tfsj DESC NULLS LAST"))
+        if "qsryxx_id" in cols:
+            order_parts.append(sql.SQL("qsryxx_id DESC NULLS LAST"))
+        order_parts.append(sql.SQL("ctid DESC"))
+
+        cur.execute(
+            sql.SQL(
+                """
+                WITH ranked AS (
+                    SELECT
+                        ctid AS rid,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY ajxx_ajbh, qsryxx_rybh
+                            ORDER BY {}
+                        ) AS rn
+                    FROM {}.{}
+                )
+                DELETE FROM {}.{} t
+                USING ranked r
+                WHERE t.ctid = r.rid
+                  AND r.rn > 1
+                """
+            ).format(
+                sql.SQL(", ").join(order_parts),
+                sql.Identifier(schema),
+                sql.Identifier(table),
                 sql.Identifier(schema),
                 sql.Identifier(table),
             )
         )
-        cur.execute(
-            sql.SQL("ALTER TABLE {}.{} ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMP").format(
-                sql.Identifier(schema),
-                sql.Identifier(table),
-            )
-        )
-        # 老表补列后 fetched_at 可能为 NULL；不强制回填，写入/更新时会用 NOW()
+        dropped_dup = int(cur.rowcount or 0)
 
-        if table_comment:
+        cur.execute(
+            """
+            SELECT con.conname
+            FROM pg_constraint con
+            JOIN pg_class rel ON rel.oid = con.conrelid
+            JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+            WHERE con.contype='p'
+              AND nsp.nspname=%s
+              AND rel.relname=%s
+            """,
+            (schema, table),
+        )
+        pk_constraints = [str(r[0]) for r in cur.fetchall() if r and r[0]]
+        for c in pk_constraints:
             cur.execute(
-                sql.SQL("COMMENT ON TABLE {}.{} IS {}").format(
+                sql.SQL("ALTER TABLE {}.{} DROP CONSTRAINT {}").format(
                     sql.Identifier(schema),
                     sql.Identifier(table),
-                    sql.Literal(table_comment),
+                    sql.Identifier(c),
                 )
             )
-    conn.commit()
 
-
-def upsert_rows_jsonb(
-    *,
-    conn,
-    schema: str,
-    table: str,
-    pk_fields: Sequence[str],
-    rows: Sequence[Dict[str, Any]],
-    batch_size: int = 2000,
-) -> int:
-    """
-    快速模式 upsert：将整条记录写入 data(jsonb)，并刷新 fetched_at。
-    """
-    if not rows:
-        return 0
-    pk_fields = [f for f in pk_fields if f]
-    if not pk_fields:
-        raise ValueError("pk_fields 不能为空")
-
-    # 同一批次内若存在相同主键，PostgreSQL 会报：
-    # ON CONFLICT DO UPDATE command cannot affect row a second time
-    # 这里先按主键去重，保留最后一条（后写覆盖先写）。
-    dedup: Dict[Tuple[str, ...], Dict[str, Any]] = {}
-    for r in rows:
-        key = tuple("" if (r or {}).get(pk) is None else str((r or {}).get(pk)) for pk in pk_fields)
-        dedup[key] = (r or {})
-    rows = list(dedup.values())
-
-    columns = list(pk_fields) + ["data"]
-    insert_cols = [sql.Identifier(c) for c in columns]
-    conflict_cols = sql.SQL(", ").join(sql.Identifier(c) for c in pk_fields)
-    stmt = sql.SQL(
-        "INSERT INTO {}.{} ({}) VALUES %s "
-        "ON CONFLICT ({}) DO UPDATE SET data = EXCLUDED.data, fetched_at = NOW()"
-    ).format(
-        sql.Identifier(schema),
-        sql.Identifier(table),
-        sql.SQL(", ").join(insert_cols),
-        conflict_cols,
-    )
-
-    data_rows: List[Tuple[Any, ...]] = []
-    for r in rows:
-        tup: List[Any] = []
-        for pk in pk_fields:
-            v = (r or {}).get(pk)
-            tup.append("" if v is None else str(v))
-        tup.append(Json(r or {}, dumps=lambda obj: json.dumps(obj, ensure_ascii=False, separators=(",", ":"))))
-        data_rows.append(tuple(tup))
-
-    with conn.cursor() as cur:
-        execute_values(
-            cur,
-            stmt.as_string(cur),
-            data_rows,
-            page_size=max(1, int(batch_size)),
+        constraint_name = f"pk_{table}_ajxx_ajbh_qsryxx_rybh"
+        if len(constraint_name) > 63:
+            constraint_name = "pk_zq_zfba_qsryxx_ajbh_rybh"
+        cur.execute(
+            sql.SQL("ALTER TABLE {}.{} ADD CONSTRAINT {} PRIMARY KEY ({}, {})").format(
+                sql.Identifier(schema),
+                sql.Identifier(table),
+                sql.Identifier(constraint_name),
+                sql.Identifier("ajxx_ajbh"),
+                sql.Identifier("qsryxx_rybh"),
+            )
         )
     conn.commit()
-    return len(data_rows)
+    return dropped_empty_pk, dropped_dup
 
 
 def upsert_rows(

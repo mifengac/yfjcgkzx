@@ -226,7 +226,8 @@ def fetch_jzqk_data(
                 CASE
                     WHEN EXISTS (
                         SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
-                        WHERE s.sfzhm = bd.身份证号 AND s.rx_time > bd.立案时间
+                        WHERE s.sfzhm = bd.身份证号
+                          AND TO_CHAR(s.rx_time, 'YYYY-MM-DD') >= TO_CHAR(bd.立案时间, 'YYYY-MM-DD')
                     ) THEN 1
                     ELSE 0
                 END AS is_songxiao

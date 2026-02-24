@@ -265,7 +265,7 @@ def _query_jzjy_base_details(
                         WHEN EXISTS (
                             SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
                             WHERE s."sfzhm" = vw."身份证号"
-                              AND s."rx_time" > vw."立案时间"
+                              AND TO_CHAR(s."rx_time", 'YYYY-MM-DD') >= TO_CHAR(vw."立案时间", 'YYYY-MM-DD')
                         ) THEN '是'
                         ELSE '否'
                     END AS "是否送校"

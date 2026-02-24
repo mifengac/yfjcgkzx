@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -14,15 +15,15 @@ import requests
 from gonggong.config.database import DB_CONFIG, get_database_connection
 from hqzcsj.dao.zongcha_dao import (
     ensure_schema,
+    ensure_qsryxx_composite_pk,
     ensure_table_and_columns,
-    ensure_table_jsonb,
     infer_col_types,
     upsert_rows,
-    upsert_rows_jsonb,
 )
 
 
 DEFAULT_URL = "http://68.26.7.188:8088/api/search/v3/fusionQuery"
+LOGGER = logging.getLogger(__name__)
 
 DEFAULT_BASE_HEADERS: Dict[str, str] = {
     "Accept": "application/json, text/plain, */*",
@@ -131,6 +132,15 @@ def _run_job(
         schema = DB_CONFIG.get("schema") or "ywdata"
         try:
             ensure_schema(conn, schema)
+            # 起诉人员信息改为联合主键，入库前自动清理历史空主键/重复主键数据并重建主键约束。
+            if any(j.table == "zq_zfba_qsryxx" for j in selected):
+                dropped_empty_pk, dropped_dup = ensure_qsryxx_composite_pk(conn=conn, schema=schema)
+                if dropped_empty_pk or dropped_dup:
+                    LOGGER.warning(
+                        "[起诉人员信息] 主键治理完成：空主键清理=%s，按最新 qsryxx_tfsj 去重=%s",
+                        dropped_empty_pk,
+                        dropped_dup,
+                    )
             results: List[Dict[str, Any]] = []
             for idx, job in enumerate(selected, start=1):
                 _update_status(key, progress={"current": idx - 1, "total": len(selected)}, message=f"拉取：{job.name}")
@@ -146,15 +156,6 @@ def _run_job(
                     headers=headers,
                     base_form=job.base_form,
                 )
-                fast_mode = _fast_mode_for_table(job.table)
-                if fast_mode:
-                    ensure_table_jsonb(
-                        conn=conn,
-                        schema=schema,
-                        table=job.table,
-                        pk_fields=job.pk_fields,
-                        table_comment=job.table,
-                    )
                 for w_start, w_end in windows:
                     window_rows = _fetch_all_pages_for_window(
                         url=url,
@@ -169,35 +170,38 @@ def _run_job(
                         continue
 
                     fetched_total += len(window_rows)
-                    if fast_mode:
-                        processed_total += upsert_rows_jsonb(
-                            conn=conn,
-                            schema=schema,
-                            table=job.table,
-                            pk_fields=job.pk_fields,
-                            rows=window_rows,
-                        )
-                    else:
-                        inferred = _merge_inferred_types(inferred, infer_col_types(window_rows))
-                        col_types = ensure_table_and_columns(
-                            conn=conn,
-                            schema=schema,
-                            table=job.table,
-                            pk_fields=job.pk_fields,
-                            inferred_types=inferred,
-                            table_comment=job.table,
-                        )
-                        processed_total += upsert_rows(
-                            conn=conn,
-                            schema=schema,
-                            table=job.table,
-                            pk_fields=job.pk_fields,
-                            rows=window_rows,
-                            col_types=col_types,
-                        )
+                    window_rows, _ = _drop_rows_with_empty_pk(
+                        rows=window_rows,
+                        pk_fields=job.pk_fields,
+                        source_name=job.name,
+                    )
+                    if not window_rows:
+                        continue
+                    if job.table == "zq_zfba_qsryxx":
+                        window_rows, _ = _dedup_qsryxx_rows_by_latest_tfsj(window_rows)
+                        if not window_rows:
+                            continue
+
+                    inferred = _merge_inferred_types(inferred, infer_col_types(window_rows))
+                    col_types = ensure_table_and_columns(
+                        conn=conn,
+                        schema=schema,
+                        table=job.table,
+                        pk_fields=job.pk_fields,
+                        inferred_types=inferred,
+                        table_comment=job.table,
+                    )
+                    processed_total += upsert_rows(
+                        conn=conn,
+                        schema=schema,
+                        table=job.table,
+                        pk_fields=job.pk_fields,
+                        rows=window_rows,
+                        col_types=col_types,
+                    )
 
                 # 若整个时间段无数据，也确保表存在（仅 PK 列）
-                if not fast_mode and not inferred:
+                if not inferred:
                     ensure_table_and_columns(
                         conn=conn,
                         schema=schema,
@@ -245,21 +249,6 @@ def _org_codes() -> List[str]:
         return ["445300000000"]
     parts = [p.strip() for p in raw.replace("，", ",").split(",") if p.strip()]
     return parts or ["445300000000"]
-
-def _fast_mode_for_table(table: str) -> bool:
-    """
-    快速入库模式：
-    - ZFBA_FAST_MODE=1：全表启用（适合大数据量表）
-    - ZFBA_FAST_TABLES=表1,表2：仅对指定表启用
-    """
-    if (os.getenv("ZFBA_FAST_MODE", "").strip() or "").lower() in ("1", "true", "yes", "y"):
-        return True
-    raw = os.getenv("ZFBA_FAST_TABLES", "").strip()
-    if not raw:
-        return False
-    want = {p.strip() for p in raw.replace("，", ",").split(",") if p.strip()}
-    return (table or "") in want
-
 
 def _build_headers(base_headers: Dict[str, str], *, cookie: str, authorization: str) -> Dict[str, str]:
     headers = dict(base_headers or {})
@@ -515,7 +504,7 @@ def _build_job_defs(*, base_forms: Dict[str, Dict[str, str]], start_time: str, e
             ZongchaJobDef(
                 name="起诉人员信息",
                 table="zq_zfba_qsryxx",
-                pk_fields=["qsryxx_id"],
+                pk_fields=["ajxx_ajbh", "qsryxx_rybh"],
                 base_form=_make_form_qsryxx(start_time=start_time, end_time=end_time, org_codes=org_codes),
                 time_field_codes=["qsryxx_tfsj"],
             ),
@@ -539,6 +528,79 @@ def _filter_jobs(job_defs: Sequence[ZongchaJobDef], *, sources: Sequence[str]) -
     if not want:
         return list(job_defs)
     return [j for j in job_defs if j.name in want]
+
+
+def _drop_rows_with_empty_pk(
+    *, rows: Sequence[Dict[str, Any]], pk_fields: Sequence[str], source_name: str
+) -> Tuple[List[Dict[str, Any]], int]:
+    valid_pk_fields = [str(f).strip() for f in (pk_fields or []) if str(f).strip()]
+    if not rows or not valid_pk_fields:
+        return list(rows or []), 0
+
+    kept: List[Dict[str, Any]] = []
+    dropped = 0
+    for row in rows:
+        row_map = row or {}
+        has_empty_pk = False
+        for pk in valid_pk_fields:
+            value = row_map.get(pk)
+            if value is None or not str(value).strip():
+                has_empty_pk = True
+                break
+        if has_empty_pk:
+            dropped += 1
+            continue
+        kept.append(row_map)
+
+    if dropped:
+        LOGGER.warning("[%s] 丢弃主键缺失记录 %s 条（主键=%s）", source_name, dropped, ",".join(valid_pk_fields))
+    return kept, dropped
+
+
+def _dedup_qsryxx_rows_by_latest_tfsj(rows: Sequence[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    if not rows:
+        return [], 0
+
+    def _parse_ts(v: Any) -> Optional[datetime]:
+        s = str(v or "").strip()
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return None
+
+    def _is_newer(candidate: Dict[str, Any], current: Dict[str, Any]) -> bool:
+        cand_ts = _parse_ts(candidate.get("qsryxx_tfsj"))
+        curr_ts = _parse_ts(current.get("qsryxx_tfsj"))
+        if cand_ts and curr_ts:
+            if cand_ts != curr_ts:
+                return cand_ts > curr_ts
+        elif cand_ts and not curr_ts:
+            return True
+        elif not cand_ts and curr_ts:
+            return False
+
+        cand_id = str(candidate.get("qsryxx_id") or "").strip()
+        curr_id = str(current.get("qsryxx_id") or "").strip()
+        return cand_id > curr_id
+
+    dedup: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for row in rows:
+        row_map = row or {}
+        key = (
+            str(row_map.get("ajxx_ajbh") or "").strip(),
+            str(row_map.get("qsryxx_rybh") or "").strip(),
+        )
+        existing = dedup.get(key)
+        if existing is None or _is_newer(row_map, existing):
+            dedup[key] = row_map
+
+    out = list(dedup.values())
+    dropped = len(rows) - len(out)
+    if dropped:
+        LOGGER.warning("[起诉人员信息] 按最新 qsryxx_tfsj 去重 %s 条（窗口内重复主键）", dropped)
+    return out, dropped
 
 
 def _merge_inferred_types(base: Dict[str, str], inc: Dict[str, str]) -> Dict[str, str]:
