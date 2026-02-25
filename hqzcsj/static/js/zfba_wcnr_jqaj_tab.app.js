@@ -20,6 +20,9 @@
     const tbl = document.getElementById("wcnrTbl");
     const queryBtn = document.getElementById("wcnrQueryBtn");
     const exportAllBtn = document.getElementById("wcnrExportAllBtn");
+    const reportBtn = document.getElementById("wcnrReportBtn");
+    const busyMask = document.getElementById("wcnrBusyMask");
+    const busyTextEl = document.getElementById("wcnrBusyText");
     const showHbEl = document.getElementById("wcnrShowHb");
     const showRatioEl = document.getElementById("wcnrShowRatio");
 
@@ -29,6 +32,64 @@
 
     let lastMeta = null;
     let lastRows = [];
+    let isExporting = false;
+    let bodyOverflowBackup = "";
+
+    function setExportBusy(isBusy, text) {
+        if (isBusy) {
+            if (typeof text === "string" && busyTextEl) busyTextEl.textContent = text;
+            if (busyMask) busyMask.classList.add("active");
+            bodyOverflowBackup = document.body.style.overflow;
+            document.body.style.overflow = "hidden";
+            if (reportBtn) reportBtn.disabled = true;
+            if (exportAllBtn) exportAllBtn.disabled = true;
+            return;
+        }
+        if (busyMask) busyMask.classList.remove("active");
+        document.body.style.overflow = bodyOverflowBackup || "";
+        bodyOverflowBackup = "";
+        if (reportBtn) reportBtn.disabled = false;
+        if (exportAllBtn) exportAllBtn.disabled = false;
+    }
+
+    function parseDownloadFilename(resp, fallbackName) {
+        const cd = resp.headers.get("content-disposition") || "";
+        const m = cd.match(/filename\*=UTF-8''([^;]+)/i) || cd.match(/filename="?([^;"]+)"?/i);
+        if (!m || !m[1]) return fallbackName;
+        const rawName = m[1];
+        try {
+            return decodeURIComponent(rawName);
+        } catch (_e) {
+            return rawName;
+        }
+    }
+
+    async function downloadByFetch(url, fallbackName, defaultErrorMessage) {
+        const resp = await fetch(url);
+        const contentType = (resp.headers.get("content-type") || "").toLowerCase();
+        if (!resp.ok || contentType.includes("application/json")) {
+            let msg = defaultErrorMessage || "导出失败";
+            try {
+                const js = await resp.json();
+                msg = (js && js.message) ? js.message : msg;
+            } catch (_e) {
+                if (!resp.ok) {
+                    msg = `${msg} (HTTP ${resp.status})`;
+                }
+            }
+            throw new Error(msg);
+        }
+
+        const blob = await resp.blob();
+        const urlObj = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = urlObj;
+        a.download = parseDownloadFilename(resp, fallbackName);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(urlObj);
+    }
 
     const dd = document.getElementById("wcnrExportDd");
     const exportBtn = document.getElementById("wcnrExportBtn");
@@ -53,7 +114,6 @@
     });
 
     const reportDd = document.getElementById("wcnrReportDd");
-    const reportBtn = document.getElementById("wcnrReportBtn");
     if (reportDd && reportBtn) {
         reportBtn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -344,18 +404,54 @@
         window.location.href = href;
     }
 
-    function doReportExport(fmt) {
+    async function doReportExport(fmt) {
+        if (isExporting) {
+            return;
+        }
+        errEl.textContent = "";
         const usp = buildReportQueryParams();
-        usp.set("fmt", fmt);
+        const exportFmt = (fmt || "xlsx").toLowerCase();
+        usp.set("fmt", exportFmt);
         const href = `${REPORT_EXPORT_URL}?${usp.toString()}`;
-        window.location.href = href;
+        const fallbackName = `未成年人警情案件统计报表_${new Date().getTime()}.${exportFmt}`;
+
+        isExporting = true;
+        setExportBusy(true, "报表生成中，请等待...");
+        statusEl.textContent = "报表生成中，请等待...";
+        try {
+            await downloadByFetch(href, fallbackName, "导出报表失败");
+            statusEl.textContent = `导出报表成功（${exportFmt.toUpperCase()}）`;
+        } catch (e) {
+            errEl.textContent = e.message || String(e);
+            statusEl.textContent = "";
+        } finally {
+            setExportBusy(false);
+            isExporting = false;
+        }
     }
 
-    function exportAllDetail() {
+    async function exportAllDetail() {
+        if (isExporting) {
+            return;
+        }
         errEl.textContent = "";
         const usp = buildBaseQueryParams();
         const href = `${EXPORT_DETAIL_ALL_URL}?${usp.toString()}`;
-        window.location.href = href;
+        const fallbackName = `未成年人警情案件统计详细_${new Date().getTime()}.xlsx`;
+
+        isExporting = true;
+        setExportBusy(true, "详细数据导出中，请等待...");
+        statusEl.textContent = "详细数据导出中，请等待...";
+        try {
+            await downloadByFetch(href, fallbackName, "导出详细数据失败");
+            statusEl.textContent = "导出详细成功";
+        } catch (e) {
+            errEl.textContent = e.message || String(e);
+            statusEl.textContent = "";
+        } finally {
+            setExportBusy(false);
+            isExporting = false;
+        }
     }
 
     queryBtn.addEventListener("click", (e) => {

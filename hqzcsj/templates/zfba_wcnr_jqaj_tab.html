@@ -113,6 +113,44 @@
     .ratio-switch input:checked + .ratio-switch-slider::after {
         transform: translateX(20px);
     }
+
+    .wcnr-busy-mask {
+        position: fixed;
+        inset: 0;
+        display: none;
+        z-index: 2000;
+        background: rgba(15, 23, 42, 0.45);
+        align-items: center;
+        justify-content: center;
+        pointer-events: all;
+    }
+    .wcnr-busy-mask.active {
+        display: flex;
+    }
+    .wcnr-busy-card {
+        min-width: 280px;
+        padding: 18px 20px;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+    .wcnr-busy-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #1976d2;
+        animation: wcnr-pulse 1s ease-in-out infinite;
+    }
+    @keyframes wcnr-pulse {
+        0%, 100% { transform: scale(0.75); opacity: 0.55; }
+        50% { transform: scale(1); opacity: 1; }
+    }
 </style>
 
 <div id="wcnrDetailModal" class="modal" onclick="wcnrCloseModal(event)" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index: 80; align-items:center; justify-content:center; padding: 16px;">
@@ -124,6 +162,13 @@
         <div class="modal-body" style="flex:1;">
             <iframe id="wcnrDetailFrame" title="明细数据" style="width:100%; height:100%; border:0;"></iframe>
         </div>
+    </div>
+</div>
+
+<div id="wcnrBusyMask" class="wcnr-busy-mask" aria-live="polite" aria-busy="true">
+    <div class="wcnr-busy-card">
+        <span class="wcnr-busy-dot"></span>
+        <span id="wcnrBusyText">报表生成中，请等待...</span>
     </div>
 </div>
 
