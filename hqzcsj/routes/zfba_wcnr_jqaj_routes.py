@@ -11,6 +11,7 @@ from openpyxl import Workbook
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao.zfba_wcnr_jqaj_dao import fetch_leixing_list
+from hqzcsj.service.zfba_wcnr_report_service import build_report_file
 from hqzcsj.service.zfba_wcnr_jqaj_service import (
     REGION_ORDER,
     append_ratio_columns,
@@ -141,6 +142,46 @@ def export_summary() -> Response:
     if fmt == "csv":
         return _download_csv(rows, filename)
     return _download_excel(rows, filename)
+
+
+@zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/report_export")
+def report_export() -> Response:
+    fmt = (request.args.get("fmt") or "xlsx").lower()
+    start_time = (request.args.get("start_time") or "").strip()
+    end_time = (request.args.get("end_time") or "").strip()
+    if not start_time or not end_time:
+        start_time, end_time = default_time_range_for_page()
+    leixing_list = _parse_list_args("leixing")
+
+    try:
+        data, filename, mimetype = build_report_file(
+            fmt=fmt,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+        )
+        buffer = BytesIO(data)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype=mimetype,
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except FileNotFoundError as exc:
+        logging.error("zfba_wcnr_jqaj report_export template missing: %s", exc)
+        return jsonify({"success": False, "message": str(exc)}), 500
+    except Exception as exc:
+        logging.exception(
+            "zfba_wcnr_jqaj report_export failed: start_time=%s end_time=%s leixing_list=%s fmt=%s",
+            start_time,
+            end_time,
+            leixing_list,
+            fmt,
+        )
+        return jsonify({"success": False, "message": str(exc)}), 400
 
 
 @zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/detail")

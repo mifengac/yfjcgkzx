@@ -45,6 +45,13 @@
                     <a href="#" data-fmt="csv">导出 csv</a>
                 </div>
             </div>
+            <div class="dropdown" id="wcnrReportDd">
+                <button class="btn" id="wcnrReportBtn" style="background:#ff9800;">导出报表</button>
+                <div class="dropdown-menu">
+                    <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                    <a href="#" data-fmt="csv">导出 csv</a>
+                </div>
+            </div>
             <button class="btn" id="wcnrExportAllBtn" style="background:#ff9800;">导出详细(xlsx)</button>
         </div>
     </div>
@@ -126,6 +133,7 @@
         apiSummary: "{{ url_for('zfba_wcnr_jqaj.api_summary') }}",
         detailPage: "{{ url_for('zfba_wcnr_jqaj.detail_page') }}",
         exportSummary: "{{ url_for('zfba_wcnr_jqaj.export_summary') }}",
+        reportExport: "{{ url_for('zfba_wcnr_jqaj.report_export') }}",
         exportDetailAll: "{{ url_for('zfba_wcnr_jqaj.export_detail_all') }}",
     };
 </script>

@@ -8,6 +8,7 @@
     const API_SUMMARY_URL = endpoints.apiSummary || "/hqzcsj/zfba_wcnr_jqaj/api/summary";
     const DETAIL_PAGE_URL = endpoints.detailPage || "/hqzcsj/zfba_wcnr_jqaj/detail";
     const EXPORT_SUMMARY_URL = endpoints.exportSummary || "/hqzcsj/zfba_wcnr_jqaj/export";
+    const REPORT_EXPORT_URL = endpoints.reportExport || "/hqzcsj/zfba_wcnr_jqaj/report_export";
     const EXPORT_DETAIL_ALL_URL = endpoints.exportDetailAll || "/hqzcsj/zfba_wcnr_jqaj/detail/export_all";
 
     const startEl = document.getElementById("wcnrStart");
@@ -50,6 +51,26 @@
     document.addEventListener("click", (e) => {
         if (!dd.contains(e.target)) dd.classList.remove("open");
     });
+
+    const reportDd = document.getElementById("wcnrReportDd");
+    const reportBtn = document.getElementById("wcnrReportBtn");
+    if (reportDd && reportBtn) {
+        reportBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            reportDd.classList.toggle("open");
+        });
+        reportDd.querySelectorAll(".dropdown-menu a").forEach((a) => {
+            a.addEventListener("click", (e) => {
+                e.preventDefault();
+                const fmt = a.getAttribute("data-fmt") || "xlsx";
+                doReportExport(fmt);
+                reportDd.classList.remove("open");
+            });
+        });
+        document.addEventListener("click", (e) => {
+            if (!reportDd.contains(e.target)) reportDd.classList.remove("open");
+        });
+    }
 
     const msDisplay = document.getElementById("wcnrTypesDisplay");
     const msDropdown = document.getElementById("wcnrTypesDropdown");
@@ -212,6 +233,17 @@
         return usp;
     }
 
+    function buildReportQueryParams() {
+        const st = H.formatDateTime(startEl.value);
+        const et = H.formatDateTime(endEl.value);
+        const types = selectedTypes();
+        const usp = new URLSearchParams();
+        if (st) usp.set("start_time", st);
+        if (et) usp.set("end_time", et);
+        for (const t of types) usp.append("leixing", t);
+        return usp;
+    }
+
     function applyDisplayFlags(usp, showRatio, showHb) {
         usp.set("show_ratio", showRatio ? "1" : "0");
         usp.set("show_hb", showHb ? "1" : "0");
@@ -309,6 +341,13 @@
         const usp = applyDisplayFlags(buildBaseQueryParams(), showRatio, showHb);
         usp.set("fmt", fmt);
         const href = `${EXPORT_SUMMARY_URL}?${usp.toString()}`;
+        window.location.href = href;
+    }
+
+    function doReportExport(fmt) {
+        const usp = buildReportQueryParams();
+        usp.set("fmt", fmt);
+        const href = `${REPORT_EXPORT_URL}?${usp.toString()}`;
         window.location.href = href;
     }
 

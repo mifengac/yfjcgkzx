@@ -638,21 +638,15 @@ def fetch_wcnr_shr_ajxx_base_rows(
         sql.SQL(
             """
             SELECT
-              ajxx_ajbh AS "案件编号",
-              ajxx_jqbh AS "警情编号",
-              ajxx_ajmc AS "案件名称",
-              ajxx_ajlx AS "案件类型",
-              ajxx_ajzt AS "案件状态",
-              ajxx_ay AS "案由",
-              ajxx_ay_dm AS "案由代码",
-              ajxx_fasj AS "发案时间",
-              ajxx_lasj AS "立案时间",
-              ajxx_sldw_mc AS "受理单位",
-              ajxx_cbdw_mc AS "承办单位",
-              LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
-              ajxx_zbbj AS "在办标记",
-              ajxx_ajly AS "案件来源",
-              ajxx_fadd AS "发案地点"
+                ajxx_ajbh AS "案件编号",
+                ajxx_jqbh AS "警情编号",
+                ajxx_ajmc AS "案件名称",
+                ajxx_ajlx AS "案件类型",
+                ajxx_aymc AS "案由名称",
+                ajxx_lasj AS "立案时间",
+                ajxx_cbdw_mc AS "承办单位",
+                LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
+                ajxx_jyaq 简要案情, ajxx_aymc 案由, ajxx_ajzt 案件状态,ajxx_fadd 发案地点,ajxx_fasj 发案时间
             FROM {schema}.zq_zfba_wcnr_shr_ajxx
             WHERE ajxx_lasj BETWEEN %s AND %s
               AND ajxx_ajzt NOT IN ('已撤销','已合并')

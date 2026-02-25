@@ -199,7 +199,6 @@ def count_jyh_after_cases_by_diqu(
     only_xingshi: bool,
 ) -> Tuple[Dict[str, int], int]:
     leixing_list = _normalize_leixing_list(leixing_list)
-    sfz_case_col = _resolve_sfzxx_case_col(conn)
 
     if leixing_list:
         type_condition = sql.SQL(
@@ -221,23 +220,33 @@ def count_jyh_after_cases_by_diqu(
 
     query = sql.SQL(
         """
+        WITH grads AS (
+            -- 同一身份证号在统计区间内若有多次离校，取最新一次，避免重复计数
+            SELECT DISTINCT ON (zws."sfzhm")
+                zws."sfzhm" AS sfzhm,
+                COALESCE(LEFT(COALESCE(zws."hjdq", ''), 6), '未知') AS 地区,
+                zws."rx_time" AS 入校时间
+            FROM "ywdata"."zq_wcnr_sfzxx" zws
+            WHERE zws."lx_time" BETWEEN %s AND %s
+            ORDER BY zws."sfzhm", zws."lx_time" DESC
+        )
         SELECT
-            COALESCE(LEFT(COALESCE(zws."hjdq", ''), 6), '未知') AS 地区,
+            g.地区 AS 地区,
             COUNT(*)::INT AS cnt
-        FROM "ywdata"."zq_wcnr_sfzxx" zws
-        INNER JOIN "ywdata"."v_wcnr_wfry_base" zzx
-            ON zws."sfzhm" = zzx."身份证号"
-           AND COALESCE(zws.{sfz_case_col}::text, '') = COALESCE(zzx."案件编号"::text, '')
-        WHERE zws."lx_time" BETWEEN %s AND %s
-          AND TO_CHAR(zws."lx_time", 'YYYY-MM-DD') <= TO_CHAR(zzx."立案时间", 'YYYY-MM-DD')
-          {xingshi_condition}
-          {type_condition}
-        GROUP BY COALESCE(LEFT(COALESCE(zws."hjdq", ''), 6), '未知')
+        FROM grads g
+        WHERE EXISTS (
+            SELECT 1
+            FROM "ywdata"."v_wcnr_wfry_base" zzx
+            WHERE zzx."身份证号" = g.sfzhm
+              AND TO_CHAR(g."入校时间", 'YYYY-MM-DD') <= TO_CHAR(zzx."立案时间", 'YYYY-MM-DD')
+              {xingshi_condition}
+              {type_condition}
+        )
+        GROUP BY g.地区
         """
     ).format(
         xingshi_condition=xingshi_condition,
         type_condition=type_condition,
-        sfz_case_col=sql.Identifier(sfz_case_col),
     )
 
     params = [start_date, end_date] + type_params
@@ -260,7 +269,6 @@ def fetch_jyh_after_cases_detail(
     diqu: str | None,
 ) -> List[Dict[str, Any]]:
     leixing_list = _normalize_leixing_list(leixing_list)
-    sfz_case_col = _resolve_sfzxx_case_col(conn)
 
     if leixing_list:
         type_condition = sql.SQL(
@@ -281,7 +289,7 @@ def fetch_jyh_after_cases_detail(
     xingshi_condition = sql.SQL(' AND zzx."案件类型" = \'刑事\' ') if only_xingshi else sql.SQL("")
 
     if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
-        diqu_condition = sql.SQL(" AND LEFT(COALESCE(zws.\"hjdq\", ''), 6) = %s ")
+        diqu_condition = sql.SQL(" AND g.地区 = %s ")
         diqu_params = [str(diqu).strip()]
     else:
         diqu_condition = sql.SQL("")
@@ -289,39 +297,55 @@ def fetch_jyh_after_cases_detail(
 
     query = sql.SQL(
         """
+        WITH grads AS (
+            -- 同一身份证号在统计区间内若有多次离校，取最新一次
+            SELECT DISTINCT ON (zws."sfzhm")
+                zws."sfzhm" AS sfzhm,
+                LEFT(COALESCE(zws."hjdq", ''), 6) AS 地区,
+                zws."xm" AS 学生姓名,
+                zws."xb" AS 性别,
+                zws."sfzhm" AS 身份证号,
+                zws."hjdq" AS 户籍地区,
+                zws."hjdz" AS 户籍地址,
+                zws."nj" AS 年级,
+                zws."rx_time" AS 入校时间_raw,
+                zws."lx_time" AS 离校时间_raw,
+                zws."lxdh" AS 联系电话,
+                zws."yxx" AS 学校
+            FROM "ywdata"."zq_wcnr_sfzxx" zws
+            WHERE zws."lx_time" BETWEEN %s AND %s
+            ORDER BY zws."sfzhm", zws."lx_time" DESC
+        )
         SELECT
-            LEFT(COALESCE(zws."hjdq", ''), 6) AS 地区,
-            zws."xm" AS 学生姓名,
-            zws."xb" AS 性别,
-            zws."sfzhm" AS 身份证号,
-            zws."hjdq" AS 户籍地区,
-            zws."hjdz" AS 户籍地址,
-            zws."nj" AS 年级,
-            TO_CHAR(zws."rx_time", 'YYYY-MM-DD') AS 入校时间,
-            TO_CHAR(zws."lx_time", 'YYYY-MM-DD') AS 离校时间,
-            zws."lxdh" AS 联系电话,
-            zws."yxx" AS 学校,
+            g.地区 AS 地区,
+            g.学生姓名 AS 学生姓名,
+            g.性别 AS 性别,
+            g.身份证号 AS 身份证号,
+            g.户籍地区 AS 户籍地区,
+            g.户籍地址 AS 户籍地址,
+            g.年级 AS 年级,
+            TO_CHAR(g."入校时间_raw", 'YYYY-MM-DD') AS 入校时间,
+            TO_CHAR(g."离校时间_raw", 'YYYY-MM-DD') AS 离校时间,
+            g.联系电话 AS 联系电话,
+            g.学校 AS 学校,
 
             zzx."案件编号" AS 案件编号,
             zzx."案件类型" AS 案件类型,
             zzx."案由" AS 案由,
             TO_CHAR(zzx."立案时间", 'YYYY-MM-DD HH24:MI:SS') AS 立案时间
-        FROM "ywdata"."zq_wcnr_sfzxx" zws
+        FROM grads g
         INNER JOIN "ywdata"."v_wcnr_wfry_base" zzx
-            ON zws."sfzhm" = zzx."身份证号"
-           AND COALESCE(zws.{sfz_case_col}::text, '') = COALESCE(zzx."案件编号"::text, '')
-        WHERE zws."lx_time" BETWEEN %s AND %s
-          AND TO_CHAR(zws."lx_time", 'YYYY-MM-DD') <= TO_CHAR(zzx."立案时间", 'YYYY-MM-DD')
+            ON g.sfzhm = zzx."身份证号"
+           AND TO_CHAR(g."入校时间_raw", 'YYYY-MM-DD') <= TO_CHAR(zzx."立案时间", 'YYYY-MM-DD')
           {xingshi_condition}
           {type_condition}
           {diqu_condition}
-        ORDER BY zws."lx_time" DESC, zws."sfzhm", zzx."立案时间" DESC
+        ORDER BY g."离校时间_raw" DESC, g.sfzhm, zzx."立案时间" DESC
         """
     ).format(
         xingshi_condition=xingshi_condition,
         type_condition=type_condition,
         diqu_condition=diqu_condition,
-        sfz_case_col=sql.Identifier(sfz_case_col),
     )
 
     params = [start_date, end_date] + type_params + diqu_params
