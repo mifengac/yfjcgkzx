@@ -59,6 +59,24 @@ class ZongchaJobDef:
     time_field_codes: Sequence[str]
 
 
+FETCH_SOURCE_REGISTRY: List[Dict[str, Any]] = [
+    {"key": "xjs", "name": "训诫书", "table": "zq_zfba_xjs", "pk_fields": ["xjs_id"], "time_field_codes": ["xjs_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "jtjyzdtzs", "name": "加强监督教育/责令接受家庭教育指导通知书", "table": "zq_zfba_jtjyzdtzs", "pk_fields": ["jqjhjyzljsjtjyzdtzs_id"], "time_field_codes": ["jqjhjyzljsjtjyzdtzs_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "zltzs", "name": "责令未成年人遵守特定行为规范通知书", "table": "zq_zfba_zlwcnrzstdxwgftzs", "pk_fields": ["zltzs_id"], "time_field_codes": ["zltzs_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "wcnr_xyr", "name": "未成年人(嫌疑人)", "table": "zq_zfba_wcnr_xyr", "pk_fields": ["ajxx_ajbhs", "xyrxx_sfzh"], "time_field_codes": ["xyrxx_lrsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "wcnr_shr_ajxx", "name": "未成年人(受害人)案件", "table": "zq_zfba_wcnr_shr_ajxx", "pk_fields": ["ajxx_ajbh"], "time_field_codes": ["ajxx_lasj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "wcnr_ajxx", "name": "未成年人案件", "table": "zq_zfba_wcnr_ajxx", "pk_fields": ["ajxx_ajbh"], "time_field_codes": ["ajxx_lasj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "ajxx", "name": "案件信息", "table": "zq_zfba_ajxx", "pk_fields": ["ajxx_ajbh"], "time_field_codes": ["ajxx_lasj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "xzcfjds", "name": "行政处罚决定书", "table": "zq_zfba_xzcfjds", "pk_fields": ["xzcfjds_id"], "time_field_codes": ["xzcfjds_spsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "byxzcfjds", "name": "不予行政处罚决定书", "table": "zq_zfba_byxzcfjds", "pk_fields": ["byxzcfjds_id"], "time_field_codes": ["byxzcfjds_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "jlz", "name": "拘留证", "table": "zq_zfba_jlz", "pk_fields": ["jlz_id"], "time_field_codes": ["jlz_pzsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "dbz", "name": "逮捕证", "table": "zq_zfba_dbz", "pk_fields": ["dbz_id"], "time_field_codes": ["dbz_pzdbsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "ysajtzs", "name": "移送案件通知书", "table": "zq_zfba_ysajtzs", "pk_fields": ["ysajtzs_id"], "time_field_codes": ["ysajtzs_pzsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "qsryxx", "name": "起诉人员信息", "table": "zq_zfba_qsryxx", "pk_fields": ["ajxx_ajbh", "qsryxx_rybh"], "time_field_codes": ["qsryxx_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "xyrxx", "name": "嫌疑人信息", "table": "zq_zfba_xyrxx", "pk_fields": ["ajxx_ajbhs", "xyrxx_sfzh"], "time_field_codes": ["xyrxx_lrsj"], "requires": "cookie+authorization", "time_mode": "range"},
+]
+
+
 _STATUS_LOCK = threading.Lock()
 _JOB_STATUS: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
@@ -521,10 +539,40 @@ def _build_job_defs(*, base_forms: Dict[str, Dict[str, str]], start_time: str, e
     return jobs
 
 
+def get_fetch_sources() -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for cfg in FETCH_SOURCE_REGISTRY:
+        out.append(
+            {
+                "key": str(cfg.get("key") or "").strip(),
+                "name": str(cfg.get("name") or "").strip(),
+                "table": str(cfg.get("table") or "").strip(),
+                "pk_fields": list(cfg.get("pk_fields") or []),
+                "requires": str(cfg.get("requires") or "cookie+authorization"),
+                "time_mode": str(cfg.get("time_mode") or "range"),
+            }
+        )
+    return out
+
+
 def _filter_jobs(job_defs: Sequence[ZongchaJobDef], *, sources: Sequence[str]) -> List[ZongchaJobDef]:
     if not sources:
         return list(job_defs)
-    want = set([str(s).strip() for s in sources if str(s).strip()])
+    source_name_map: Dict[str, str] = {}
+    for cfg in FETCH_SOURCE_REGISTRY:
+        key = str(cfg.get("key") or "").strip()
+        name = str(cfg.get("name") or "").strip()
+        if key:
+            source_name_map[key] = name
+        if name:
+            source_name_map[name] = name
+
+    want = set()
+    for s in sources:
+        raw = str(s).strip()
+        if not raw:
+            continue
+        want.add(source_name_map.get(raw, raw))
     if not want:
         return list(job_defs)
     return [j for j in job_defs if j.name in want]

@@ -81,27 +81,8 @@
                     <label style="display:flex; align-items:center; gap:8px;">
                         <span class="muted">数据源</span>
                         <div class="multi-select" id="sourceMs">
-                            <div class="multi-select-display" id="sourceMsDisplay">全部</div>
-                            <div class="multi-select-dropdown" id="sourceMsDropdown">
-                                <label class="multi-select-option">
-                                    <input type="checkbox" value="_all" checked>
-                                    <span>全选</span>
-                                </label>
-                                <label class="multi-select-option"><input type="checkbox" value="训诫书" checked><span>训诫书</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="加强监督教育/责令接受家庭教育指导通知书" checked><span>家庭教育指导通知书</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="责令未成年人遵守特定行为规范通知书" checked><span>责令未成年人遵守特定行为规范通知书</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="未成年人(嫌疑人)" checked><span>未成年人(嫌疑人)</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="未成年人(受害人)案件" checked><span>未成年人(受害人)案件</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="未成年人案件" checked><span>未成年人案件</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="案件信息" checked><span>案件信息</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="行政处罚决定书" checked><span>行政处罚决定书</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="不予行政处罚决定书" checked><span>不予行政处罚决定书</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="拘留证" checked><span>拘留证</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="逮捕证" checked><span>逮捕证</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="移送案件通知书" checked><span>移送案件通知书</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="起诉人员信息" checked><span>起诉人员信息</span></label>
-                                <label class="multi-select-option"><input type="checkbox" value="嫌疑人信息" checked><span>嫌疑人信息</span></label>
-                            </div>
+                            <div class="multi-select-display" id="sourceMsDisplay">加载中...</div>
+                            <div class="multi-select-dropdown" id="sourceMsDropdown"></div>
                         </div>
                     </label>
                     <span class="muted">默认开始：{{ default_start }}；默认结束：{{ default_end }}</span>
@@ -254,6 +235,7 @@
 
 <script>
     let fetchTabUnlocked = {{ fetch_tab_unlocked | default(false) | tojson }};
+    let fetchSourcesLoaded = false;
     let tqwsSourcesLoaded = false;
 
     const modal = document.getElementById('modal');
@@ -289,28 +271,38 @@
     const sourceMsDropdown = document.getElementById('sourceMsDropdown');
 
     function openSourceDropdown() {
+        if (!sourceMsDropdown) return;
         sourceMsDropdown.classList.add('open');
     }
     function closeSourceDropdown() {
+        if (!sourceMsDropdown) return;
         sourceMsDropdown.classList.remove('open');
     }
     function selectedSources() {
+        if (!sourceMsDropdown) return [];
         const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]'));
         return boxes
             .filter(b => b.value !== '_all' && b.checked)
             .map(b => b.value);
     }
     function syncAllCheckbox() {
+        if (!sourceMsDropdown) return;
         const allBox = sourceMsDropdown.querySelector('input[value="_all"]');
+        if (!allBox) return;
         const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== '_all');
-        const allChecked = boxes.every(b => b.checked);
-        const noneChecked = boxes.every(b => !b.checked);
+        const allChecked = boxes.length > 0 && boxes.every(b => b.checked);
+        const noneChecked = boxes.length === 0 || boxes.every(b => !b.checked);
         allBox.checked = allChecked;
-        allBox.indeterminate = !allChecked && !noneChecked;
+        allBox.indeterminate = boxes.length > 0 && !allChecked && !noneChecked;
     }
     function renderSourceLabel() {
+        if (!sourceMsDisplay || !sourceMsDropdown) return;
         const sel = selectedSources();
         const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== '_all');
+        if (boxes.length === 0) {
+            sourceMsDisplay.textContent = '暂无数据源';
+            return;
+        }
         if (sel.length === 0) {
             sourceMsDisplay.textContent = '未选择';
             return;
@@ -322,28 +314,66 @@
         sourceMsDisplay.textContent = `已选 ${sel.length} 项`;
     }
 
-    sourceMsDisplay.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (sourceMsDropdown.classList.contains('open')) closeSourceDropdown();
-        else openSourceDropdown();
-    });
-    sourceMsDropdown.addEventListener('click', (e) => e.stopPropagation());
-    document.addEventListener('click', () => closeSourceDropdown());
-
-    sourceMsDropdown.addEventListener('change', (e) => {
-        const t = e.target;
-        if (!t || t.tagName !== 'INPUT') return;
-        if (t.value === '_all') {
-            const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== '_all');
-            boxes.forEach(b => { b.checked = t.checked; });
-        } else {
-            syncAllCheckbox();
+    async function loadFetchSources() {
+        if (!sourceMsDropdown) return;
+        sourceMsDropdown.innerHTML = '<div class="muted" style="padding:8px;">加载中...</div>';
+        const resp = await fetch(`{{ url_for('hqzcsj.zongcha_sources') }}?scope=fetch`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+        });
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || '加载数据源失败');
+        const items = data.data || [];
+        const html = [];
+        html.push('<label class="multi-select-option"><input type="checkbox" value="_all" checked><span>全选</span></label>');
+        for (const it of items) {
+            const key = (it && it.key) ? String(it.key).trim() : '';
+            if (!key) continue;
+            const name = (it && it.name) ? String(it.name).trim() : key;
+            const table = (it && it.table) ? String(it.table).trim() : '';
+            const label = table ? `${name}（入库：${table}）` : name;
+            html.push(`<label class="multi-select-option"><input type="checkbox" value="${escapeHtml(key)}" checked><span>${escapeHtml(label)}</span></label>`);
         }
+        sourceMsDropdown.innerHTML = html.join('');
+        syncAllCheckbox();
         renderSourceLabel();
-    });
-    // 初始状态
-    syncAllCheckbox();
-    renderSourceLabel();
+    }
+
+    async function tryLoadFetchSources() {
+        if (fetchSourcesLoaded || !fetchTabUnlocked) {
+            if (!fetchTabUnlocked && sourceMsDisplay) sourceMsDisplay.textContent = '请输入密码后加载';
+            return;
+        }
+        fetchSourcesLoaded = true;
+        try {
+            await loadFetchSources();
+        } catch (e) {
+            fetchSourcesLoaded = false;
+            if (sourceMsDisplay) sourceMsDisplay.textContent = '加载失败';
+            console.error(e);
+        }
+    }
+
+    if (sourceMsDisplay && sourceMsDropdown) {
+        sourceMsDisplay.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (sourceMsDropdown.classList.contains('open')) closeSourceDropdown();
+            else openSourceDropdown();
+        });
+        sourceMsDropdown.addEventListener('click', (e) => e.stopPropagation());
+        document.addEventListener('click', () => closeSourceDropdown());
+        sourceMsDropdown.addEventListener('change', (e) => {
+            const t = e.target;
+            if (!t || t.tagName !== 'INPUT') return;
+            if (t.value === '_all') {
+                const boxes = Array.from(sourceMsDropdown.querySelectorAll('input[type="checkbox"]')).filter(b => b.value !== '_all');
+                boxes.forEach(b => { b.checked = t.checked; });
+            } else {
+                syncAllCheckbox();
+            }
+            renderSourceLabel();
+        });
+    }
 
     function openTqwsSourceDropdown() {
         if (!tqwsSourceMsDropdown) return;
@@ -397,7 +427,10 @@
     async function loadTqwsSources() {
         if (!tqwsSourceMsDropdown) return;
         tqwsSourceMsDropdown.innerHTML = '<div class="muted" style="padding:8px;">加载中...</div>';
-        const resp = await fetch(`{{ url_for('hqzcsj.tqws_sources') }}`, { method: 'GET', headers: { 'Accept': 'application/json' } });
+        const resp = await fetch(`{{ url_for('hqzcsj.zongcha_sources') }}?scope=tqws`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+        });
         const data = await resp.json();
         if (!data.success) throw new Error(data.message || '加载文书数据源失败');
         const items = data.data || [];
@@ -473,7 +506,7 @@
                 return false;
             }
             fetchTabUnlocked = true;
-            await tryLoadTqwsSources();
+            await Promise.all([tryLoadFetchSources(), tryLoadTqwsSources()]);
             return true;
         } catch (e) {
             alert(e.message || '验证失败');
@@ -491,6 +524,7 @@
         document.getElementById("tab-wcnr1393").classList.toggle("active", t === "wcnr1393");
     }
 
+    tryLoadFetchSources();
     tryLoadTqwsSources();
 
     function openModal() {
@@ -640,6 +674,7 @@
         const sources = selectedSources();
 
         try {
+            if (!sources || sources.length === 0) throw new Error('请至少选择 1 个数据源');
             const resp = await fetch(`{{ url_for('hqzcsj.zongcha_start') }}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },

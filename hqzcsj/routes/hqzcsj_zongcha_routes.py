@@ -20,8 +20,9 @@ from flask import Blueprint, abort, jsonify, redirect, render_template, request,
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.service.jsxx_service import get_jsxx_job_status, get_jsxx_sources, start_jsxx_job
+from hqzcsj.service.zongcha_source_catalog_service import get_source_catalog
 from hqzcsj.service.zongcha_service import start_zongcha_job, get_zongcha_job_status
-from hqzcsj.service.tqws_service import get_tqws_job_status, get_tqws_sources, start_tqws_job
+from hqzcsj.service.tqws_service import get_tqws_job_status, start_tqws_job
 from hqzcsj.service.zfba_jq_aj_service import default_time_range_for_page as jqaj_default_range
 
 
@@ -141,6 +142,19 @@ def zongcha_status(job_id: str) -> Any:
     return jsonify({"success": True, "data": status})
 
 
+@hqzcsj_bp.route("/zongcha/api/sources")
+def zongcha_sources() -> Any:
+    guard_resp = _guard_fetch_tab_api()
+    if guard_resp:
+        return guard_resp
+
+    scope = (request.args.get("scope") or "all").strip().lower()
+    if scope not in ("fetch", "tqws", "all"):
+        return jsonify({"success": False, "message": "scope 仅支持 fetch/tqws/all"}), 400
+    data = get_source_catalog(scope=scope)
+    return jsonify({"success": True, "data": data})
+
+
 @hqzcsj_bp.route("/zongcha/tqws/api/start", methods=["POST"])
 def tqws_start() -> Any:
     guard_resp = _guard_fetch_tab_api()
@@ -193,7 +207,9 @@ def tqws_sources() -> Any:
     if guard_resp:
         return guard_resp
 
-    return jsonify({"success": True, "data": get_tqws_sources()})
+    data = get_source_catalog(scope="tqws")
+    legacy_data = [{"key": x.get("key"), "name": x.get("name"), "table": x.get("table")} for x in data]
+    return jsonify({"success": True, "data": legacy_data})
 
 
 @hqzcsj_bp.route("/zongcha/jsxx/api/start", methods=["POST"])

@@ -132,6 +132,11 @@ def _normalize_source_key(source: str) -> str:
         "训诫书(未成年人)": "xjs2",
         "训诫书2": "xjs2",
         "训诫书": "xjs2",
+        # 加强监督教育/责令接受家庭教育指导通知书（新）
+        "jtjyzdtzs2": "jtjyzdtzs2",
+        "加强监督教育/责令接受家庭教育指导通知书(新)": "jtjyzdtzs2",
+        "加强监督教育/责令接受家庭教育指导通知书（新）": "jtjyzdtzs2",
+        "加强监督教育/责令接受家庭教育指导通知书2": "jtjyzdtzs2",
     }
     return mapping.get(s, s)
 
@@ -211,12 +216,44 @@ TQWS_SOURCE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "op": "and",
         },
     },
+    "jtjyzdtzs2": {
+        "key": "jtjyzdtzs2",
+        "name": "加强监督教育/责令接受家庭教育指导通知书(新)",
+        "table": "zq_zfba_jtjyzdtzs2",
+        "where": {
+            "rules": [
+                {"field": "AJBH", "op": "like", "value": "", "type": "string", "format": ""},
+                {
+                    "field": "WS_ID",
+                    "op": "like",
+                    "value": "16D4504F3D133E95E06307E21D44D3E7,2355D72E6AA448329C46D56C8A57B8B4",
+                    "type": "string",
+                    "format": "",
+                    "linkOp": "or",
+                },
+                {"field": "WSZH", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "XGRY_XM", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "DYCS", "op": "between", "value": "0|999", "type": "number", "format": ""},
+                {"field": "DYSJ", "op": "between", "value": "|", "type": "date", "format": "yyyy/MM/dd HH:mm:ss"},
+                {"field": "CBDW_MC", "op": "like", "value": "", "type": "string", "format": "", "linkOp": "or"},
+                {"field": "CBDW_BH_1", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "CBR_XM", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "KJSJ", "op": "between", "value": "|", "type": "date", "format": "yyyy/MM/dd HH:mm:ss"},
+                {"field": "SPSJ", "op": "between", "value": "|", "type": "date", "format": "yyyy/MM/dd HH:mm:ss"},
+                {"field": "WSZT", "op": "like", "value": "03", "type": "string", "format": "", "linkOp": "or"},
+            ],
+            "op": "and",
+        },
+        "extra_form": {
+            "new-password": "",
+        },
+    },
 }
 
 
 def get_tqws_sources() -> List[Dict[str, str]]:
     out: List[Dict[str, str]] = []
-    for k in ("tqws", "xjs2"):
+    for k in ("tqws", "xjs2", "jtjyzdtzs2"):
         cfg = TQWS_SOURCE_REGISTRY.get(k)
         if not cfg:
             continue
@@ -229,7 +266,30 @@ def get_tqws_sources() -> List[Dict[str, str]]:
     return out
 
 
-def _make_form(*, token: str, where_obj: Dict[str, Any], page: int) -> Dict[str, Any]:
+def get_tqws_source_catalog() -> List[Dict[str, Any]]:
+    pk_name = str(COMMON_OTHER_PARAMS.get("pkName") or "ID").strip() or "ID"
+    out: List[Dict[str, Any]] = []
+    for item in get_tqws_sources():
+        out.append(
+            {
+                "key": str(item.get("key") or "").strip(),
+                "name": str(item.get("name") or "").strip(),
+                "table": str(item.get("table") or "").strip(),
+                "pk_fields": [pk_name],
+                "requires": "access_token",
+                "time_mode": "none",
+            }
+        )
+    return out
+
+
+def _make_form(
+    *,
+    token: str,
+    where_obj: Dict[str, Any],
+    page: int,
+    extra_form: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     form: Dict[str, Any] = {
         **COMMON_OTHER_PARAMS,
         "access_token": token,
@@ -237,6 +297,9 @@ def _make_form(*, token: str, where_obj: Dict[str, Any], page: int) -> Dict[str,
         "page": str(page),
         "pagesize": "1000",
     }
+    if isinstance(extra_form, dict):
+        for k, v in extra_form.items():
+            form[str(k)] = v
     return form
 
 
@@ -277,6 +340,9 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                 where_obj = cfg["where"]
                 if not isinstance(where_obj, dict):
                     raise RuntimeError(f"数据源 where 配置非法: {raw_source}")
+                extra_form = cfg.get("extra_form")
+                if extra_form is not None and not isinstance(extra_form, dict):
+                    raise RuntimeError(f"数据源 extra_form 配置非法: {raw_source}")
 
                 fetched_total = 0
                 processed_total = 0
@@ -286,7 +352,7 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                 cur_page = 1
                 max_pages = 5000
 
-                first_form = _make_form(token=token, where_obj=where_obj, page=cur_page)
+                first_form = _make_form(token=token, where_obj=where_obj, page=cur_page, extra_form=extra_form)
                 _update_status(
                     key,
                     progress={"current": overall_fetched, "total": 0},
@@ -333,7 +399,7 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                     if page_idx > max_pages:
                         raise RuntimeError(f"{source_name}：超过最大页数限制：max_pages={max_pages}")
                     next_page = cur_page + (page_idx - 1)
-                    form = _make_form(token=token, where_obj=where_obj, page=next_page)
+                    form = _make_form(token=token, where_obj=where_obj, page=next_page, extra_form=extra_form)
                     _update_status(
                         key,
                         progress={"current": overall_fetched, "total": 0},

@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Literal
 
+from gonggong.config.database import get_database_connection
+from hqzcsj.dao import jzqk_tongji_dao
+
 from . import dao
+from .constants import map_region_name
 
 
 Region = Literal["云城", "云安", "罗定", "新兴", "郁南", "全市"]
 REGIONS: List[Region] = ["云城", "云安", "罗定", "新兴", "郁南", "全市"]
+REGIONS_JZQK: List[str] = ["云城", "云安", "罗定", "新兴", "郁南", "市局", "其他", "全市"]
 
 
 @dataclass(frozen=True)
@@ -25,13 +31,82 @@ def _pct(n: int, d: int) -> float:
     return round((n / d) * 100.0, 2)
 
 
-def _region_group(detail_rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    groups: Dict[str, List[Dict[str, Any]]] = {r: [] for r in REGIONS if r != "全市"}  # type: ignore[misc]
+def _normalize_region(value: Any) -> str:
+    mapped = str(map_region_name(value) or "").strip()
+    if mapped in ("云城", "云安", "罗定", "新兴", "郁南", "市局"):
+        return mapped
+    return "其他"
+
+
+def _region_group(detail_rows: List[Dict[str, Any]], region_order: List[str] | None = None) -> Dict[str, List[Dict[str, Any]]]:
+    order = region_order or [str(r) for r in REGIONS]
+    groups: Dict[str, List[Dict[str, Any]]] = {r: [] for r in order if r != "全市"}
     for r in detail_rows:
-        region = str(r.get("地区") or "").strip()
+        region = _normalize_region(r.get("地区"))
         if region in groups:
             groups[region].append(r)
     return groups
+
+
+def _fmt_dt(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _is_yes(value: Any) -> bool:
+    return str(value or "").strip() == "是"
+
+
+def _is_no(value: Any) -> bool:
+    return str(value or "").strip() == "否"
+
+
+def _to_int_or_none(value: Any) -> int | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return int(text)
+    return None
+
+
+def _is_jzjy_numerator(row: Dict[str, Any]) -> bool:
+    return (
+        _is_yes(row.get("是否开具矫治文书"))
+        or _is_yes(row.get("是否刑拘"))
+        or (_is_yes(row.get("治拘大于4天")) and _is_no(row.get("是否治拘不送")))
+        or _is_yes(row.get("是否送校"))
+    )
+
+
+def _is_sx_candidate(row: Dict[str, Any]) -> bool:
+    if str(row.get("案件类型") or "").strip() != "刑事":
+        return False
+    if not _is_no(row.get("是否刑拘")):
+        return False
+    age = _to_int_or_none(row.get("年龄"))
+    return age is not None and age > 12
+
+
+def _is_sx_numerator(row: Dict[str, Any]) -> bool:
+    return _is_sx_candidate(row) and _is_yes(row.get("是否送校"))
+
+
+def _fetch_jzqk_rows(start_time: datetime, end_time: datetime, case_types: List[str] | None = None) -> List[Dict[str, Any]]:
+    leixing_list = [str(t).strip() for t in (case_types or []) if str(t).strip()]
+    conn = get_database_connection()
+    try:
+        rows = jzqk_tongji_dao.fetch_jzqk_data(
+            conn,
+            start_time=_fmt_dt(start_time),
+            end_time=_fmt_dt(end_time),
+            leixing_list=leixing_list,
+        )
+    finally:
+        conn.close()
+
+    for row in rows:
+        row["地区"] = _normalize_region(row.get("地区"))
+    return rows
 
 
 def metric_jq_za(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
@@ -60,21 +135,21 @@ def metric_jq_za(start_time: datetime, end_time: datetime, case_types: List[str]
 
 def metric_jzjy(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "采取矫治教育措施率"
-    detail_rows = dao.query_jzjy_details(start_time, end_time, case_types)
-    groups = _region_group(detail_rows)
+    detail_rows = _fetch_jzqk_rows(start_time, end_time, case_types)
+    groups = _region_group(detail_rows, REGIONS_JZQK)
 
     all_total = len(detail_rows)
-    all_yes = sum(1 for r in detail_rows if str(r.get("是否开具文书") or "") == "是")
+    all_yes = sum(1 for r in detail_rows if _is_jzjy_numerator(r))
 
     chart_rows: List[Dict[str, Any]] = []
-    for region in REGIONS:
+    for region in REGIONS_JZQK:
         if region == "全市":
             total = all_total
             yes = all_yes
         else:
             rows = groups.get(region, [])
             total = len(rows)
-            yes = sum(1 for r in rows if str(r.get("是否开具文书") or "") == "是")
+            yes = sum(1 for r in rows if _is_jzjy_numerator(r))
         chart_rows.append(
             {
                 "地区": region,
@@ -83,6 +158,7 @@ def metric_jzjy(start_time: datetime, end_time: datetime, case_types: List[str] 
                 "采取矫治教育措施率": _pct(yes, total),
             }
         )
+    logging.info("djdo metric_jzjy: total=%s numerator=%s", all_total, all_yes)
 
     return MetricResult(
         title=title,
@@ -94,32 +170,26 @@ def metric_jzjy(start_time: datetime, end_time: datetime, case_types: List[str] 
 
 def metric_sx_sx(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "涉刑人员送学率"
-    detail_rows = dao.query_sx_sx_details(start_time, end_time, case_types)
-    groups = _region_group(detail_rows)
+    base_rows = _fetch_jzqk_rows(start_time, end_time, case_types)
+    detail_rows = [r for r in base_rows if _is_sx_candidate(r)]
+    groups = _region_group(detail_rows, REGIONS_JZQK)
 
-    all_total = sum(
-        1
-        for r in detail_rows
-        if str(r.get("案件类型") or "") == "刑事" and str(r.get("是否符合送生") or "") == "是"
-    )
-    all_yes = sum(1 for r in detail_rows if str(r.get("是否送校") or "") == "是")
+    all_total = len(detail_rows)
+    all_yes = sum(1 for r in detail_rows if _is_yes(r.get("是否送校")))
 
     chart_rows: List[Dict[str, Any]] = []
-    for region in REGIONS:
+    for region in REGIONS_JZQK:
         if region == "全市":
             total = all_total
             yes = all_yes
         else:
             rows = groups.get(region, [])
-            total = sum(
-                1
-                for r in rows
-                if str(r.get("案件类型") or "") == "刑事" and str(r.get("是否符合送生") or "") == "是"
-            )
-            yes = sum(1 for r in rows if str(r.get("是否送校") or "") == "是")
+            total = len(rows)
+            yes = sum(1 for r in rows if _is_yes(r.get("是否送校")))
         chart_rows.append(
             {"地区": region, "符合涉刑人员送学人数": total, "实际送学人数": yes, "涉刑人员送学率": _pct(yes, total)}
         )
+    logging.info("djdo metric_sx_sx: total=%s numerator=%s", all_total, all_yes)
 
     return MetricResult(
         title=title,
@@ -131,22 +201,23 @@ def metric_sx_sx(start_time: datetime, end_time: datetime, case_types: List[str]
 
 def metric_zljqjh(start_time: datetime, end_time: datetime, case_types: List[str] = None) -> MetricResult:
     title = "责令加强监护率"
-    detail_rows = dao.query_zljqjh_details(start_time, end_time, case_types)
-    groups = _region_group(detail_rows)
+    detail_rows = _fetch_jzqk_rows(start_time, end_time, case_types)
+    groups = _region_group(detail_rows, REGIONS_JZQK)
 
     all_total = len(detail_rows)
-    all_yes = sum(1 for r in detail_rows if str(r.get("是否开具文书") or "") == "是")
+    all_yes = sum(1 for r in detail_rows if _is_yes(r.get("是否开具家庭教育指导书")))
 
     chart_rows: List[Dict[str, Any]] = []
-    for region in REGIONS:
+    for region in REGIONS_JZQK:
         if region == "全市":
             total = all_total
             yes = all_yes
         else:
             rows = groups.get(region, [])
             total = len(rows)
-            yes = sum(1 for r in rows if str(r.get("是否开具文书") or "") == "是")
+            yes = sum(1 for r in rows if _is_yes(r.get("是否开具家庭教育指导书")))
         chart_rows.append({"地区": region, "应责令加强监护人数": total, "已责令加强监护人数": yes, "责令加强监护率": _pct(yes, total)})
+    logging.info("djdo metric_zljqjh: total=%s numerator=%s", all_total, all_yes)
 
     return MetricResult(
         title=title,
@@ -264,12 +335,12 @@ def get_responsible_sms_data(start_time: datetime, end_time: datetime, case_type
 
     current_year = datetime.now().year
     modules: Dict[str, Any] = {}
+    jzqk_details = _fetch_jzqk_rows(start_time, end_time, case_types)
 
-    # 1. 采取矫治教育措施率（是否开具文书='否'）
-    jzjy_details = dao.query_jzjy_details(start_time, end_time, case_types)
+    # 1. 采取矫治教育措施率（不满足分子条件）
     jzjy_items = []
-    for record in jzjy_details:
-        if str(record.get("是否开具文书") or "") != "否":
+    for record in jzqk_details:
+        if _is_jzjy_numerator(record):
             continue
 
         case_name = str(record.get("案件名称") or "")
@@ -303,11 +374,12 @@ def get_responsible_sms_data(start_time: datetime, end_time: datetime, case_type
             "items": jzjy_items,
         }
 
-    # 2. 涉刑人员送学率（是否送校='否'）
-    sx_sx_details = dao.query_sx_sx_details(start_time, end_time, case_types)
+    # 2. 涉刑人员送学率（候选集合中未送校）
     sx_sx_items = []
-    for record in sx_sx_details:
-        if str(record.get("是否送校") or "") != "否":
+    for record in jzqk_details:
+        if not _is_sx_candidate(record):
+            continue
+        if _is_sx_numerator(record):
             continue
 
         case_name = str(record.get("案件名称") or "")
@@ -340,11 +412,10 @@ def get_responsible_sms_data(start_time: datetime, end_time: datetime, case_type
             "items": sx_sx_items,
         }
 
-    # 3. 责令加强监护率（是否开具文书='否'）
-    zljqjh_details = dao.query_zljqjh_details(start_time, end_time, case_types)
+    # 3. 责令加强监护率（未开具家庭教育指导书）
     zljqjh_items = []
-    for record in zljqjh_details:
-        if str(record.get("是否开具文书") or "") != "否":
+    for record in jzqk_details:
+        if _is_yes(record.get("是否开具家庭教育指导书")):
             continue
 
         case_name = str(record.get("案件名称") or "")
