@@ -227,9 +227,10 @@ def fetch_jzqk_data(
                 END AS is_zeling_tongzhishu,
                 CASE
                     WHEN EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_zfba_jtjyzdtzs" j
-                        WHERE j.jqjhjyzljsjtjyzdtzs_ajbh = bd.案件编号
-                          AND j.jqjhjyzljsjtjyzdtzs_rybh = bd.人员编号
+                        SELECT 1 FROM "ywdata"."zq_zfba_jtjyzdtzs2" j
+                        WHERE j.ajbh = bd.案件编号
+                          AND j.xgry_xm = bd.姓名
+                          AND j.spsj BETWEEN %s AND %s
                     ) THEN 1
                     ELSE 0
                 END AS is_jiating_jiaoyu_wenshu,
@@ -301,7 +302,7 @@ def fetch_jzqk_data(
         """
     ).format(type_condition=type_condition)
 
-    params = [start_time, end_time] + type_params
+    params = [start_time, end_time] + type_params + [start_time, end_time]
 
     with conn.cursor() as cur:
         cur.execute(query, params)
