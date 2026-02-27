@@ -589,6 +589,58 @@ def _fetch_naguan_base(conn) -> List[Dict[str, Any]]:
     return _attach_region_fields(out)
 
 
+def _fetch_zljiaqjh_summary(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+) -> List[Dict[str, Any]]:
+    """
+    按地区汇总《责令加强监护》文书的应开数（den）和实开数（num）。
+    返回字典列表，每条有 地区代码、实开文书数、应开文书数。
+    """
+    q = """
+        WITH Case_Required AS (
+            SELECT
+                LEFT(COALESCE("\u5730\u533a", ''), 6) AS diqu,
+                "\u6848\u4ef6\u7f16\u53f7",
+                COUNT(*) AS yingkai
+            FROM ywdata.v_wcnr_wfry_base
+            WHERE "\u5f55\u5165\u65f6\u95f4" BETWEEN %(start_time)s AND %(end_time)s
+            GROUP BY LEFT(COALESCE("\u5730\u533a", ''), 6), "\u6848\u4ef6\u7f16\u53f7"
+        ),
+        Case_Actual AS (
+            SELECT
+                ajbh,
+                COUNT(DISTINCT id) AS shikai
+            FROM ywdata.zq_zfba_jtjyzdtzs2
+            GROUP BY ajbh
+        )
+        SELECT
+            r.diqu,
+            SUM(r.yingkai)::bigint         AS den,
+            SUM(COALESCE(a.shikai, 0))::bigint AS num
+        FROM Case_Required r
+        LEFT JOIN Case_Actual a ON r."\u6848\u4ef6\u7f16\u53f7" = a.ajbh
+        GROUP BY r.diqu
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, {"start_time": start_time, "end_time": end_time})
+        raw = cur.fetchall()
+    out: List[Dict[str, Any]] = []
+    for diqu, den, num in raw or []:
+        code = _extract_region_code(str(diqu or "").strip())
+        if not code:
+            continue
+        out.append({
+            "\u5730\u533a\u4ee3\u7801": code,
+            "\u5730\u533a": REGION_CODE_NAME.get(code, code),
+            "\u5b9e\u5f00\u6587\u4e66\u6570": int(num or 0),
+            "\u5e94\u5f00\u6587\u4e66\u6570": int(den or 0),
+        })
+    return out
+
+
 def _count_naguan_base_by_region(conn) -> Dict[str, int]:
     q = """
         SELECT
@@ -956,6 +1008,136 @@ def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Seq
     return []
 
 
+def fetch_metric_detail_rows(
+    conn,
+    *,
+    metric: str,
+    part: str,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+) -> List[Dict[str, Any]]:
+    """
+    仅查询指定指标所需的最小数据，返回明细行列表。
+    part 应已通过 _normalize_part 标准化（"value" | "numerator" | "denominator"）。
+    相比 fetch_period_data(include_details=True) 全量查询，大幅减少无关查询。
+    """
+    leixing = _normalize_leixing_for_query(conn, leixing_list)
+
+    def _patterns_and_empty() -> Tuple[List[str], bool]:
+        pats = zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing)
+        return pats, bool(leixing) and not pats
+
+    # ── 1. 警情 ────────────────────────────────────────────────────────────
+    if metric == "jq":
+        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
+                                 leixing_list=leixing, metric="警情")
+        return normalize_rows_for_output(rows)
+
+    # ── 2. 转案率 ───────────────────────────────────────────────────────────
+    if metric == "za_rate":
+        m = "警情" if part == "denominator" else "转案数"
+        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
+                                 leixing_list=leixing, metric=m)
+        return normalize_rows_for_output(rows)
+
+    # ── 3. 行政 ────────────────────────────────────────────────────────────
+    if metric == "xingzheng":
+        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
+                                 leixing_list=leixing, metric="行政")
+        return normalize_rows_for_output(rows)
+
+    # ── 4. 刑事 / 刑事占比 ─────────────────────────────────────────────────
+    if metric in ("xingshi", "xingshi_ratio"):
+        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
+                                 leixing_list=leixing, metric="刑事")
+        return normalize_rows_for_output(rows)
+
+    # ── 5. 被侵害案件 / 场所被侵害案件 ─────────────────────────────────────
+    if metric in ("bqh_case", "cs_bqh_case"):
+        patterns, empty = _patterns_and_empty()
+        if empty:
+            return []
+        bqh_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
+            conn, start_time=start_time, end_time=end_time, patterns=patterns, diqu=None
+        )
+        bqh_rows = _attach_region_fields(bqh_base_rows)
+        if metric == "bqh_case":
+            return normalize_rows_for_output(bqh_rows)
+        classified_rows, _ = _classify_bqh_rows(bqh_rows)
+        cs_rows = [r for r in classified_rows
+                   if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
+        return normalize_rows_for_output(cs_rows)
+
+    # ── 6. 违法犯罪人员 / 严重不良占比 / 专门矫治占比 ──────────────────────
+    if metric in ("wfzf_people", "yzbl_ratio", "zmjz_ratio"):
+        _, empty = _patterns_and_empty()
+        if empty:
+            return []
+        jzqk_rows = jzqk_tongji_dao.fetch_jzqk_data(
+            conn, start_time=start_time, end_time=end_time, leixing_list=leixing
+        )
+        jzqk_rows = _attach_region_fields(jzqk_rows)
+        if metric == "wfzf_people":
+            return normalize_rows_for_output(jzqk_rows)
+        if metric == "yzbl_ratio":
+            rows = jzqk_rows if part == "denominator" else [r for r in jzqk_rows if _is_yzbl_num(r)]
+            return normalize_rows_for_output(rows)
+        # zmjz_ratio
+        if part == "denominator":
+            rows = [r for r in jzqk_rows if _is_zmjz_cover_den(r)]
+        else:
+            rows = [r for r in jzqk_rows if _is_zmjz_cover_num(r)]
+        return normalize_rows_for_output(rows)
+
+    # ── 7. 专门教育学生结业后再犯数 ────────────────────────────────────────
+    if metric == "zmy_reoff":
+        _, empty = _patterns_and_empty()
+        if empty:
+            return []
+        if part == "denominator":
+            rows = _fetch_graduates(conn, start_time=start_time, end_time=end_time,
+                                    leixing_list=leixing, jz_time_lt6=True)
+        else:
+            rows = _fetch_graduate_reoffend(conn, start_time=start_time, end_time=end_time,
+                                            leixing_list=leixing, jz_time_lt6=True,
+                                            xingshi_only=True, minor_only=True)
+        return normalize_rows_for_output(_attach_region_fields(rows))
+
+    # ── 8. 专门（矫治）教育学生结业后再犯数 ────────────────────────────────
+    if metric == "zmjz_reoff":
+        _, empty = _patterns_and_empty()
+        if empty:
+            return []
+        if part == "denominator":
+            rows = _fetch_graduates(conn, start_time=start_time, end_time=end_time,
+                                    leixing_list=leixing, jz_time_lt6=False)
+        else:
+            rows = _fetch_graduate_reoffend(conn, start_time=start_time, end_time=end_time,
+                                            leixing_list=leixing, jz_time_lt6=False,
+                                            xingshi_only=False, minor_only=False)
+        return normalize_rows_for_output(_attach_region_fields(rows))
+
+    # ── 9. 纳管人员再犯占比 ────────────────────────────────────────────────
+    if metric == "naguan_ratio":
+        if part == "denominator":
+            rows = _fetch_naguan_base(conn)
+            return normalize_rows_for_output(_attach_region_fields(rows))
+        _, empty = _patterns_and_empty()
+        if empty:
+            return []
+        rows = _fetch_naguan_reoffend(conn, start_time=start_time, end_time=end_time,
+                                      leixing_list=leixing)
+        return normalize_rows_for_output(_attach_region_fields(rows))
+
+    # ── 10. 责令加强监护数 ─────────────────────────────────────────────────
+    if metric == "zljiaqjh":
+        rows = _fetch_zljiaqjh_summary(conn, start_time=start_time, end_time=end_time)
+        return normalize_rows_for_output(rows)
+
+    return []
+
+
 def fetch_period_data(
     conn,
     *,
@@ -1235,6 +1417,20 @@ def fetch_period_data(
             )
             _mark("naguan_summary_ms", t)
 
+    # 责令加强监护数
+    t = time.perf_counter()
+    zljiaqjh_rows = _fetch_zljiaqjh_summary(conn, start_time=start_time, end_time=end_time)
+    _num_map: Dict[str, int] = {}
+    _den_map: Dict[str, int] = {}
+    for _r in zljiaqjh_rows:
+        _code = str(_r.get("地区代码") or "").strip()
+        if _code:
+            _num_map[_code] = int(_r.get("实开文书数") or 0)
+            _den_map[_code] = int(_r.get("应开文书数") or 0)
+    counts["zljiaqjh_num"] = _normalize_count_map(_num_map)
+    counts["zljiaqjh_den"] = _normalize_count_map(_den_map)
+    _mark("zljiaqjh_ms", t)
+
     if include_details:
         t = time.perf_counter()
         details["jq:value"] = _load_detail_rows(
@@ -1295,6 +1491,9 @@ def fetch_period_data(
 
         details["naguan_ratio:numerator"] = naguan_num_rows
         details["naguan_ratio:denominator"] = naguan_den_rows
+
+        details["zljiaqjh:numerator"] = zljiaqjh_rows
+        details["zljiaqjh:denominator"] = zljiaqjh_rows
         _mark("assemble_details_ms", t)
 
     perf["total_ms"] = round((time.perf_counter() - t_all) * 1000, 2)

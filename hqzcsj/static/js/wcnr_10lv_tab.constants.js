@@ -43,6 +43,12 @@
             type: "composite",
             rateLabel: "纳管人员再犯率",
         },
+        {
+            key: "zljiaqjh",
+            label: "责令加强监护数",
+            type: "composite",
+            rateLabel: "责令加强监护率",
+        },
     ];
 
     const METRIC_BY_KEY = {};

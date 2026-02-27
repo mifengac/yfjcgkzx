@@ -71,6 +71,13 @@ COMPOSITE_METRICS: List[Dict[str, str]] = [
         "num_key": "naguan_num",
         "den_key": "naguan_den",
     },
+    {
+        "key": "zljiaqjh",
+        "label": "责令加强监护数",
+        "rate_label": "责令加强监护率",
+        "num_key": "zljiaqjh_num",
+        "den_key": "zljiaqjh_den",
+    },
 ]
 
 DETAIL_METRIC_LABEL: Dict[str, str] = {
@@ -87,6 +94,7 @@ DETAIL_METRIC_LABEL: Dict[str, str] = {
     "yzbl_ratio": "严重不良未成年人矫治教育占比",
     "zmjz_ratio": "专门(矫治)教育占比",
     "naguan_ratio": "纳管人员再犯占比",
+    "zljiaqjh": "责令加强监护数",
 }
 
 COMPOSITE_METRIC_KEYS = {
@@ -97,6 +105,7 @@ COMPOSITE_METRIC_KEYS = {
     "yzbl_ratio",
     "zmjz_ratio",
     "naguan_ratio",
+    "zljiaqjh",
 }
 
 
@@ -383,6 +392,14 @@ def build_summary(
             num_key="naguan_num",
             den_key="naguan_den",
         )
+        add_composite_metric(
+            row,
+            code=code,
+            label="责令加强监护数",
+            rate_label="责令加强监护率",
+            num_key="zljiaqjh_num",
+            den_key="zljiaqjh_den",
+        )
 
         rows.append(row)
 
@@ -451,6 +468,7 @@ def get_display_columns(*, show_hb: bool, show_ratio: bool) -> List[str]:
     add_composite("严重不良未成年人矫治教育占比", "严重不良未成年人矫治教育占比率")
     add_composite("专门(矫治)教育占比", "专门(矫治)教育占比率")
     add_composite("纳管人员再犯占比", "纳管人员再犯率")
+    add_composite("责令加强监护数", "责令加强监护率")
     return cols
 
 
@@ -536,12 +554,13 @@ def fetch_detail(
     leixing = _normalize_leixing_list(leixing_list)
     conn = get_database_connection()
     try:
-        period_data = wcnr_10lv_dao.fetch_period_data(
+        rows = wcnr_10lv_dao.fetch_metric_detail_rows(
             conn,
+            metric=metric_key,
+            part=part_key,
             start_time=p_start,
             end_time=p_end,
             leixing_list=leixing,
-            include_details=True,
         )
     finally:
         try:
@@ -549,7 +568,6 @@ def fetch_detail(
         except Exception:
             pass
 
-    rows = wcnr_10lv_dao.select_detail_rows(period_data, metric=metric_key, part=part_key)
     rows = wcnr_10lv_dao.filter_rows_by_diqu(rows, diqu)
     return rows
 
@@ -613,6 +631,7 @@ def build_detail_export_sheets(
         "yzbl_ratio",
         "zmjz_ratio",
         "naguan_ratio",
+        "zljiaqjh",
     ]
 
     sheets: List[Dict[str, Any]] = []
