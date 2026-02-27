@@ -1239,7 +1239,7 @@ def fetch_detail_rows(
                       sfz.ssbm AS "所属部门",
                       sfz.jzyy AS "就读原因",
                       sfz.rx_time AS "入学时间",
-                      sfz.jz_time AS "就诊时间",
+                      sfz.jz_time AS "矫治月数",
                       sfz.lx_time AS "离校时间"
                     FROM {sfz_table} sfz
                     WHERE sfz.rx_time::timestamp BETWEEN %s AND %s

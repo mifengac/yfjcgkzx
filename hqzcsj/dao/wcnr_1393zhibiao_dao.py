@@ -203,12 +203,7 @@ def count_jyh_after_cases_by_diqu(
     if leixing_list:
         type_condition = sql.SQL(
             """
-            AND EXISTS (
-                SELECT 1
-                FROM "ywdata"."case_type_config" ctc
-                WHERE ctc."leixing" = ANY(%s)
-                  AND zzx."案由" SIMILAR TO ctc."ay_pattern"
-            )
+            AND zws."jzyy" = ANY(%s)
             """
         )
         type_params = [list(leixing_list)]
@@ -216,7 +211,7 @@ def count_jyh_after_cases_by_diqu(
         type_condition = sql.SQL("")
         type_params = []
 
-    xingshi_condition = sql.SQL(' AND zzx."案件类型" = \'刑事\' ') if only_xingshi else sql.SQL("")
+    xingshi_condition = sql.SQL(' AND zzx."ajxx_join_ajxx_ajlx" = \'刑事\' ') if only_xingshi else sql.SQL("")
 
     query = sql.SQL(
         """
@@ -225,9 +220,12 @@ def count_jyh_after_cases_by_diqu(
             SELECT DISTINCT ON (zws."sfzhm")
                 zws."sfzhm" AS sfzhm,
                 COALESCE(LEFT(COALESCE(zws."hjdq", ''), 6), '未知') AS 地区,
-                zws."rx_time" AS 入校时间
+                zws."lx_time" AS 离校时间
             FROM "ywdata"."zq_wcnr_sfzxx" zws
             WHERE zws."lx_time" BETWEEN %s AND %s
+              AND zws."jz_time" < 6
+              AND NULLIF(TRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
+            {type_condition}
             ORDER BY zws."sfzhm", zws."lx_time" DESC
         )
         SELECT
@@ -236,11 +234,10 @@ def count_jyh_after_cases_by_diqu(
         FROM grads g
         WHERE EXISTS (
             SELECT 1
-            FROM "ywdata"."v_wcnr_wfry_base" zzx
-            WHERE zzx."身份证号" = g.sfzhm
-              AND TO_CHAR(g."入校时间", 'YYYY-MM-DD') <= TO_CHAR(zzx."立案时间", 'YYYY-MM-DD')
+            FROM "ywdata"."zq_zfba_wcnr_xyr" zzx
+            WHERE zzx."xyrxx_sfzh" = g.sfzhm
+              AND zzx."ajxx_join_ajxx_lasj" > g."离校时间"
               {xingshi_condition}
-              {type_condition}
         )
         GROUP BY g.地区
         """
@@ -273,12 +270,7 @@ def fetch_jyh_after_cases_detail(
     if leixing_list:
         type_condition = sql.SQL(
             """
-            AND EXISTS (
-                SELECT 1
-                FROM "ywdata"."case_type_config" ctc
-                WHERE ctc."leixing" = ANY(%s)
-                  AND zzx."案由" SIMILAR TO ctc."ay_pattern"
-            )
+            AND zws."jzyy" = ANY(%s)
             """
         )
         type_params = [list(leixing_list)]
@@ -286,7 +278,7 @@ def fetch_jyh_after_cases_detail(
         type_condition = sql.SQL("")
         type_params = []
 
-    xingshi_condition = sql.SQL(' AND zzx."案件类型" = \'刑事\' ') if only_xingshi else sql.SQL("")
+    xingshi_condition = sql.SQL(' AND zzx."ajxx_join_ajxx_ajlx" = \'刑事\' ') if only_xingshi else sql.SQL("")
 
     if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
         diqu_condition = sql.SQL(" AND g.地区 = %s ")
@@ -314,6 +306,9 @@ def fetch_jyh_after_cases_detail(
                 zws."yxx" AS 学校
             FROM "ywdata"."zq_wcnr_sfzxx" zws
             WHERE zws."lx_time" BETWEEN %s AND %s
+              AND zws."jz_time" < 6
+              AND NULLIF(TRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
+            {type_condition}
             ORDER BY zws."sfzhm", zws."lx_time" DESC
         )
         SELECT
@@ -329,18 +324,17 @@ def fetch_jyh_after_cases_detail(
             g.联系电话 AS 联系电话,
             g.学校 AS 学校,
 
-            zzx."案件编号" AS 案件编号,
-            zzx."案件类型" AS 案件类型,
-            zzx."案由" AS 案由,
-            TO_CHAR(zzx."立案时间", 'YYYY-MM-DD HH24:MI:SS') AS 立案时间
+            zzx."ajxx_join_ajxx_ajbh" AS 案件编号,
+            zzx."ajxx_join_ajxx_ajlx" AS 案件类型,
+            zzx."xyrxx_ay_mc" AS 案由,
+            TO_CHAR(zzx."ajxx_join_ajxx_lasj", 'YYYY-MM-DD HH24:MI:SS') AS 立案时间
         FROM grads g
-        INNER JOIN "ywdata"."v_wcnr_wfry_base" zzx
-            ON g.sfzhm = zzx."身份证号"
-           AND TO_CHAR(g."入校时间_raw", 'YYYY-MM-DD') <= TO_CHAR(zzx."立案时间", 'YYYY-MM-DD')
+        INNER JOIN "ywdata"."zq_zfba_wcnr_xyr" zzx
+            ON g.sfzhm = zzx."xyrxx_sfzh"
+           AND zzx."ajxx_join_ajxx_lasj" > g."离校时间_raw"
           {xingshi_condition}
-          {type_condition}
           {diqu_condition}
-        ORDER BY g."离校时间_raw" DESC, g.sfzhm, zzx."立案时间" DESC
+        ORDER BY g."离校时间_raw" DESC, g.sfzhm, zzx."ajxx_join_ajxx_lasj" DESC
         """
     ).format(
         xingshi_condition=xingshi_condition,

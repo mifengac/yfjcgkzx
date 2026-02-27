@@ -86,6 +86,19 @@ def _to_int(value: Any) -> Optional[int]:
         return None
 
 
+def _to_months(value: Any) -> Optional[int]:
+    text = _to_text(value)
+    if not text:
+        return None
+    m = re.search(r"(\d+)", text)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except Exception:
+        return None
+
+
 def _to_date(value: Any) -> Optional[date]:
     if value is None:
         return None
@@ -150,7 +163,7 @@ class RowData:
     jzyy: Optional[str]
     whdj: Optional[str]
     rx_time: Optional[date]
-    jz_time: Optional[date]
+    jz_time: Optional[int]
     lx_time: Optional[date]
     bz: Optional[str]
 
@@ -230,7 +243,7 @@ def read_xls_rows(xls_path: Path, sheet_name: str) -> list[RowData]:
                 jzyy=_to_text(cell_value(row_values, "矫治原因")),
                 whdj=_to_text(cell_value(row_values, "危害等级")),
                 rx_time=_to_date(cell_value(row_values, "入学时间")),
-                jz_time=_to_date(cell_value(row_values, "矫治时间")),
+                jz_time=_to_months(cell_value(row_values, "矫治时间")),
                 lx_time=_to_date(cell_value(row_values, "离校时间")),
                 bz=_to_text(cell_value(row_values, "备注")),
             )
@@ -299,7 +312,7 @@ def read_xlsx_rows(xlsx_path: Path, sheet_name: str) -> list[RowData]:
                     jzyy=_to_text(cell_value(row, "矫治原因")),
                     whdj=_to_text(cell_value(row, "危害等级")),
                     rx_time=_to_date(cell_value(row, "入学时间")),
-                    jz_time=_to_date(cell_value(row, "矫治时间")),
+                    jz_time=_to_months(cell_value(row, "矫治时间")),
                     lx_time=_to_date(cell_value(row, "离校时间")),
                     bz=_to_text(cell_value(row, "备注")),
                 )
@@ -345,7 +358,7 @@ def ensure_table(cursor) -> None:
             jzyy TEXT,
             whdj VARCHAR(50),
             rx_time DATE,
-            jz_time DATE,
+            jz_time INTEGER,
             lx_time DATE,
             bz TEXT,
             PRIMARY KEY (bh)
@@ -359,6 +372,7 @@ def ensure_table(cursor) -> None:
         DECLARE
             pk_name text;
             pk_cols text[];
+            jz_time_udt text;
         BEGIN
             SELECT c.conname,
                    ARRAY(
@@ -395,6 +409,19 @@ def ensure_table(cursor) -> None:
                    AND c2.contype = 'p'
             ) THEN
                 EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY (bh)', '{DB_SCHEMA}', '{DB_TABLE}', '{DB_TABLE}_pkey');
+            END IF;
+
+            -- 矫治时间改为月数整数；旧 DATE 数据语义不兼容，统一置空
+            SELECT c.udt_name
+              INTO jz_time_udt
+              FROM information_schema.columns c
+             WHERE c.table_schema = '{DB_SCHEMA}'
+               AND c.table_name = '{DB_TABLE}'
+               AND c.column_name = 'jz_time'
+             LIMIT 1;
+
+            IF jz_time_udt IS NOT NULL AND jz_time_udt <> 'int4' THEN
+                EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN jz_time TYPE INTEGER USING NULL', '{DB_SCHEMA}', '{DB_TABLE}');
             END IF;
         END $$;
         """
