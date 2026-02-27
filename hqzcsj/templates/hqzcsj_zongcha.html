@@ -187,9 +187,13 @@
             <div class="grid">
                 <label>access_token</label>
                 <input type="text" id="tqwsTokenInput" placeholder="例如：f040e7bc-...">
+                <label>KJSJ 开始时间</label>
+                <input type="text" id="tqwsStartInput" value="2025/01/01 00:00:00" placeholder="yyyy/MM/dd HH:mm:ss（空则不限）">
+                <label>KJSJ 结束时间</label>
+                <input type="text" id="tqwsEndInput" value="" placeholder="yyyy/MM/dd HH:mm:ss（空则不限）">
             </div>
             <div class="muted" style="margin-top:10px;">
-                说明：参数固定为“获取全部”（包含 where/其它参数），数据源请在按钮旁选择（默认全选）。
+                说明：时间范围仅对支持 KJSJ 过滤的数据源（如“已审核文书全量”）生效，其余数据源不受影响。数据源请在按鈕旁选择。
             </div>
         </div>
         <div class="ft">
@@ -709,6 +713,8 @@
         startTqwsBtn.disabled = true;
         try {
             const access_token = document.getElementById('tqwsTokenInput').value.trim();
+            const kjsj_start = document.getElementById('tqwsStartInput').value.trim();
+            const kjsj_end = document.getElementById('tqwsEndInput').value.trim();
             const sources = selectedTqwsSources();
             if (!access_token) throw new Error('access_token 不能为空');
             if (!sources || sources.length === 0) throw new Error('请至少选择 1 个数据源');
@@ -716,7 +722,7 @@
             const resp = await fetch(`{{ url_for('hqzcsj.tqws_start') }}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({ access_token, sources })
+                body: JSON.stringify({ access_token, sources, kjsj_start, kjsj_end })
             });
             const data = await resp.json();
             if (!data.success) {

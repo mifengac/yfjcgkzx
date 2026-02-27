@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import threading
 import time
@@ -35,6 +36,8 @@ def start_tqws_job(
     username: str,
     access_token: str,
     sources: List[str],
+    kjsj_start: str = "",
+    kjsj_end: str = "",
 ) -> str:
     job_id = uuid.uuid4().hex
     key = (username or "", job_id)
@@ -56,6 +59,8 @@ def start_tqws_job(
             "job_id": job_id,
             "access_token": access_token,
             "sources": list(sources or []),
+            "kjsj_start": kjsj_start,
+            "kjsj_end": kjsj_end,
         },
         daemon=True,
     )
@@ -137,6 +142,10 @@ def _normalize_source_key(source: str) -> str:
         "加强监督教育/责令接受家庭教育指导通知书(新)": "jtjyzdtzs2",
         "加强监督教育/责令接受家庭教育指导通知书（新）": "jtjyzdtzs2",
         "加强监督教育/责令接受家庭教育指导通知书2": "jtjyzdtzs2",
+        # 已审核文书（全量）
+        "wenshu": "wenshu",
+        "已审核文书（全量）": "wenshu",
+        "已审核文书": "wenshu",
     }
     return mapping.get(s, s)
 
@@ -248,12 +257,35 @@ TQWS_SOURCE_REGISTRY: Dict[str, Dict[str, Any]] = {
             "new-password": "",
         },
     },
+    "wenshu": {
+        "key": "wenshu",
+        "name": "已审核文书（全量）",
+        "table": "zq_zfba_wenshu",
+        "time_mode": "kjsj",
+        "where": {
+            "rules": [
+                {"field": "AJBH", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "WS_ID", "op": "like", "value": "", "type": "string", "format": "", "linkOp": "or"},
+                {"field": "WSZH", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "XGRY_XM", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "DYCS", "op": "between", "value": "0|999", "type": "number", "format": ""},
+                {"field": "DYSJ", "op": "between", "value": "|", "type": "date", "format": "yyyy/MM/dd HH:mm:ss"},
+                {"field": "CBDW_MC", "op": "like", "value": "", "type": "string", "format": "", "linkOp": "or"},
+                {"field": "CBDW_BH_1", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "CBR_XM", "op": "like", "value": "", "type": "string", "format": ""},
+                {"field": "KJSJ", "op": "between", "value": "|", "type": "date", "format": "yyyy/MM/dd HH:mm:ss"},
+                {"field": "SPSJ", "op": "between", "value": "|", "type": "date", "format": "yyyy/MM/dd HH:mm:ss"},
+                {"field": "WSZT", "op": "like", "value": "03", "type": "string", "format": "", "linkOp": "or"},
+            ],
+            "op": "and",
+        },
+    },
 }
 
 
 def get_tqws_sources() -> List[Dict[str, str]]:
     out: List[Dict[str, str]] = []
-    for k in ("tqws", "xjs2", "jtjyzdtzs2"):
+    for k in ("tqws", "xjs2", "jtjyzdtzs2", "wenshu"):
         cfg = TQWS_SOURCE_REGISTRY.get(k)
         if not cfg:
             continue
@@ -270,14 +302,16 @@ def get_tqws_source_catalog() -> List[Dict[str, Any]]:
     pk_name = str(COMMON_OTHER_PARAMS.get("pkName") or "ID").strip() or "ID"
     out: List[Dict[str, Any]] = []
     for item in get_tqws_sources():
+        key = str(item.get("key") or "").strip()
+        cfg = TQWS_SOURCE_REGISTRY.get(key) or {}
         out.append(
             {
-                "key": str(item.get("key") or "").strip(),
+                "key": key,
                 "name": str(item.get("name") or "").strip(),
                 "table": str(item.get("table") or "").strip(),
                 "pk_fields": [pk_name],
                 "requires": "access_token",
-                "time_mode": "none",
+                "time_mode": str(cfg.get("time_mode") or "none"),
             }
         )
     return out
@@ -303,7 +337,7 @@ def _make_form(
     return form
 
 
-def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str]) -> None:
+def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str], kjsj_start: str = "", kjsj_end: str = "") -> None:
     key = (username or "", job_id)
     try:
         _update_status(key, state="running", message="任务执行中...")
@@ -337,9 +371,16 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                     raise RuntimeError(f"未知数据源: {raw_source}")
                 source_name = str(cfg["name"])
                 table = str(cfg["table"])
-                where_obj = cfg["where"]
+                where_obj = copy.deepcopy(cfg["where"])
                 if not isinstance(where_obj, dict):
                     raise RuntimeError(f"数据源 where 配置非法: {raw_source}")
+                # 若数据源支持 KJSJ 时间范围且 UI 传入了时间，则注入
+                if cfg.get("time_mode") == "kjsj":
+                    kjsj_val = f"{(kjsj_start or '').strip()}|{(kjsj_end or '').strip()}"
+                    for rule in where_obj.get("rules", []):
+                        if isinstance(rule, dict) and rule.get("field") == "KJSJ":
+                            rule["value"] = kjsj_val
+                            break
                 extra_form = cfg.get("extra_form")
                 if extra_form is not None and not isinstance(extra_form, dict):
                     raise RuntimeError(f"数据源 extra_form 配置非法: {raw_source}")

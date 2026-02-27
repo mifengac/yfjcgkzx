@@ -210,6 +210,9 @@ def tqws_start() -> Any:
         if legacy_source:
             sources = [legacy_source]
 
+    kjsj_start = (payload.get("kjsj_start") or "").strip()
+    kjsj_end = (payload.get("kjsj_end") or "").strip()
+
     if not access_token:
         return jsonify({"success": False, "message": "access_token 不能为空"}), 400
     if not sources:
@@ -220,6 +223,8 @@ def tqws_start() -> Any:
         username=username,
         access_token=access_token,
         sources=sources,
+        kjsj_start=kjsj_start,
+        kjsj_end=kjsj_end,
     )
     return jsonify({"success": True, "job_id": job_id})
 
