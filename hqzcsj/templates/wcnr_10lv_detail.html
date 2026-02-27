@@ -1,0 +1,175 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ metric_label }} 明细</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .card { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow:0 6px 22px rgba(18,38,63,.06); border:1px solid #e6e8ef; }
+        .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+        .btn { height:34px; border:0; border-radius:8px; background:#1976d2; color:#fff; padding:0 14px; font-weight:700; cursor:pointer; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display:none; position:absolute; right:0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; min-width:140px; box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index: 20; }
+        .dropdown-menu a { display:block; padding:10px 12px; color:#111; text-decoration:none; font-size:13px; }
+        .dropdown-menu a:hover { background:#f3f5fb; }
+        .dropdown.open .dropdown-menu { display:block; }
+        .muted { color:#666; font-size:12px; }
+        .err { color:#b42318; font-size:13px; white-space:pre-wrap; }
+        .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+        table { border-collapse: collapse; width: 100%; min-width: 960px; }
+        th, td { border-bottom:1px solid #eef0f6; padding:10px 12px; font-size:13px; text-align:left; white-space:nowrap; }
+        th { position: sticky; top: 0; background: #fbfcff; z-index: 2; }
+    </style>
+</head>
+<body>
+<header class="header">
+    <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+        <div>
+            <h1 style="margin:0;">{{ metric_label }} 明细</h1>
+            <p style="margin:6px 0 0 0;" class="muted">周期：{{ period }}；地区：{{ diqu }}</p>
+        </div>
+        <div class="dropdown" id="wcnr10lvDetailExportDd">
+            <button class="btn" id="wcnr10lvDetailExportBtn">导出</button>
+            <div class="dropdown-menu">
+                <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                <a href="#" data-fmt="csv">导出 csv</a>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="container" style="max-width:1200px;">
+    <section class="card">
+        <div class="muted">时间范围：{{ start_time }} ~ {{ end_time }}</div>
+        <div class="muted" style="margin-top:6px;">环比时间：{{ hb_start_time }} ~ {{ hb_end_time }}</div>
+        <div class="muted" style="margin-top:6px;">
+            类型：{% if leixing_list %}{{ leixing_list|join('，') }}{% else %}未选择(默认全量){% endif %}
+        </div>
+        <div class="err" id="wcnr10lvDetailErr" style="margin-top:10px;"></div>
+        <div class="muted" id="wcnr10lvDetailStatus" style="margin-top:10px;"></div>
+    </section>
+
+    <section class="card">
+        <div class="table-wrap">
+            <table id="wcnr10lvDetailTbl"></table>
+        </div>
+    </section>
+</main>
+
+<script>
+    (function() {
+        const metric = "{{ metric }}";
+        const part = "{{ part }}";
+        const period = "{{ period }}";
+        const diqu = "{{ diqu }}";
+        const startTime = "{{ start_time }}";
+        const endTime = "{{ end_time }}";
+        const hbStartTime = "{{ hb_start_time }}";
+        const hbEndTime = "{{ hb_end_time }}";
+        const leixingList = {{ (leixing_list or []) | tojson }};
+
+        const errEl = document.getElementById("wcnr10lvDetailErr");
+        const statusEl = document.getElementById("wcnr10lvDetailStatus");
+        const tbl = document.getElementById("wcnr10lvDetailTbl");
+
+        const dd = document.getElementById("wcnr10lvDetailExportDd");
+        const btn = document.getElementById("wcnr10lvDetailExportBtn");
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            dd.classList.toggle("open");
+        });
+        dd.querySelectorAll(".dropdown-menu a").forEach((a) => {
+            a.addEventListener("click", (e) => {
+                e.preventDefault();
+                const fmt = a.getAttribute("data-fmt") || "xlsx";
+                doExport(fmt);
+                dd.classList.remove("open");
+            });
+        });
+        document.addEventListener("click", (e) => { if (!dd.contains(e.target)) dd.classList.remove("open"); });
+
+        function buildParams() {
+            const usp = new URLSearchParams();
+            usp.set("metric", metric);
+            usp.set("part", part);
+            usp.set("period", period);
+            usp.set("diqu", diqu);
+            usp.set("start_time", startTime);
+            usp.set("end_time", endTime);
+            usp.set("hb_start_time", hbStartTime);
+            usp.set("hb_end_time", hbEndTime);
+            for (const t of leixingList) usp.append("leixing", t);
+            return usp;
+        }
+
+        function renderRows(rows) {
+            if (!rows || rows.length === 0) {
+                tbl.innerHTML = `<thead><tr><th>无数据</th></tr></thead><tbody><tr><td class="muted">无数据</td></tr></tbody>`;
+                return;
+            }
+            const headers = Object.keys(rows[0] || {});
+            const head = `<thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>`;
+            const bodyRows = rows.map((r) => {
+                const tds = headers.map((h) => `<td>${(r[h] == null) ? "" : r[h]}</td>`).join("");
+                return `<tr>${tds}</tr>`;
+            }).join("");
+            tbl.innerHTML = head + `<tbody>${bodyRows}</tbody>`;
+        }
+
+        function fallbackUrlIfNeeded(url) {
+            const s = String(url || "");
+            if (s.includes("/wcnr_10lv/")) return s.replace("/wcnr_10lv/", "/wcnr10lv/");
+            if (s.includes("wcnr_10lv/")) return s.replace("wcnr_10lv/", "wcnr10lv/");
+            return "";
+        }
+
+        async function fetchJsonStrict(url) {
+            const tryFetch = async (u) => {
+                const resp = await fetch(u);
+                const text = await resp.text();
+                let data = null;
+                try {
+                    data = JSON.parse(text);
+                } catch (_) {
+                    throw new Error(`接口返回非JSON（HTTP ${resp.status}）: ${u}`);
+                }
+                if (!resp.ok || !data.success) throw new Error(data.message || `加载失败（HTTP ${resp.status}）: ${u}`);
+                return data;
+            };
+            try {
+                return await tryFetch(url);
+            } catch (e) {
+                const fb = fallbackUrlIfNeeded(url);
+                if (!fb || fb === url) throw e;
+                return await tryFetch(fb);
+            }
+        }
+
+        async function query() {
+            errEl.textContent = "";
+            statusEl.textContent = "加载中...";
+            try {
+                const usp = buildParams();
+                const data = await fetchJsonStrict(`{{ url_for('hqzcsj.zongcha_wcnr10lv_api_detail') }}?${usp.toString()}`);
+                const rows = data.rows || [];
+                renderRows(rows);
+                statusEl.textContent = `共 ${rows.length} 条`;
+            } catch (e) {
+                errEl.textContent = e.message || String(e);
+                statusEl.textContent = "";
+                renderRows([]);
+            }
+        }
+
+        function doExport(fmt) {
+            const usp = buildParams();
+            usp.set("fmt", fmt);
+            window.location.href = `{{ url_for('hqzcsj.zongcha_wcnr10lv_export_detail_single') }}?${usp.toString()}`;
+        }
+
+        query();
+    })();
+</script>
+</body>
+</html>

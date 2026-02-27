@@ -1,0 +1,1287 @@
+﻿from __future__ import annotations
+
+import logging
+from datetime import date, datetime
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
+
+from hqzcsj.dao import jzqk_tongji_dao, zfba_jq_aj_dao, zfba_wcnr_jqaj_dao
+
+
+REGION_CODE_NAME: Dict[str, str] = {
+    "445300": "市局",
+    "445302": "云城",
+    "445303": "云安",
+    "445381": "罗定",
+    "445321": "新兴",
+    "445322": "郁南",
+}
+REGION_CODES: Tuple[str, ...] = tuple(REGION_CODE_NAME.keys())
+REGION_NAME_CODE: Dict[str, str] = {v: k for k, v in REGION_CODE_NAME.items()}
+TARGET_CHANGSUO_LABELS = {"重点管控行业", "一般商业"}
+_KEY_INDUSTRY_ADDR_KEYWORDS = (
+    "ktv",
+    "酒吧",
+    "网吧",
+    "酒店",
+    "宾馆",
+    "旅馆",
+    "民宿",
+    "出租屋",
+    "出租房",
+    "公寓",
+    "会所",
+    "沐足",
+    "足疗",
+    "按摩",
+    "洗浴",
+    "桑拿",
+    "棋牌",
+    "麻将",
+    "歌舞",
+    "夜总会",
+    "台球",
+    "电竞",
+    "游戏厅",
+)
+
+
+def fetch_leixing_list(conn) -> List[str]:
+    return zfba_jq_aj_dao.fetch_leixing_list(conn)
+
+
+def _normalize_leixing_list(leixing_list: Sequence[str]) -> List[str]:
+    return [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
+
+
+def _extract_region_code(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text in REGION_CODE_NAME:
+        return text
+    if text in REGION_NAME_CODE:
+        return REGION_NAME_CODE[text]
+    if text.isdigit() and len(text) >= 6:
+        code = text[:6]
+        if code in REGION_CODE_NAME:
+            return code
+    return ""
+
+
+def _region_name(code: str) -> str:
+    return REGION_CODE_NAME.get(code, "未知")
+
+
+def _safe_int(v: Any) -> int:
+    try:
+        return int(v or 0)
+    except Exception:
+        return 0
+
+
+def _to_int_or_none(v: Any) -> int | None:
+    text = str(v or "").strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return int(text)
+    return None
+
+
+def _is_yes(v: Any) -> bool:
+    return str(v or "").strip() == "是"
+
+
+def _is_no(v: Any) -> bool:
+    return str(v or "").strip() == "否"
+
+
+def _is_yzbl_num(row: Dict[str, Any]) -> bool:
+    return (
+        _is_yes(row.get("是否送校"))
+        or (_is_yes(row.get("治拘大于4天")) and _is_no(row.get("是否治拘不送")))
+        or _is_yes(row.get("是否刑拘"))
+        or _is_yes(row.get("是否开具矫治文书"))
+    )
+
+
+def _is_zmjz_cover_num(row: Dict[str, Any]) -> bool:
+    age = _to_int_or_none(row.get("年龄"))
+    if age is None or age <= 12:
+        return False
+    return (
+        _is_yes(row.get("是否送校"))
+        or _is_yes(row.get("是否刑拘"))
+        or (_is_yes(row.get("治拘大于4天")) and _is_no(row.get("是否治拘不送")))
+    )
+
+
+def _is_zmjz_cover_den(row: Dict[str, Any]) -> bool:
+    age = _to_int_or_none(row.get("年龄"))
+    if age is None or age <= 12:
+        return False
+    return (
+        _is_yes(row.get("2次违法且案由相同且第一次违法开具了训诫书"))
+        or _is_yes(row.get("治拘大于4天"))
+        or _is_yes(row.get("3次及以上违法"))
+        or (str(row.get("案件类型") or "").strip() == "刑事" and _is_no(row.get("是否刑拘")))
+    )
+
+
+def _row_region_code(row: Dict[str, Any]) -> str:
+    return _extract_region_code(row.get("地区代码") or row.get("地区") or row.get("分局代码") or row.get("地区编号"))
+
+
+def _normalize_count_map(raw: Dict[str, Any]) -> Dict[str, int]:
+    out: Dict[str, int] = {code: 0 for code in REGION_CODES}
+    total = 0
+    for key, value in (raw or {}).items():
+        n = _safe_int(value)
+        total += n
+        code = _extract_region_code(key)
+        if code in out:
+            out[code] += n
+    out["__ALL__"] = total
+    return out
+
+
+def _count_rows_by_region(rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
+    out: Dict[str, int] = {code: 0 for code in REGION_CODES}
+    total = 0
+    for row in rows or []:
+        total += 1
+        code = _row_region_code(row)
+        if code in out:
+            out[code] += 1
+    out["__ALL__"] = total
+    return out
+
+
+def _count_distinct_by_region(rows: Sequence[Dict[str, Any]], *, id_key: str) -> Dict[str, int]:
+    out_sets: Dict[str, set[str]] = {code: set() for code in REGION_CODES}
+    all_set: set[str] = set()
+    for row in rows or []:
+        rid = str(row.get(id_key) or "").strip()
+        if not rid:
+            continue
+        all_set.add(rid)
+        code = _row_region_code(row)
+        if code in out_sets:
+            out_sets[code].add(rid)
+
+    out: Dict[str, int] = {code: len(s) for code, s in out_sets.items()}
+    out["__ALL__"] = len(all_set)
+    return out
+
+
+def _attach_region_fields(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        item = dict(row)
+        code = _row_region_code(item)
+        if code:
+            item["地区代码"] = code
+            item["地区"] = _region_name(code)
+        else:
+            if "地区代码" not in item:
+                item["地区代码"] = ""
+            item["地区"] = str(item.get("地区") or "未知")
+        out.append(item)
+    return out
+
+
+def _rows_to_count_map(rows: Sequence[Tuple[Any, Any]]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for code, cnt in rows or []:
+        key = _extract_region_code(code)
+        if not key:
+            continue
+        out[key] = int(cnt or 0)
+    return _normalize_count_map(out)
+
+
+def _normalize_value_for_output(v: Any) -> Any:
+    if isinstance(v, datetime):
+        return v.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(v, date):
+        return v.strftime("%Y-%m-%d")
+    return v
+
+
+def normalize_rows_for_output(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        item: Dict[str, Any] = {}
+        for k, v in row.items():
+            item[str(k)] = _normalize_value_for_output(v)
+        out.append(item)
+    return out
+
+
+def _classify_bqh_rows(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
+    if not rows:
+        return [], False
+
+    texts: List[str] = []
+    for row in rows:
+        text = str(row.get("发案地点") or row.get("案件发生地址名称") or "").strip()
+        texts.append(text)
+
+    degraded = False
+    labels: List[Tuple[str, float]] = []
+    try:
+        from xunfang.service.jiemiansanlei_service import predict_addresses
+
+        labels = predict_addresses(texts)
+    except Exception as exc:  # noqa: BLE001
+        degraded = True
+        logging.exception("wcnr_10lv 地址分类模型不可用，降级到关键词识别: %s", exc)
+        for text in texts:
+            t = text.lower()
+            hit = any(kw in t for kw in _KEY_INDUSTRY_ADDR_KEYWORDS)
+            labels.append(("重点管控行业" if hit else "", 0.0))
+
+    out: List[Dict[str, Any]] = []
+    for row, (label, prob) in zip(rows, labels):
+        item = dict(row)
+        item["分类结果"] = str(label or "").strip()
+        try:
+            item["置信度"] = f"{float(prob):.5f}"
+        except Exception:
+            item["置信度"] = "0.00000"
+        out.append(item)
+    return out, degraded
+
+
+def _fetch_graduates(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    jz_time_lt6: bool,
+) -> List[Dict[str, Any]]:
+    leixing = _normalize_leixing_list(leixing_list)
+    jz_cond = 'AND COALESCE(zws."jz_time", 0) < 6' if jz_time_lt6 else ""
+
+    type_cond = ""
+    params: List[Any] = [start_time, end_time]
+    if leixing:
+        type_cond = """
+          AND EXISTS (
+              SELECT 1
+              FROM "ywdata"."zq_zfba_wcnr_xyr" x
+              JOIN "ywdata"."case_type_config" ctc
+                ON ctc."leixing" = ANY(%s)
+             WHERE x."xyrxx_sfzh" = g."证件号码"
+               AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+               AND COALESCE(x."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
+          )
+        """
+        params.append(list(leixing))
+
+    q = f"""
+        WITH grads AS (
+            SELECT DISTINCT ON (zws."sfzhm")
+                zws."sfzhm" AS "证件号码",
+                zws."xm" AS "姓名",
+                zws."rx_time" AS "入校时间_raw",
+                zws."lx_time" AS "离校时间_raw",
+                zws."jz_time" AS "矫治月数",
+                LEFT(COALESCE(zws."hjdq", ''), 6) AS "地区代码",
+                zws."hjdq" AS "户籍地区",
+                zws."hjdz" AS "户籍地址",
+                zws."nj" AS "年级",
+                zws."yxx" AS "学校",
+                zws."lxdh" AS "联系电话"
+            FROM "ywdata"."zq_wcnr_sfzxx" zws
+            WHERE zws."lx_time" BETWEEN %s AND %s
+              AND NULLIF(BTRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
+              {jz_cond}
+            ORDER BY zws."sfzhm", zws."lx_time" DESC
+        )
+        SELECT
+            g."证件号码",
+            g."姓名",
+            g."地区代码",
+            TO_CHAR(g."入校时间_raw", 'YYYY-MM-DD HH24:MI:SS') AS "入校时间",
+            TO_CHAR(g."离校时间_raw", 'YYYY-MM-DD HH24:MI:SS') AS "离校时间",
+            g."矫治月数",
+            g."户籍地区",
+            g."户籍地址",
+            g."年级",
+            g."学校",
+            g."联系电话"
+        FROM grads g
+        WHERE 1=1
+        {type_cond}
+        ORDER BY g."离校时间_raw" DESC, g."证件号码"
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    return _attach_region_fields(rows)
+
+
+def _count_graduates_by_region(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    jz_time_lt6: bool,
+) -> Dict[str, int]:
+    leixing = _normalize_leixing_list(leixing_list)
+    jz_cond = 'AND COALESCE(zws."jz_time", 0) < 6' if jz_time_lt6 else ""
+
+    type_cond = ""
+    params: List[Any] = [start_time, end_time]
+    if leixing:
+        type_cond = """
+          AND EXISTS (
+              SELECT 1
+              FROM "ywdata"."zq_zfba_wcnr_xyr" x
+              JOIN "ywdata"."case_type_config" ctc
+                ON ctc."leixing" = ANY(%s)
+             WHERE x."xyrxx_sfzh" = g."证件号码"
+               AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+               AND COALESCE(x."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
+          )
+        """
+        params.append(list(leixing))
+
+    q = f"""
+        WITH grads AS (
+            SELECT DISTINCT ON (zws."sfzhm")
+                zws."sfzhm" AS "证件号码",
+                zws."lx_time" AS "离校时间_raw",
+                LEFT(COALESCE(zws."hjdq", ''), 6) AS "地区代码"
+            FROM "ywdata"."zq_wcnr_sfzxx" zws
+            WHERE zws."lx_time" BETWEEN %s AND %s
+              AND NULLIF(BTRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
+              {jz_cond}
+            ORDER BY zws."sfzhm", zws."lx_time" DESC
+        )
+        SELECT g."地区代码", COUNT(1) AS cnt
+        FROM grads g
+        WHERE 1=1
+        {type_cond}
+        GROUP BY g."地区代码"
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        rows = cur.fetchall()
+    return _rows_to_count_map(rows)
+
+
+def _fetch_graduate_reoffend(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    jz_time_lt6: bool,
+    xingshi_only: bool,
+    minor_only: bool,
+) -> List[Dict[str, Any]]:
+    leixing = _normalize_leixing_list(leixing_list)
+    jz_cond = 'AND COALESCE(zws."jz_time", 0) < 6' if jz_time_lt6 else ""
+
+    type_cond = ""
+    xingshi_cond = ""
+    minor_cond = ""
+    params: List[Any] = [start_time, end_time]
+
+    if leixing:
+        type_cond = """
+          AND EXISTS (
+              SELECT 1
+              FROM "ywdata"."case_type_config" ctc
+              WHERE ctc."leixing" = ANY(%s)
+                AND COALESCE(x."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
+          )
+        """
+        params.append(list(leixing))
+
+    if xingshi_only:
+        xingshi_cond = " AND x.\"ajxx_join_ajxx_ajlx\" = '刑事'"
+
+    if minor_only:
+        minor_cond = """
+          AND x."xyrxx_sfzh" ~ '^[0-9]{17}[0-9Xx]$'
+          AND age(
+                x."ajxx_join_ajxx_lasj"::date,
+                to_date(substr(x."xyrxx_sfzh", 7, 8), 'YYYYMMDD')
+              ) < interval '18 years'
+        """
+
+    q = f"""
+        WITH grads AS (
+            SELECT DISTINCT ON (zws."sfzhm")
+                zws."sfzhm" AS "证件号码",
+                zws."xm" AS "姓名",
+                zws."lx_time" AS "离校时间_raw",
+                LEFT(COALESCE(zws."hjdq", ''), 6) AS "地区代码",
+                zws."hjdq" AS "户籍地区",
+                zws."hjdz" AS "户籍地址",
+                zws."yxx" AS "学校",
+                zws."lxdh" AS "联系电话"
+            FROM "ywdata"."zq_wcnr_sfzxx" zws
+            WHERE zws."lx_time" BETWEEN %s AND %s
+              AND NULLIF(BTRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
+              {jz_cond}
+            ORDER BY zws."sfzhm", zws."lx_time" DESC
+        )
+        SELECT
+            g."证件号码",
+            g."姓名",
+            g."地区代码",
+            g."户籍地区",
+            g."户籍地址",
+            g."学校",
+            g."联系电话",
+            TO_CHAR(g."离校时间_raw", 'YYYY-MM-DD HH24:MI:SS') AS "离校时间",
+            x."ajxx_join_ajxx_ajbh" AS "再犯案件编号",
+            x."ajxx_join_ajxx_ajmc" AS "再犯案件名称",
+            x."ajxx_join_ajxx_ajlx" AS "再犯案件类型",
+            COALESCE(x."xyrxx_ay_mc", '') AS "再犯案由",
+            TO_CHAR(x."ajxx_join_ajxx_lasj", 'YYYY-MM-DD HH24:MI:SS') AS "再犯立案时间"
+        FROM grads g
+        JOIN "ywdata"."zq_zfba_wcnr_xyr" x
+          ON x."xyrxx_sfzh" = g."证件号码"
+         AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+        WHERE 1=1
+        {xingshi_cond}
+        {minor_cond}
+        {type_cond}
+        ORDER BY g."证件号码", x."ajxx_join_ajxx_lasj" DESC
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    return _attach_region_fields(rows)
+
+
+def _count_graduate_reoffend_by_region(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    jz_time_lt6: bool,
+    xingshi_only: bool,
+    minor_only: bool,
+) -> Dict[str, int]:
+    leixing = _normalize_leixing_list(leixing_list)
+    jz_cond = 'AND COALESCE(zws."jz_time", 0) < 6' if jz_time_lt6 else ""
+
+    type_cond = ""
+    xingshi_cond = ""
+    minor_cond = ""
+    params: List[Any] = [start_time, end_time]
+
+    if leixing:
+        type_cond = """
+          AND EXISTS (
+              SELECT 1
+              FROM "ywdata"."case_type_config" ctc
+              WHERE ctc."leixing" = ANY(%s)
+                AND COALESCE(x."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
+          )
+        """
+        params.append(list(leixing))
+
+    if xingshi_only:
+        xingshi_cond = " AND x.\"ajxx_join_ajxx_ajlx\" = '刑事'"
+
+    if minor_only:
+        minor_cond = """
+          AND x."xyrxx_sfzh" ~ '^[0-9]{17}[0-9Xx]$'
+          AND age(
+                x."ajxx_join_ajxx_lasj"::date,
+                to_date(substr(x."xyrxx_sfzh", 7, 8), 'YYYYMMDD')
+              ) < interval '18 years'
+        """
+
+    q = f"""
+        WITH grads AS (
+            SELECT DISTINCT ON (zws."sfzhm")
+                zws."sfzhm" AS "证件号码",
+                zws."lx_time" AS "离校时间_raw",
+                LEFT(COALESCE(zws."hjdq", ''), 6) AS "地区代码"
+            FROM "ywdata"."zq_wcnr_sfzxx" zws
+            WHERE zws."lx_time" BETWEEN %s AND %s
+              AND NULLIF(BTRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
+              {jz_cond}
+            ORDER BY zws."sfzhm", zws."lx_time" DESC
+        )
+        SELECT g."地区代码", COUNT(DISTINCT g."证件号码") AS cnt
+        FROM grads g
+        JOIN "ywdata"."zq_zfba_wcnr_xyr" x
+          ON x."xyrxx_sfzh" = g."证件号码"
+         AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+        WHERE 1=1
+        {xingshi_cond}
+        {minor_cond}
+        {type_cond}
+        GROUP BY g."地区代码"
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        rows = cur.fetchall()
+    return _rows_to_count_map(rows)
+
+
+def _fetch_naguan_base(conn) -> List[Dict[str, Any]]:
+    q = """
+        SELECT
+            bzr."xm" AS "姓名",
+            bzr."zjhm" AS "证件号码",
+            bzr."lxdh" AS "联系电话",
+            bzr."hjdz" AS "户籍地",
+            bzr."jzdz" AS "居住地",
+            bzr."lgsj" AS "列管时间_raw",
+            LEFT(COALESCE(bzr."ssfj_dm", ''), 6) AS "地区代码",
+            bzr."ssfj_dm" AS "所属分局代码",
+            bdz."ssfj" AS "分局",
+            bdz."sspcs" AS "派出所",
+            bzr."sspcs_dm" AS "所属派出所代码"
+        FROM "stdata"."b_zdry_ryxx" bzr
+        LEFT JOIN "stdata"."b_dic_zzjgdm" bdz
+          ON bzr."sspcs_dm" = bdz."sspcsdm"
+        WHERE COALESCE(NULLIF(bzr."deleteflag"::text, ''), '0') = '0'
+          AND COALESCE(NULLIF(bzr."sflg"::text, ''), '0') = '1'
+    """
+    with conn.cursor() as cur:
+        cur.execute(q)
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["列管时间"] = _normalize_value_for_output(item.get("列管时间_raw"))
+        item.pop("列管时间_raw", None)
+        out.append(item)
+    return _attach_region_fields(out)
+
+
+def _count_naguan_base_by_region(conn) -> Dict[str, int]:
+    q = """
+        SELECT
+            LEFT(COALESCE(bzr."ssfj_dm", ''), 6) AS "地区代码",
+            COUNT(1) AS cnt
+        FROM "stdata"."b_zdry_ryxx" bzr
+        WHERE COALESCE(NULLIF(bzr."deleteflag"::text, ''), '0') = '0'
+          AND COALESCE(NULLIF(bzr."sflg"::text, ''), '0') = '1'
+        GROUP BY LEFT(COALESCE(bzr."ssfj_dm", ''), 6)
+    """
+    with conn.cursor() as cur:
+        cur.execute(q)
+        rows = cur.fetchall()
+    return _rows_to_count_map(rows)
+
+
+def _fetch_naguan_reoffend(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+) -> List[Dict[str, Any]]:
+    leixing = _normalize_leixing_list(leixing_list)
+    type_cond = ""
+    params: List[Any] = [start_time, end_time]
+    if leixing:
+        type_cond = """
+          AND EXISTS (
+              SELECT 1
+              FROM "ywdata"."case_type_config" ctc
+              WHERE ctc."leixing" = ANY(%s)
+                AND COALESCE(c."案由", '') SIMILAR TO ctc."ay_pattern"
+          )
+        """
+        params.append(list(leixing))
+
+    q = f"""
+        WITH managed AS (
+            SELECT
+                bzr."xm" AS "姓名",
+                bzr."zjhm" AS "证件号码",
+                bzr."lxdh" AS "联系电话",
+                bzr."hjdz" AS "户籍地",
+                bzr."jzdz" AS "居住地",
+                bzr."lgsj" AS "列管时间_raw",
+                LEFT(COALESCE(bzr."ssfj_dm", ''), 6) AS "地区代码",
+                bzr."ssfj_dm" AS "所属分局代码",
+                bdz."ssfj" AS "分局",
+                bdz."sspcs" AS "派出所",
+                bzr."sspcs_dm" AS "所属派出所代码"
+            FROM "stdata"."b_zdry_ryxx" bzr
+            LEFT JOIN "stdata"."b_dic_zzjgdm" bdz
+              ON bzr."sspcs_dm" = bdz."sspcsdm"
+            WHERE COALESCE(NULLIF(bzr."deleteflag"::text, ''), '0') = '0'
+              AND COALESCE(NULLIF(bzr."sflg"::text, ''), '0') = '1'
+              AND NULLIF(BTRIM(COALESCE(bzr."zjhm", '')), '') IS NOT NULL
+              AND bzr."lgsj" IS NOT NULL
+        ),
+        case_rows AS (
+            SELECT
+                x."xyrxx_sfzh" AS "证件号码",
+                x."ajxx_join_ajxx_ajbh" AS "案件编号",
+                x."ajxx_join_ajxx_ajmc" AS "案件名称",
+                x."ajxx_join_ajxx_ajlx" AS "案件类型",
+                COALESCE(x."xyrxx_ay_mc", '') AS "案由",
+                x."ajxx_join_ajxx_lasj" AS "立案时间_raw"
+            FROM "ywdata"."zq_zfba_xyrxx" x
+            WHERE x."ajxx_join_ajxx_lasj" BETWEEN %s AND %s
+              AND NULLIF(BTRIM(COALESCE(x."xyrxx_sfzh", '')), '') IS NOT NULL
+              AND COALESCE(NULLIF(x."xyrxx_isdel_dm", ''), '0')::integer = 0
+        )
+        SELECT
+            m."姓名",
+            m."证件号码",
+            m."联系电话",
+            m."户籍地",
+            m."居住地",
+            TO_CHAR(m."列管时间_raw", 'YYYY-MM-DD HH24:MI:SS') AS "列管时间",
+            m."地区代码",
+            m."所属分局代码",
+            m."分局",
+            m."派出所",
+            m."所属派出所代码",
+            c."案件编号",
+            c."案件名称",
+            c."案件类型",
+            c."案由",
+            TO_CHAR(c."立案时间_raw", 'YYYY-MM-DD HH24:MI:SS') AS "再犯立案时间"
+        FROM managed m
+        JOIN case_rows c
+          ON c."证件号码" = m."证件号码"
+         AND m."列管时间_raw" < c."立案时间_raw"
+        WHERE 1=1
+        {type_cond}
+        ORDER BY m."证件号码", c."立案时间_raw" DESC
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    return _attach_region_fields(rows)
+
+
+def _count_naguan_reoffend_by_region(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+) -> Dict[str, int]:
+    leixing = _normalize_leixing_list(leixing_list)
+    type_cond = ""
+    params: List[Any] = [start_time, end_time]
+    if leixing:
+        type_cond = """
+          AND EXISTS (
+              SELECT 1
+              FROM "ywdata"."case_type_config" ctc
+              WHERE ctc."leixing" = ANY(%s)
+                AND COALESCE(c."案由", '') SIMILAR TO ctc."ay_pattern"
+          )
+        """
+        params.append(list(leixing))
+
+    q = f"""
+        WITH managed AS (
+            SELECT
+                bzr."zjhm" AS "证件号码",
+                bzr."lgsj" AS "列管时间_raw",
+                LEFT(COALESCE(bzr."ssfj_dm", ''), 6) AS "地区代码"
+            FROM "stdata"."b_zdry_ryxx" bzr
+            WHERE COALESCE(NULLIF(bzr."deleteflag"::text, ''), '0') = '0'
+              AND COALESCE(NULLIF(bzr."sflg"::text, ''), '0') = '1'
+              AND NULLIF(BTRIM(COALESCE(bzr."zjhm", '')), '') IS NOT NULL
+              AND bzr."lgsj" IS NOT NULL
+        ),
+        case_rows AS (
+            SELECT
+                x."xyrxx_sfzh" AS "证件号码",
+                COALESCE(x."xyrxx_ay_mc", '') AS "案由",
+                x."ajxx_join_ajxx_lasj" AS "立案时间_raw"
+            FROM "ywdata"."zq_zfba_xyrxx" x
+            WHERE x."ajxx_join_ajxx_lasj" BETWEEN %s AND %s
+              AND NULLIF(BTRIM(COALESCE(x."xyrxx_sfzh", '')), '') IS NOT NULL
+              AND COALESCE(NULLIF(x."xyrxx_isdel_dm", ''), '0')::integer = 0
+        )
+        SELECT
+            m."地区代码",
+            COUNT(DISTINCT m."证件号码") AS cnt
+        FROM managed m
+        JOIN case_rows c
+          ON c."证件号码" = m."证件号码"
+         AND m."列管时间_raw" < c."立案时间_raw"
+        WHERE 1=1
+        {type_cond}
+        GROUP BY m."地区代码"
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        rows = cur.fetchall()
+    return _rows_to_count_map(rows)
+
+
+def _fetch_bqh_addr_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    patterns: Sequence[str],
+) -> List[Dict[str, Any]]:
+    params: List[Any] = [start_time, end_time]
+    pat_cond = ""
+    pat_values = [str(x).strip() for x in (patterns or []) if str(x).strip()]
+    if pat_values:
+        pat_cond = """
+          AND EXISTS (
+              SELECT 1
+              FROM unnest(%s::text[]) p(pattern)
+              WHERE COALESCE(ajxx_aymc, '') SIMILAR TO p.pattern
+          )
+        """
+        params.append(pat_values)
+
+    q = f"""
+        SELECT
+            LEFT(ajxx_cbdw_bh_dm, 6) AS "地区",
+            ajxx_fadd AS "发案地点"
+        FROM "ywdata"."zq_zfba_wcnr_shr_ajxx"
+        WHERE ajxx_lasj BETWEEN %s AND %s
+          AND ajxx_ajzt NOT IN ('已撤销','已合并')
+          AND ajxx_cbdw_mc !~ '交通'
+          AND 1=1
+          {pat_cond}
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def _fetch_jzqk_compact_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+) -> List[Dict[str, Any]]:
+    leixing = _normalize_leixing_list(leixing_list)
+    if leixing:
+        type_condition = """
+            AND EXISTS (
+                SELECT 1
+                FROM "ywdata"."case_type_config" ctc
+                WHERE ctc."leixing" = ANY(%s)
+                  AND vw.案由 SIMILAR TO ctc."ay_pattern"
+            )
+        """
+        type_params: List[Any] = [list(leixing)]
+    else:
+        type_condition = ""
+        type_params = []
+
+    q = f"""
+        WITH violation_counts AS (
+            SELECT
+                w.xyrxx_sfzh AS 身份证号,
+                COUNT(*) AS 违法次数,
+                COUNT(DISTINCT w.ajxx_join_ajxx_ay_dm) AS 不同案由数
+            FROM "ywdata"."zq_zfba_wcnr_xyr" w
+            WHERE COALESCE(NULLIF(w."xyrxx_isdel_dm", ''), '0')::integer = 0
+              AND COALESCE(NULLIF(w."ajxx_join_ajxx_isdel_dm", ''), '0')::integer = 0
+            GROUP BY w.xyrxx_sfzh
+        ),
+        first_case_xjs AS (
+            SELECT DISTINCT
+                vw.身份证号,
+                vw.案件编号 AS 当前案件编号,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM "ywdata"."zq_zfba_wcnr_xyr" w
+                        JOIN "ywdata"."zq_zfba_xjs2" x
+                          ON w."ajxx_join_ajxx_ajbh" = x.ajbh
+                         AND w.xyrxx_xm = x.xgry_xm
+                        WHERE w.xyrxx_sfzh = vw.身份证号
+                          AND w."ajxx_join_ajxx_ajbh" <> vw.案件编号
+                          AND COALESCE(NULLIF(w."xyrxx_isdel_dm", ''), '0')::integer = 0
+                          AND COALESCE(NULLIF(w."ajxx_join_ajxx_isdel_dm", ''), '0')::integer = 0
+                    ) THEN 1
+                    ELSE 0
+                END AS 有训诫书
+            FROM "ywdata"."v_wcnr_wfry_base" vw
+        ),
+        base_data AS (
+            SELECT DISTINCT
+                vw.案件编号,
+                vw.人员编号,
+                vw.案件类型,
+                vw.案由,
+                vw.地区,
+                vw.立案时间,
+                vw.姓名,
+                vw.身份证号,
+                CASE WHEN vw.年龄::text ~ '^\\d+$' THEN CAST(vw.年龄 AS INTEGER) END AS 年龄数值,
+                COALESCE(vc.违法次数, 0) AS 违法次数,
+                COALESCE(vc.不同案由数, 0) AS 不同案由数,
+                COALESCE(fcx.有训诫书, 0) AS 有训诫书
+            FROM "ywdata"."v_wcnr_wfry_base" vw
+            LEFT JOIN violation_counts vc ON vw.身份证号 = vc.身份证号
+            LEFT JOIN first_case_xjs fcx ON vw.身份证号 = fcx.身份证号 AND vw.案件编号 = fcx.当前案件编号
+            WHERE vw.录入时间 BETWEEN %s AND %s
+            {type_condition}
+        )
+        SELECT DISTINCT
+            bd.地区,
+            bd.案件类型,
+            bd.年龄数值,
+            CASE
+                WHEN bd.案件类型 = '行政' AND EXISTS (
+                    SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
+                    WHERE x.ajxx_ajbh = bd.案件编号
+                      AND x.xzcfjds_rybh = bd.人员编号
+                      AND CAST(x.xzcfjds_tj_jlts AS INTEGER) > 4
+                ) THEN 1 ELSE 0
+            END AS is_zhiju_gt4,
+            CASE
+                WHEN bd.案件类型 = '行政' AND EXISTS (
+                    SELECT 1 FROM "ywdata"."zq_zfba_xzcfjds" x
+                    WHERE x.ajxx_ajbh = bd.案件编号
+                      AND x.xzcfjds_rybh = bd.人员编号
+                      AND CAST(x.xzcfjds_tj_jlts AS INTEGER) > 4
+                      AND x.xzcfjds_zxqk_text ~ '(不送|不执行)'
+                ) THEN 1 ELSE 0
+            END AS is_zhiju_busong,
+            CASE
+                WHEN bd.案件类型 = '行政'
+                     AND bd.违法次数 = 2
+                     AND bd.不同案由数 = 1
+                     AND bd.有训诫书 = 1
+                THEN 1 ELSE 0
+            END AS is_second_same_ay_with_xjs,
+            CASE
+                WHEN bd.案件类型 = '行政' AND bd.违法次数 > 2 THEN 1 ELSE 0
+            END AS is_third_plus,
+            CASE
+                WHEN bd.案件类型 = '刑事' AND EXISTS (
+                    SELECT 1 FROM "ywdata"."zq_zfba_jlz" j
+                    WHERE j.ajxx_ajbh = bd.案件编号 AND j.jlz_rybh = bd.人员编号
+                ) THEN 1 ELSE 0
+            END AS is_xingju,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs" z
+                    WHERE z.zltzs_ajbh = bd.案件编号 AND z.zltzs_rybh = bd.人员编号
+                ) OR EXISTS (
+                    SELECT 1 FROM "ywdata"."zq_zfba_xjs2" x
+                    WHERE x.ajbh = bd.案件编号 AND x.xgry_xm = bd.姓名
+                ) THEN 1 ELSE 0
+            END AS is_jiaozhi_wenshu,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
+                    WHERE s.sfzhm = bd.身份证号
+                      AND TO_CHAR(s.rx_time, 'YYYY-MM-DD') >= TO_CHAR(bd.立案时间, 'YYYY-MM-DD')
+                ) THEN 1 ELSE 0
+            END AS is_songxiao
+        FROM base_data bd
+    """
+    params = [start_time, end_time] + type_params
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str], metric: str) -> List[Dict[str, Any]]:
+    if metric in ("警情", "转案数", "行政", "刑事"):
+        rows, _ = zfba_jq_aj_dao.fetch_detail_rows(
+            conn,
+            metric=metric,
+            diqu="__ALL__",
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+            za_types=[],
+            limit=0,
+        )
+        return _attach_region_fields(rows)
+
+    if metric in ("案件数(被侵害)", "刑事(未成年人)"):
+        m = "案件数(被侵害)" if metric == "案件数(被侵害)" else "刑事"
+        rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
+            conn,
+            metric=m,
+            diqu="__ALL__",
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+            za_types=[],
+            limit=0,
+        )
+        return _attach_region_fields(rows)
+
+    return []
+
+
+def fetch_period_data(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    include_details: bool,
+) -> Dict[str, Any]:
+    leixing = _normalize_leixing_list(leixing_list)
+    patterns = zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing)
+    typed_patterns_empty = bool(leixing) and not patterns
+
+    counts: Dict[str, Dict[str, int]] = {}
+    details: Dict[str, List[Dict[str, Any]]] = {}
+    flags = {"addr_model_degraded": False}
+    bqh_rows: List[Dict[str, Any]] = []
+    cs_bqh_rows: List[Dict[str, Any]] = []
+
+    jq_counts = zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=start_time, end_time=end_time, leixing_list=leixing)
+    za_counts = zfba_jq_aj_dao.count_zhuanan_by_diqu(conn, start_time=start_time, end_time=end_time, leixing_list=leixing)
+    counts["jq"] = _normalize_count_map(jq_counts)
+    counts["zhuanan"] = _normalize_count_map(za_counts)
+
+    if typed_patterns_empty:
+        counts["xingzheng"] = _normalize_count_map({})
+        counts["xingshi"] = _normalize_count_map({})
+        counts["bqh_case"] = _normalize_count_map({})
+        counts["cs_bqh_case"] = _normalize_count_map({})
+        counts["wcnr_xingshi"] = _normalize_count_map({})
+        jzqk_rows: List[Dict[str, Any]] = []
+    else:
+        ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            patterns=patterns,
+        )
+        counts["xingzheng"] = _normalize_count_map(ajxx.get("行政", {}))
+        counts["xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
+
+        wcnr_ajxx = zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            patterns=patterns,
+        )
+        counts["wcnr_xingshi"] = _normalize_count_map(wcnr_ajxx.get("刑事", {}))
+
+        if include_details:
+            bqh_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                patterns=patterns,
+                diqu=None,
+            )
+            bqh_rows = _attach_region_fields(bqh_base_rows)
+            counts["bqh_case"] = _count_rows_by_region(bqh_rows)
+
+            classified_rows, degraded = _classify_bqh_rows(bqh_rows)
+            flags["addr_model_degraded"] = degraded
+            cs_bqh_rows = [r for r in classified_rows if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
+            counts["cs_bqh_case"] = _count_rows_by_region(cs_bqh_rows)
+        else:
+            bqh_counts = zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                patterns=patterns,
+            )
+            counts["bqh_case"] = _normalize_count_map(bqh_counts)
+
+            bqh_addr_rows = _attach_region_fields(
+                _fetch_bqh_addr_rows(
+                    conn,
+                    start_time=start_time,
+                    end_time=end_time,
+                    patterns=patterns,
+                )
+            )
+            classified_rows, degraded = _classify_bqh_rows(bqh_addr_rows)
+            flags["addr_model_degraded"] = degraded
+            cs_rows = [r for r in classified_rows if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
+            counts["cs_bqh_case"] = _count_rows_by_region(cs_rows)
+
+    yzbl_num_rows: List[Dict[str, Any]] = []
+    zmjz_cover_num_rows: List[Dict[str, Any]] = []
+    zmjz_cover_den_rows: List[Dict[str, Any]] = []
+    if typed_patterns_empty:
+        jzqk_rows = []
+        counts["wfzf_people"] = _normalize_count_map({})
+        counts["yzbl_num"] = _normalize_count_map({})
+        counts["yzbl_den"] = _normalize_count_map({})
+        counts["zmjz_cover_num"] = _normalize_count_map({})
+        counts["zmjz_cover_den"] = _normalize_count_map({})
+    else:
+        if include_details:
+            jzqk_rows = jzqk_tongji_dao.fetch_jzqk_data(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+            )
+            jzqk_rows = _attach_region_fields(jzqk_rows)
+            counts["wfzf_people"] = _count_rows_by_region(jzqk_rows)
+
+            yzbl_num_rows = [r for r in jzqk_rows if _is_yzbl_num(r)]
+            counts["yzbl_num"] = _count_rows_by_region(yzbl_num_rows)
+            counts["yzbl_den"] = _count_rows_by_region(jzqk_rows)
+
+            zmjz_cover_num_rows = [r for r in jzqk_rows if _is_zmjz_cover_num(r)]
+            zmjz_cover_den_rows = [r for r in jzqk_rows if _is_zmjz_cover_den(r)]
+            counts["zmjz_cover_num"] = _count_rows_by_region(zmjz_cover_num_rows)
+            counts["zmjz_cover_den"] = _count_rows_by_region(zmjz_cover_den_rows)
+        else:
+            compact_rows = _fetch_jzqk_compact_rows(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+            )
+            jzqk_rows = []
+            logic_rows: List[Dict[str, Any]] = []
+            for row in compact_rows:
+                logic_rows.append(
+                    {
+                        "地区": row.get("地区"),
+                        "年龄": row.get("年龄数值"),
+                        "案件类型": row.get("案件类型"),
+                        "治拘大于4天": "是" if int(row.get("is_zhiju_gt4") or 0) == 1 else "否",
+                        "是否治拘不送": "是" if int(row.get("is_zhiju_busong") or 0) == 1 else "否",
+                        "2次违法且案由相同且第一次违法开具了训诫书": "是" if int(row.get("is_second_same_ay_with_xjs") or 0) == 1 else "否",
+                        "3次及以上违法": "是" if int(row.get("is_third_plus") or 0) == 1 else "否",
+                        "是否刑拘": "是" if int(row.get("is_xingju") or 0) == 1 else "否",
+                        "是否开具矫治文书": "是" if int(row.get("is_jiaozhi_wenshu") or 0) == 1 else "否",
+                        "是否送校": "是" if int(row.get("is_songxiao") or 0) == 1 else "否",
+                    }
+                )
+
+            logic_rows = _attach_region_fields(logic_rows)
+            counts["wfzf_people"] = _count_rows_by_region(logic_rows)
+            counts["yzbl_num"] = _count_rows_by_region([r for r in logic_rows if _is_yzbl_num(r)])
+            counts["yzbl_den"] = _count_rows_by_region(logic_rows)
+            counts["zmjz_cover_num"] = _count_rows_by_region([r for r in logic_rows if _is_zmjz_cover_num(r)])
+            counts["zmjz_cover_den"] = _count_rows_by_region([r for r in logic_rows if _is_zmjz_cover_den(r)])
+
+    zmy_den_rows: List[Dict[str, Any]] = []
+    zmy_num_rows: List[Dict[str, Any]] = []
+    zmjz_den_rows: List[Dict[str, Any]] = []
+    zmjz_num_rows: List[Dict[str, Any]] = []
+    if typed_patterns_empty:
+        counts["zmy_den"] = _normalize_count_map({})
+        counts["zmy_num"] = _normalize_count_map({})
+        counts["zmjz_den"] = _normalize_count_map({})
+        counts["zmjz_num"] = _normalize_count_map({})
+    else:
+        if include_details:
+            zmy_den_rows = _fetch_graduates(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                jz_time_lt6=True,
+            )
+            zmy_num_rows = _fetch_graduate_reoffend(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                jz_time_lt6=True,
+                xingshi_only=True,
+                minor_only=True,
+            )
+            zmjz_den_rows = _fetch_graduates(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                jz_time_lt6=False,
+            )
+            zmjz_num_rows = _fetch_graduate_reoffend(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                jz_time_lt6=False,
+                xingshi_only=False,
+                minor_only=False,
+            )
+            counts["zmy_den"] = _count_rows_by_region(zmy_den_rows)
+            counts["zmy_num"] = _count_distinct_by_region(zmy_num_rows, id_key="证件号码")
+            counts["zmjz_den"] = _count_rows_by_region(zmjz_den_rows)
+            counts["zmjz_num"] = _count_distinct_by_region(zmjz_num_rows, id_key="证件号码")
+        else:
+            counts["zmy_den"] = _count_graduates_by_region(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                jz_time_lt6=True,
+            )
+            counts["zmy_num"] = _count_graduate_reoffend_by_region(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                jz_time_lt6=True,
+                xingshi_only=True,
+                minor_only=True,
+            )
+            counts["zmjz_den"] = _count_graduates_by_region(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                jz_time_lt6=False,
+            )
+            counts["zmjz_num"] = _count_graduate_reoffend_by_region(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                jz_time_lt6=False,
+                xingshi_only=False,
+                minor_only=False,
+            )
+
+    naguan_den_rows: List[Dict[str, Any]] = []
+    naguan_num_rows: List[Dict[str, Any]] = []
+    if include_details:
+        naguan_den_rows = _fetch_naguan_base(conn)
+        counts["naguan_den"] = _count_rows_by_region(naguan_den_rows)
+    else:
+        counts["naguan_den"] = _count_naguan_base_by_region(conn)
+    if typed_patterns_empty:
+        counts["naguan_num"] = _normalize_count_map({})
+    else:
+        if include_details:
+            naguan_num_rows = _fetch_naguan_reoffend(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+            )
+            counts["naguan_num"] = _count_distinct_by_region(naguan_num_rows, id_key="证件号码")
+        else:
+            counts["naguan_num"] = _count_naguan_reoffend_by_region(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+            )
+
+    if include_details:
+        details["jq:value"] = _load_detail_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+            metric="警情",
+        )
+        details["za_rate:numerator"] = _load_detail_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+            metric="转案数",
+        )
+        details["za_rate:denominator"] = details["jq:value"]
+
+        details["xingzheng:value"] = _load_detail_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+            metric="行政",
+        )
+        details["xingshi:value"] = _load_detail_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+            metric="刑事",
+        )
+
+        details["bqh_case:value"] = bqh_rows
+        details["wfzf_people:value"] = jzqk_rows
+        details["cs_bqh_case:value"] = cs_bqh_rows
+
+        details["zmy_reoff:numerator"] = zmy_num_rows
+        details["zmy_reoff:denominator"] = zmy_den_rows
+
+        details["zmjz_reoff:numerator"] = zmjz_num_rows
+        details["zmjz_reoff:denominator"] = zmjz_den_rows
+
+        details["xingshi_ratio:numerator"] = _load_detail_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+            metric="刑事(未成年人)",
+        )
+        details["xingshi_ratio:denominator"] = details["xingshi:value"]
+
+        details["yzbl_ratio:numerator"] = yzbl_num_rows
+        details["yzbl_ratio:denominator"] = jzqk_rows
+
+        details["zmjz_ratio:numerator"] = zmjz_cover_num_rows
+        details["zmjz_ratio:denominator"] = zmjz_cover_den_rows
+
+        details["naguan_ratio:numerator"] = naguan_num_rows
+        details["naguan_ratio:denominator"] = naguan_den_rows
+
+    return {
+        "counts": counts,
+        "details": details,
+        "flags": flags,
+    }
+
+
+def select_detail_rows(period_data: Dict[str, Any], *, metric: str, part: str) -> List[Dict[str, Any]]:
+    metric_key = str(metric or "").strip()
+    part_key = str(part or "").strip().lower() or "value"
+    key = f"{metric_key}:{part_key}"
+    details = period_data.get("details") or {}
+    rows = details.get(key)
+    if rows is None and part_key != "value":
+        rows = details.get(f"{metric_key}:value")
+    if rows is None:
+        rows = []
+    return normalize_rows_for_output(_attach_region_fields(rows))
+
+
+def filter_rows_by_diqu(rows: Sequence[Dict[str, Any]], diqu: str) -> List[Dict[str, Any]]:
+    target = str(diqu or "").strip()
+    if not target or target in ("all", "__ALL__", "ALL", "全市"):
+        return list(rows or [])
+
+    code = _extract_region_code(target)
+    if not code:
+        return []
+
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        if _extract_region_code(row.get("地区代码") or row.get("地区")) == code:
+            out.append(dict(row))
+    return out

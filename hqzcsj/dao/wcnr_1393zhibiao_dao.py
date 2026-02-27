@@ -212,6 +212,19 @@ def count_jyh_after_cases_by_diqu(
         type_params = []
 
     xingshi_condition = sql.SQL(' AND zzx."ajxx_join_ajxx_ajlx" = \'刑事\' ') if only_xingshi else sql.SQL("")
+    under18_condition = (
+        sql.SQL(
+            """
+              AND zzx."xyrxx_sfzh" ~ '^[0-9]{17}[0-9Xx]$'
+              AND age(
+                    zzx."ajxx_join_ajxx_lasj"::date,
+                    to_date(substr(zzx."xyrxx_sfzh", 7, 8), 'YYYYMMDD')
+                  ) < interval '18 years'
+            """
+        )
+        if only_xingshi
+        else sql.SQL("")
+    )
 
     query = sql.SQL(
         """
@@ -238,11 +251,13 @@ def count_jyh_after_cases_by_diqu(
             WHERE zzx."xyrxx_sfzh" = g.sfzhm
               AND zzx."ajxx_join_ajxx_lasj" > g."离校时间"
               {xingshi_condition}
+              {under18_condition}
         )
         GROUP BY g.地区
         """
     ).format(
         xingshi_condition=xingshi_condition,
+        under18_condition=under18_condition,
         type_condition=type_condition,
     )
 
@@ -279,6 +294,19 @@ def fetch_jyh_after_cases_detail(
         type_params = []
 
     xingshi_condition = sql.SQL(' AND zzx."ajxx_join_ajxx_ajlx" = \'刑事\' ') if only_xingshi else sql.SQL("")
+    under18_condition = (
+        sql.SQL(
+            """
+          AND zzx."xyrxx_sfzh" ~ '^[0-9]{17}[0-9Xx]$'
+          AND age(
+                zzx."ajxx_join_ajxx_lasj"::date,
+                to_date(substr(zzx."xyrxx_sfzh", 7, 8), 'YYYYMMDD')
+              ) < interval '18 years'
+            """
+        )
+        if only_xingshi
+        else sql.SQL("")
+    )
 
     if diqu and str(diqu).strip() and str(diqu).strip().upper() != "ALL":
         diqu_condition = sql.SQL(" AND g.地区 = %s ")
@@ -330,14 +358,16 @@ def fetch_jyh_after_cases_detail(
             TO_CHAR(zzx."ajxx_join_ajxx_lasj", 'YYYY-MM-DD HH24:MI:SS') AS 立案时间
         FROM grads g
         INNER JOIN "ywdata"."zq_zfba_wcnr_xyr" zzx
-            ON g.sfzhm = zzx."xyrxx_sfzh"
+           ON g.sfzhm = zzx."xyrxx_sfzh"
            AND zzx."ajxx_join_ajxx_lasj" > g."离校时间_raw"
           {xingshi_condition}
+          {under18_condition}
           {diqu_condition}
         ORDER BY g."离校时间_raw" DESC, g.sfzhm, zzx."ajxx_join_ajxx_lasj" DESC
         """
     ).format(
         xingshi_condition=xingshi_condition,
+        under18_condition=under18_condition,
         type_condition=type_condition,
         diqu_condition=diqu_condition,
     )

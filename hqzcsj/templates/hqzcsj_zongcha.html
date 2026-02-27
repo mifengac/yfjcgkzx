@@ -70,6 +70,7 @@
         <button class="tab-btn" data-tab="wcnr">未成年人警情案件统计</button>
         <button class="tab-btn" data-tab="jzqk">矫治情况统计</button>
         <button class="tab-btn" data-tab="wcnr1393">未成年人1393指标</button>
+        <button class="tab-btn" data-tab="wcnr10lv">未成年人10个率</button>
     </div>
 
     <div class="tab-panel" id="tab-fetch">
@@ -140,6 +141,10 @@
 
     <div class="tab-panel" id="tab-wcnr1393">
         {% include "wcnr_1393zhibiao_tab.html" %}
+    </div>
+
+    <div class="tab-panel" id="tab-wcnr10lv">
+        {% include "wcnr_10lv_tab.html" %}
     </div>
 </main>
 
@@ -522,6 +527,7 @@
         document.getElementById("tab-wcnr").classList.toggle("active", t === "wcnr");
         document.getElementById("tab-jzqk").classList.toggle("active", t === "jzqk");
         document.getElementById("tab-wcnr1393").classList.toggle("active", t === "wcnr1393");
+        document.getElementById("tab-wcnr10lv").classList.toggle("active", t === "wcnr10lv");
     }
 
     tryLoadFetchSources();

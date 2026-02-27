@@ -24,6 +24,7 @@ from hqzcsj.service.zongcha_source_catalog_service import get_source_catalog
 from hqzcsj.service.zongcha_service import start_zongcha_job, get_zongcha_job_status
 from hqzcsj.service.tqws_service import get_tqws_job_status, start_tqws_job
 from hqzcsj.service.zfba_jq_aj_service import default_time_range_for_page as jqaj_default_range
+from hqzcsj.routes import wcnr_10lv_routes as wcnr_10lv_proxy
 
 
 hqzcsj_bp = Blueprint("hqzcsj", __name__, template_folder="../templates", static_folder="../static")
@@ -76,6 +77,41 @@ def zongcha_index() -> str:
         jqaj_default_end=jqaj_default_end,
         fetch_tab_unlocked=_is_fetch_tab_unlocked(),
     )
+
+
+@hqzcsj_bp.route("/zongcha/wcnr10lv/api/leixing")
+def zongcha_wcnr10lv_api_leixing() -> Any:
+    return wcnr_10lv_proxy.api_leixing()
+
+
+@hqzcsj_bp.route("/zongcha/wcnr10lv/api/summary")
+def zongcha_wcnr10lv_api_summary() -> Any:
+    return wcnr_10lv_proxy.api_summary()
+
+
+@hqzcsj_bp.route("/zongcha/wcnr10lv/detail")
+def zongcha_wcnr10lv_detail_page() -> Any:
+    return wcnr_10lv_proxy.detail_page()
+
+
+@hqzcsj_bp.route("/zongcha/wcnr10lv/api/detail")
+def zongcha_wcnr10lv_api_detail() -> Any:
+    return wcnr_10lv_proxy.api_detail()
+
+
+@hqzcsj_bp.route("/zongcha/wcnr10lv/detail/export")
+def zongcha_wcnr10lv_export_detail_single() -> Any:
+    return wcnr_10lv_proxy.export_detail_single()
+
+
+@hqzcsj_bp.route("/zongcha/wcnr10lv/export")
+def zongcha_wcnr10lv_export_summary() -> Any:
+    return wcnr_10lv_proxy.export_summary()
+
+
+@hqzcsj_bp.route("/zongcha/wcnr10lv/export_detail")
+def zongcha_wcnr10lv_export_detail_all() -> Any:
+    return wcnr_10lv_proxy.export_detail_all()
 
 
 @hqzcsj_bp.route("/zongcha/api/fetch-auth", methods=["POST"])
