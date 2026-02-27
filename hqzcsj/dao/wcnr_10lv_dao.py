@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import logging
+import time
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
@@ -51,6 +52,24 @@ def fetch_leixing_list(conn) -> List[str]:
 
 def _normalize_leixing_list(leixing_list: Sequence[str]) -> List[str]:
     return [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
+
+
+def _normalize_leixing_for_query(conn, leixing_list: Sequence[str]) -> List[str]:
+    """
+    统一“类型”口径：
+    - 未传/空：视为全量，不加类型过滤
+    - 传入集合与 case_type_config 全量完全一致：同样视为全量，不加类型过滤
+    - 其他：按所选类型过滤
+    """
+    selected = _normalize_leixing_list(leixing_list)
+    if not selected:
+        return []
+    all_types = _normalize_leixing_list(fetch_leixing_list(conn))
+    if not all_types:
+        return selected
+    if set(selected) == set(all_types):
+        return []
+    return selected
 
 
 def _extract_region_code(value: Any) -> str:
@@ -680,53 +699,52 @@ def _count_naguan_reoffend_by_region(
     *,
     start_time: str,
     end_time: str,
-    leixing_list: Sequence[str],
+    patterns: Sequence[str],
 ) -> Dict[str, int]:
-    leixing = _normalize_leixing_list(leixing_list)
-    type_cond = ""
+    pat_values = [str(x).strip() for x in (patterns or []) if str(x).strip()]
+    pat_cond = ""
     params: List[Any] = [start_time, end_time]
-    if leixing:
-        type_cond = """
+    if pat_values:
+        pat_cond = """
           AND EXISTS (
               SELECT 1
-              FROM "ywdata"."case_type_config" ctc
-              WHERE ctc."leixing" = ANY(%s)
-                AND COALESCE(c."案由", '') SIMILAR TO ctc."ay_pattern"
+              FROM unnest(%s::text[]) p(pattern)
+              WHERE COALESCE(x."xyrxx_ay_mc", '') SIMILAR TO p.pattern
           )
         """
-        params.append(list(leixing))
+        params.append(pat_values)
 
     q = f"""
         WITH managed AS (
             SELECT
                 bzr."zjhm" AS "证件号码",
-                bzr."lgsj" AS "列管时间_raw",
-                LEFT(COALESCE(bzr."ssfj_dm", ''), 6) AS "地区代码"
+                LEFT(COALESCE(bzr."ssfj_dm", ''), 6) AS "地区代码",
+                MIN(bzr."lgsj") AS "首列管时间_raw"
             FROM "stdata"."b_zdry_ryxx" bzr
             WHERE COALESCE(NULLIF(bzr."deleteflag"::text, ''), '0') = '0'
               AND COALESCE(NULLIF(bzr."sflg"::text, ''), '0') = '1'
               AND NULLIF(BTRIM(COALESCE(bzr."zjhm", '')), '') IS NOT NULL
               AND bzr."lgsj" IS NOT NULL
+            GROUP BY bzr."zjhm", LEFT(COALESCE(bzr."ssfj_dm", ''), 6)
         ),
-        case_rows AS (
+        case_max AS (
             SELECT
                 x."xyrxx_sfzh" AS "证件号码",
-                COALESCE(x."xyrxx_ay_mc", '') AS "案由",
-                x."ajxx_join_ajxx_lasj" AS "立案时间_raw"
+                MAX(x."ajxx_join_ajxx_lasj") AS "最大立案时间_raw"
             FROM "ywdata"."zq_zfba_xyrxx" x
             WHERE x."ajxx_join_ajxx_lasj" BETWEEN %s AND %s
               AND NULLIF(BTRIM(COALESCE(x."xyrxx_sfzh", '')), '') IS NOT NULL
               AND COALESCE(NULLIF(x."xyrxx_isdel_dm", ''), '0')::integer = 0
+              {pat_cond}
+            GROUP BY x."xyrxx_sfzh"
         )
         SELECT
             m."地区代码",
-            COUNT(DISTINCT m."证件号码") AS cnt
+            COUNT(1) AS cnt
         FROM managed m
-        JOIN case_rows c
+        JOIN case_max c
           ON c."证件号码" = m."证件号码"
-         AND m."列管时间_raw" < c."立案时间_raw"
-        WHERE 1=1
-        {type_cond}
+         AND m."首列管时间_raw" < c."最大立案时间_raw"
         GROUP BY m."地区代码"
     """
     with conn.cursor() as cur:
@@ -909,7 +927,7 @@ def _fetch_jzqk_compact_rows(
 
 def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str], metric: str) -> List[Dict[str, Any]]:
     if metric in ("警情", "转案数", "行政", "刑事"):
-        rows, _ = zfba_jq_aj_dao.fetch_detail_rows(
+        rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
             conn,
             metric=metric,
             diqu="__ALL__",
@@ -945,9 +963,18 @@ def fetch_period_data(
     end_time: str,
     leixing_list: Sequence[str],
     include_details: bool,
+    include_perf: bool = False,
 ) -> Dict[str, Any]:
-    leixing = _normalize_leixing_list(leixing_list)
+    t_all = time.perf_counter()
+    perf: Dict[str, float] = {}
+
+    def _mark(name: str, t0: float) -> None:
+        perf[name] = round((time.perf_counter() - t0) * 1000, 2)
+
+    leixing = _normalize_leixing_for_query(conn, leixing_list)
+    t = time.perf_counter()
     patterns = zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing)
+    _mark("fetch_patterns_ms", t)
     typed_patterns_empty = bool(leixing) and not patterns
 
     counts: Dict[str, Dict[str, int]] = {}
@@ -956,8 +983,14 @@ def fetch_period_data(
     bqh_rows: List[Dict[str, Any]] = []
     cs_bqh_rows: List[Dict[str, Any]] = []
 
-    jq_counts = zfba_jq_aj_dao.count_jq_by_diqu(conn, start_time=start_time, end_time=end_time, leixing_list=leixing)
-    za_counts = zfba_jq_aj_dao.count_zhuanan_by_diqu(conn, start_time=start_time, end_time=end_time, leixing_list=leixing)
+    t = time.perf_counter()
+    jq_counts = zfba_wcnr_jqaj_dao.count_jq_by_diqu(
+        conn, start_time=start_time, end_time=end_time, leixing_list=leixing
+    )
+    za_counts = zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu(
+        conn, start_time=start_time, end_time=end_time, leixing_list=leixing
+    )
+    _mark("count_jq_za_ms", t)
     counts["jq"] = _normalize_count_map(jq_counts)
     counts["zhuanan"] = _normalize_count_map(za_counts)
 
@@ -969,7 +1002,8 @@ def fetch_period_data(
         counts["wcnr_xingshi"] = _normalize_count_map({})
         jzqk_rows: List[Dict[str, Any]] = []
     else:
-        ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(
+        t = time.perf_counter()
+        ajxx = zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(
             conn,
             start_time=start_time,
             end_time=end_time,
@@ -977,16 +1011,11 @@ def fetch_period_data(
         )
         counts["xingzheng"] = _normalize_count_map(ajxx.get("行政", {}))
         counts["xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
-
-        wcnr_ajxx = zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            patterns=patterns,
-        )
-        counts["wcnr_xingshi"] = _normalize_count_map(wcnr_ajxx.get("刑事", {}))
+        counts["wcnr_xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
+        _mark("count_ajxx_ms", t)
 
         if include_details:
+            t = time.perf_counter()
             bqh_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
                 conn,
                 start_time=start_time,
@@ -1001,7 +1030,9 @@ def fetch_period_data(
             flags["addr_model_degraded"] = degraded
             cs_bqh_rows = [r for r in classified_rows if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
             counts["cs_bqh_case"] = _count_rows_by_region(cs_bqh_rows)
+            _mark("bqh_and_changsuo_detail_ms", t)
         else:
+            t = time.perf_counter()
             bqh_counts = zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(
                 conn,
                 start_time=start_time,
@@ -1022,6 +1053,7 @@ def fetch_period_data(
             flags["addr_model_degraded"] = degraded
             cs_rows = [r for r in classified_rows if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
             counts["cs_bqh_case"] = _count_rows_by_region(cs_rows)
+            _mark("bqh_and_changsuo_summary_ms", t)
 
     yzbl_num_rows: List[Dict[str, Any]] = []
     zmjz_cover_num_rows: List[Dict[str, Any]] = []
@@ -1035,6 +1067,7 @@ def fetch_period_data(
         counts["zmjz_cover_den"] = _normalize_count_map({})
     else:
         if include_details:
+            t = time.perf_counter()
             jzqk_rows = jzqk_tongji_dao.fetch_jzqk_data(
                 conn,
                 start_time=start_time,
@@ -1052,7 +1085,9 @@ def fetch_period_data(
             zmjz_cover_den_rows = [r for r in jzqk_rows if _is_zmjz_cover_den(r)]
             counts["zmjz_cover_num"] = _count_rows_by_region(zmjz_cover_num_rows)
             counts["zmjz_cover_den"] = _count_rows_by_region(zmjz_cover_den_rows)
+            _mark("jzqk_detail_rows_ms", t)
         else:
+            t = time.perf_counter()
             compact_rows = _fetch_jzqk_compact_rows(
                 conn,
                 start_time=start_time,
@@ -1083,6 +1118,7 @@ def fetch_period_data(
             counts["yzbl_den"] = _count_rows_by_region(logic_rows)
             counts["zmjz_cover_num"] = _count_rows_by_region([r for r in logic_rows if _is_zmjz_cover_num(r)])
             counts["zmjz_cover_den"] = _count_rows_by_region([r for r in logic_rows if _is_zmjz_cover_den(r)])
+            _mark("jzqk_compact_ms", t)
 
     zmy_den_rows: List[Dict[str, Any]] = []
     zmy_num_rows: List[Dict[str, Any]] = []
@@ -1095,6 +1131,7 @@ def fetch_period_data(
         counts["zmjz_num"] = _normalize_count_map({})
     else:
         if include_details:
+            t = time.perf_counter()
             zmy_den_rows = _fetch_graduates(
                 conn,
                 start_time=start_time,
@@ -1131,7 +1168,9 @@ def fetch_period_data(
             counts["zmy_num"] = _count_distinct_by_region(zmy_num_rows, id_key="证件号码")
             counts["zmjz_den"] = _count_rows_by_region(zmjz_den_rows)
             counts["zmjz_num"] = _count_distinct_by_region(zmjz_num_rows, id_key="证件号码")
+            _mark("graduate_detail_ms", t)
         else:
+            t = time.perf_counter()
             counts["zmy_den"] = _count_graduates_by_region(
                 conn,
                 start_time=start_time,
@@ -1164,6 +1203,7 @@ def fetch_period_data(
                 xingshi_only=False,
                 minor_only=False,
             )
+            _mark("graduate_summary_ms", t)
 
     naguan_den_rows: List[Dict[str, Any]] = []
     naguan_num_rows: List[Dict[str, Any]] = []
@@ -1176,6 +1216,7 @@ def fetch_period_data(
         counts["naguan_num"] = _normalize_count_map({})
     else:
         if include_details:
+            t = time.perf_counter()
             naguan_num_rows = _fetch_naguan_reoffend(
                 conn,
                 start_time=start_time,
@@ -1183,15 +1224,19 @@ def fetch_period_data(
                 leixing_list=leixing,
             )
             counts["naguan_num"] = _count_distinct_by_region(naguan_num_rows, id_key="证件号码")
+            _mark("naguan_detail_ms", t)
         else:
+            t = time.perf_counter()
             counts["naguan_num"] = _count_naguan_reoffend_by_region(
                 conn,
                 start_time=start_time,
                 end_time=end_time,
-                leixing_list=leixing,
+                patterns=patterns,
             )
+            _mark("naguan_summary_ms", t)
 
     if include_details:
+        t = time.perf_counter()
         details["jq:value"] = _load_detail_rows(
             conn,
             start_time=start_time,
@@ -1238,7 +1283,7 @@ def fetch_period_data(
             start_time=start_time,
             end_time=end_time,
             leixing_list=leixing,
-            metric="刑事(未成年人)",
+            metric="刑事",
         )
         details["xingshi_ratio:denominator"] = details["xingshi:value"]
 
@@ -1250,12 +1295,18 @@ def fetch_period_data(
 
         details["naguan_ratio:numerator"] = naguan_num_rows
         details["naguan_ratio:denominator"] = naguan_den_rows
+        _mark("assemble_details_ms", t)
 
-    return {
+    perf["total_ms"] = round((time.perf_counter() - t_all) * 1000, 2)
+
+    result = {
         "counts": counts,
         "details": details,
         "flags": flags,
     }
+    if include_perf:
+        result["perf"] = perf
+    return result
 
 
 def select_detail_rows(period_data: Dict[str, Any], *, metric: str, part: str) -> List[Dict[str, Any]]:

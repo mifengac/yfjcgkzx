@@ -128,6 +128,7 @@ def api_summary() -> Any:
     hb_end_time = (request.args.get("hb_end_time") or "").strip()
     show_hb = _parse_bool_arg("show_hb")
     show_ratio = _parse_bool_arg("show_ratio")
+    profile = _parse_bool_arg("profile")
     leixing_list = _parse_list_args("leixing")
 
     if not start_time or not end_time:
@@ -145,6 +146,7 @@ def api_summary() -> Any:
             hb_end_time=hb_end_time or None,
             leixing_list=leixing_list,
             include_hb=show_hb,
+            include_perf=profile,
         )
         columns = wcnr_10lv_service.get_display_columns(show_hb=show_hb, show_ratio=show_ratio)
         return jsonify({"success": True, "meta": meta, "columns": columns, "rows": rows})

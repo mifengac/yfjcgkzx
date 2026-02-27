@@ -159,11 +159,11 @@
         const data = await fetchJsonStrict(API_LEIXING);
         const items = data.data || [];
         const html = [];
-        html.push('<label class="multi-select-option"><input type="checkbox" value="_all" checked><span>全选</span></label>');
+        html.push('<label class="multi-select-option"><input type="checkbox" value="_all"><span>全选</span></label>');
         for (const x of items) {
             const s = String(x || "").trim();
             if (!s) continue;
-            html.push(`<label class="multi-select-option"><input type="checkbox" value="${s.replace(/"/g, "&quot;")}" checked><span>${s}</span></label>`);
+            html.push(`<label class="multi-select-option"><input type="checkbox" value="${s.replace(/"/g, "&quot;")}"><span>${s}</span></label>`);
         }
         msDropdown.innerHTML = html.join("");
         syncAllBox();
@@ -260,11 +260,15 @@
             const usp = buildBaseQueryParams();
             usp.set("show_hb", showHb ? "1" : "0");
             usp.set("show_ratio", showRatio ? "1" : "0");
+            usp.set("profile", "1");
             const data = await fetchJsonStrict(`${API_SUMMARY}?${usp.toString()}`);
 
             lastMeta = data.meta || null;
             lastRows = data.rows || [];
             statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}；环比：${data.meta.hb_start_time} ~ ${data.meta.hb_end_time}`;
+            if (data.meta && data.meta.perf) {
+                console.log("wcnr_10lv perf", data.meta.perf);
+            }
             renderTable(lastRows, data.meta || {});
         } catch (e) {
             errEl.textContent = e.message || String(e);

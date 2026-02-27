@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -222,7 +224,10 @@ def build_summary(
     hb_end_time: str | None,
     leixing_list: Sequence[str],
     include_hb: bool = True,
+    include_perf: bool = False,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    t_all = time.perf_counter()
+    perf: Dict[str, Any] = {}
     ranges = _build_ranges(
         start_time=start_time,
         end_time=end_time,
@@ -233,29 +238,38 @@ def build_summary(
 
     conn = get_database_connection()
     try:
+        t = time.perf_counter()
         current_data = wcnr_10lv_dao.fetch_period_data(
             conn,
             start_time=ranges["start_time"],
             end_time=ranges["end_time"],
             leixing_list=leixing,
             include_details=False,
+            include_perf=include_perf,
         )
+        perf["current_ms"] = round((time.perf_counter() - t) * 1000, 2)
+        t = time.perf_counter()
         yoy_data = wcnr_10lv_dao.fetch_period_data(
             conn,
             start_time=ranges["yoy_start_time"],
             end_time=ranges["yoy_end_time"],
             leixing_list=leixing,
             include_details=False,
+            include_perf=include_perf,
         )
+        perf["yoy_ms"] = round((time.perf_counter() - t) * 1000, 2)
         hb_data: Dict[str, Any] = {"counts": {}, "flags": {}}
         if include_hb:
+            t = time.perf_counter()
             hb_data = wcnr_10lv_dao.fetch_period_data(
                 conn,
                 start_time=ranges["hb_start_time"],
                 end_time=ranges["hb_end_time"],
                 leixing_list=leixing,
                 include_details=False,
+                include_perf=include_perf,
             )
+            perf["hb_ms"] = round((time.perf_counter() - t) * 1000, 2)
     finally:
         try:
             conn.close()
@@ -381,6 +395,16 @@ def build_summary(
         },
         "hb_loaded": bool(include_hb),
     }
+    if include_perf:
+        perf["total_ms"] = round((time.perf_counter() - t_all) * 1000, 2)
+        meta["perf"] = {
+            "service": perf,
+            "current": current_data.get("perf") or {},
+            "yoy": yoy_data.get("perf") or {},
+            "hb": (hb_data.get("perf") or {}) if include_hb else {},
+        }
+        if perf["total_ms"] >= 5000:
+            logging.warning("wcnr_10lv summary slow: %s", meta["perf"])
     return meta, rows
 
 
