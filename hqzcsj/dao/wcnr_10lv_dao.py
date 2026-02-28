@@ -1048,7 +1048,28 @@ def fetch_metric_detail_rows(
         return normalize_rows_for_output(rows)
 
     # ── 4. 刑事 / 刑事占比 ─────────────────────────────────────────────────
-    if metric in ("xingshi", "xingshi_ratio"):
+    if metric == "xingshi":
+        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
+                                 leixing_list=leixing, metric="刑事")
+        return normalize_rows_for_output(rows)
+
+    # 刑事占比：分子取 wcnr 刑事，分母取 jq_aj 总刑事
+    if metric == "xingshi_ratio":
+        if part == "denominator":
+            _, empty = _patterns_and_empty()
+            if empty:
+                return []
+            _rows, _ = zfba_jq_aj_dao.fetch_detail_rows(
+                conn,
+                metric="刑事",
+                diqu="__ALL__",
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+                za_types=[],
+                limit=0,
+            )
+            return normalize_rows_for_output(_attach_region_fields(_rows))
         rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
                                  leixing_list=leixing, metric="刑事")
         return normalize_rows_for_output(rows)
@@ -1182,6 +1203,7 @@ def fetch_period_data(
         counts["bqh_case"] = _normalize_count_map({})
         counts["cs_bqh_case"] = _normalize_count_map({})
         counts["wcnr_xingshi"] = _normalize_count_map({})
+        counts["jqaj_xingshi"] = _normalize_count_map({})
         jzqk_rows: List[Dict[str, Any]] = []
     else:
         t = time.perf_counter()
@@ -1194,6 +1216,13 @@ def fetch_period_data(
         counts["xingzheng"] = _normalize_count_map(ajxx.get("行政", {}))
         counts["xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
         counts["wcnr_xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
+        jqaj_ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            patterns=patterns,
+        )
+        counts["jqaj_xingshi"] = _normalize_count_map(jqaj_ajxx.get("刑事", {}))
         _mark("count_ajxx_ms", t)
 
         if include_details:
@@ -1481,7 +1510,17 @@ def fetch_period_data(
             leixing_list=leixing,
             metric="刑事",
         )
-        details["xingshi_ratio:denominator"] = details["xingshi:value"]
+        _jqaj_xingshi_rows, _ = zfba_jq_aj_dao.fetch_detail_rows(
+            conn,
+            metric="刑事",
+            diqu="__ALL__",
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+            za_types=[],
+            limit=0,
+        )
+        details["xingshi_ratio:denominator"] = _attach_region_fields(_jqaj_xingshi_rows)
 
         details["yzbl_ratio:numerator"] = yzbl_num_rows
         details["yzbl_ratio:denominator"] = jzqk_rows

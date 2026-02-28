@@ -22,58 +22,13 @@
     </header>
 
 <style>
-    .dropdown-container {
-        position: relative;
-        display: inline-block;
-    }
-    .dropdown-btn {
-        border: 1px solid #ccc;
-        background: #fff;
-        padding: 5px 10px;
-        border-radius: 4px;
-        cursor: pointer;
-        min-width: 160px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        user-select: none;
-    }
-    .dropdown-btn::after {
-        content: "▼";
-        font-size: 10px;
-        margin-left: 10px;
-        color: #666;
-    }
-    .dropdown-menu {
-        display: none;
-        position: absolute;
-        top: 100%;
-        left: 0;
-        margin-top: 2px;
-        background: #fff;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        min-width: 100%;
-        max-height: 250px;
-        overflow-y: auto;
-        z-index: 100;
-    }
-    .dropdown-menu.show {
-        display: block;
-    }
-    .dropdown-item {
-        display: block;
-        padding: 5px 10px;
-        cursor: pointer;
-        white-space: nowrap;
-    }
-    .dropdown-item:hover {
-        background: #f0f0f0;
-    }
-    .dropdown-item input {
-        margin-right: 5px;
-    }
+    .multi-select { position: relative; display: inline-block; }
+    .multi-select-display { height: 30px; border: 1px solid #ccc; border-radius: 4px; padding: 0 10px; font-size: 14px; background: #fff; cursor: pointer; display: -webkit-box; display: -ms-flexbox; display: flex; -webkit-box-align: center; -ms-flex-align: center; align-items: center; min-width: 160px; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+    .multi-select-dropdown { display: none; position: absolute; top: 32px; left: 0; background: #fff; border: 1px solid #ccc; border-radius: 4px; -webkit-box-shadow: 0 2px 8px rgba(0,0,0,0.12); box-shadow: 0 2px 8px rgba(0,0,0,0.12); z-index: 100; padding: 4px 6px; max-height: 250px; overflow-y: auto; min-width: 100%; }
+    .multi-select-dropdown.open { display: block; }
+    .multi-select-option { display: -webkit-box; display: -ms-flexbox; display: flex; -webkit-box-align: center; -ms-flex-align: center; align-items: center; padding: 5px 4px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .multi-select-option:hover { background: #f0f0f0; }
+    .multi-select-option input { margin-right: 5px; }
     .fenxi-container {
         padding: 20px;
         background: #fff;
@@ -162,25 +117,23 @@
 
         <div class="query-item">
             <label>警情类型:</label>
-            <div class="dropdown-container">
-                <div class="dropdown-btn" id="caseTypeBtn" onclick="toggleDropdown(event, 'caseTypeMenu')">已选择 0 项</div>
-                <div class="dropdown-menu" id="caseTypeMenu">
-                    <div style="padding:5px;" id="caseTypeLoading">加载中...</div>
-                </div>
+            <div class="multi-select" id="caseTypeMs">
+                <div class="multi-select-display" id="caseTypeMsDisplay">加载中...</div>
+                <div class="multi-select-dropdown" id="caseTypeMsDropdown"></div>
             </div>
         </div>
         
         <div class="query-item">
             <label>分析维度:</label>
-            <div class="dropdown-container">
-                <div class="dropdown-btn" id="dimBtn" onclick="toggleDropdown(event, 'dimMenu')">已选择 0 项</div>
-                <div class="dropdown-menu" id="dimMenu">
-                    <label class="dropdown-item" style="border-bottom:1px solid #eee;font-weight:bold;" onclick="event.stopPropagation()"><input type="checkbox" id="dimSelectAll" onchange="selectAllDims(this)"> 全选</label>
-                    <label class="dropdown-item"><input type="checkbox" value="srr" onchange="updateDimCount()"> 各地同环比</label>
-                    <label class="dropdown-item"><input type="checkbox" value="time" onchange="updateDimCount()"> 时段</label>
-                    <label class="dropdown-item"><input type="checkbox" value="dept" onchange="updateDimCount()"> 派出所</label>
-                    <label class="dropdown-item"><input type="checkbox" value="phone" onchange="updateDimCount()"> 重复报警电话</label>
-                    <label class="dropdown-item"><input type="checkbox" value="cluster" onchange="updateDimCount()"> 半径50米内重复报警地址</label>
+            <div class="multi-select" id="dimMs">
+                <div class="multi-select-display" id="dimMsDisplay">请选择维度</div>
+                <div class="multi-select-dropdown" id="dimMsDropdown">
+                    <label class="multi-select-option" style="border-bottom:1px solid #eee;font-weight:bold;"><input type="checkbox" value="_all"> 全选</label>
+                    <label class="multi-select-option"><input type="checkbox" value="srr"> 各地同环比</label>
+                    <label class="multi-select-option"><input type="checkbox" value="time"> 时段</label>
+                    <label class="multi-select-option"><input type="checkbox" value="dept"> 派出所</label>
+                    <label class="multi-select-option"><input type="checkbox" value="phone"> 重复报警电话</label>
+                    <label class="multi-select-option"><input type="checkbox" value="cluster"> 半径50米内重复报警地址</label>
                 </div>
             </div>
         </div>

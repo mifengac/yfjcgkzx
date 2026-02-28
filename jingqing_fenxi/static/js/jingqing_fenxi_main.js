@@ -1,49 +1,133 @@
-let treeDataRaw = [];
-let chartsMap = {};
+var treeDataRaw = [];
+var chartsMap = {};
 
-// Dropdown Logic
-function toggleDropdown(event, menuId) {
-    event.stopPropagation();
-    const menu = document.getElementById(menuId);
-    if (!menu) return;
-    const wasShow = menu.classList.contains('show');
-    
-    document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
-    
-    if (!wasShow) {
-        menu.classList.add('show');
+// ---- Multi-select: 警情类型 ----
+(function() {
+    var display = document.getElementById('caseTypeMsDisplay');
+    var dropdown = document.getElementById('caseTypeMsDropdown');
+    if (!display || !dropdown) return;
+
+    function syncAllBox() {
+        var allBox = dropdown.querySelector('input[value="_all"]');
+        if (!allBox) return;
+        var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
+        var total = 0, checked = 0;
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].value === '_all') continue;
+            total++;
+            if (boxes[i].checked) checked++;
+        }
+        allBox.checked = (total > 0 && checked === total);
+        allBox.indeterminate = (checked > 0 && checked < total);
     }
-}
-
-document.addEventListener('click', function() {
-    document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
-});
-
-function updateTypeCount() {
-    const checked = document.querySelectorAll('#caseTypeMenu input[type="checkbox"]:checked').length;
-    document.getElementById('caseTypeBtn').innerText = "已选择 " + checked + " 项";
-}
-
-function updateDimCount() {
-    const checked = document.querySelectorAll('#dimMenu input[type="checkbox"]:checked').length;
-    document.getElementById('dimBtn').innerText = "已选择 " + checked + " 项";
-}
-
-
-
-function selectAllDims(masterCb) {
-    document.querySelectorAll('#dimMenu input[type="checkbox"]:not(#dimSelectAll)').forEach(cb => {
-        cb.checked = masterCb.checked;
+    function renderLabel() {
+        var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
+        var total = 0, checked = 0;
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].value === '_all') continue;
+            total++;
+            if (boxes[i].checked) checked++;
+        }
+        if (total === 0) { display.innerHTML = '加载中...'; return; }
+        if (checked === 0) { display.innerHTML = '未选择(默认全量)'; return; }
+        if (checked === total) { display.innerHTML = '全部'; return; }
+        display.innerHTML = '已选 ' + checked + ' 项';
+    }
+    display.onclick = function(e) {
+        e = e || window.event;
+        if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
+        if (dropdown.className.indexOf('open') >= 0) {
+            dropdown.className = dropdown.className.replace(/\s*open/g, '');
+        } else {
+            dropdown.className += ' open';
+        }
+    };
+    dropdown.onclick = function(e) {
+        e = e || window.event;
+        if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
+    };
+    dropdown.onchange = function(e) {
+        e = e || window.event;
+        var t = e.target || e.srcElement;
+        if (!t || t.tagName !== 'INPUT') return;
+        if (t.value === '_all') {
+            var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
+            for (var i = 0; i < boxes.length; i++) {
+                if (boxes[i].value !== '_all') boxes[i].checked = t.checked;
+            }
+        } else {
+            syncAllBox();
+        }
+        renderLabel();
+    };
+    document.addEventListener('click', function() {
+        dropdown.className = dropdown.className.replace(/\s*open/g, '');
     });
-    updateDimCount();
-}
+    window._caseTypeSyncLabel = renderLabel;
+})();
 
-function selectAllTypes(masterCb) {
-    document.querySelectorAll('#caseTypeMenu input[type="checkbox"]:not(#typeSelectAll)').forEach(cb => {
-        cb.checked = masterCb.checked;
+// ---- Multi-select: 分析维度 ----
+(function() {
+    var display = document.getElementById('dimMsDisplay');
+    var dropdown = document.getElementById('dimMsDropdown');
+    if (!display || !dropdown) return;
+
+    function syncAllBox() {
+        var allBox = dropdown.querySelector('input[value="_all"]');
+        if (!allBox) return;
+        var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
+        var total = 0, checked = 0;
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].value === '_all') continue;
+            total++;
+            if (boxes[i].checked) checked++;
+        }
+        allBox.checked = (total > 0 && checked === total);
+        allBox.indeterminate = (checked > 0 && checked < total);
+    }
+    function renderLabel() {
+        var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
+        var total = 0, checked = 0;
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].value === '_all') continue;
+            total++;
+            if (boxes[i].checked) checked++;
+        }
+        if (checked === 0) { display.innerHTML = '请选择维度'; return; }
+        if (checked === total) { display.innerHTML = '全部'; return; }
+        display.innerHTML = '已选 ' + checked + ' 项';
+    }
+    display.onclick = function(e) {
+        e = e || window.event;
+        if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
+        if (dropdown.className.indexOf('open') >= 0) {
+            dropdown.className = dropdown.className.replace(/\s*open/g, '');
+        } else {
+            dropdown.className += ' open';
+        }
+    };
+    dropdown.onclick = function(e) {
+        e = e || window.event;
+        if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
+    };
+    dropdown.onchange = function(e) {
+        e = e || window.event;
+        var t = e.target || e.srcElement;
+        if (!t || t.tagName !== 'INPUT') return;
+        if (t.value === '_all') {
+            var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
+            for (var i = 0; i < boxes.length; i++) {
+                if (boxes[i].value !== '_all') boxes[i].checked = t.checked;
+            }
+        } else {
+            syncAllBox();
+        }
+        renderLabel();
+    };
+    document.addEventListener('click', function() {
+        dropdown.className = dropdown.className.replace(/\s*open/g, '');
     });
-    updateTypeCount();
-}
+})();
 function initDates() {
     const format = (date) => {
         const d = new Date(date);
@@ -84,82 +168,79 @@ function initDates() {
 
 function loadTreeData() {
     fetch('/jingqing_fenxi/treeData')
-        .then(res => res.json())
-        .then(data => {
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
             treeDataRaw = data || [];
-            const menu = document.getElementById('caseTypeMenu');
-            if(!menu) return;
-            menu.innerHTML = '';
+            var dropdown = document.getElementById('caseTypeMsDropdown');
+            if (!dropdown) return;
+            dropdown.innerHTML = '';
 
             // 全选 item
-            (function() {
-                const allLabel = document.createElement('label');
-                allLabel.className = 'dropdown-item';
-                allLabel.style.cssText = 'border-bottom:1px solid #eee;font-weight:bold;';
-                allLabel.onclick = (e) => e.stopPropagation();
-                const allCb = document.createElement('input');
-                allCb.type = 'checkbox';
-                allCb.id = 'typeSelectAll';
-                allCb.onchange = function() { selectAllTypes(this); };
-                allLabel.appendChild(allCb);
-                allLabel.appendChild(document.createTextNode(' 全选'));
-                menu.appendChild(allLabel);
-            })();
+            var allLabel = document.createElement('label');
+            allLabel.className = 'multi-select-option';
+            allLabel.style.cssText = 'border-bottom:1px solid #eee;font-weight:bold;';
+            var allCb = document.createElement('input');
+            allCb.type = 'checkbox';
+            allCb.value = '_all';
+            allLabel.appendChild(allCb);
+            allLabel.appendChild(document.createTextNode(' 全选'));
+            dropdown.appendChild(allLabel);
 
             // Only add nodes without pId
-            const parents = treeDataRaw.filter(item => !item.pId);
-            parents.forEach(p => {
-                const label = document.createElement('label');
-                label.className = 'dropdown-item';
-                label.onclick = (e) => e.stopPropagation();
-
-                const cb = document.createElement('input');
+            var parents = treeDataRaw.filter(function(item) { return !item.pId; });
+            parents.forEach(function(p) {
+                var label = document.createElement('label');
+                label.className = 'multi-select-option';
+                var cb = document.createElement('input');
                 cb.type = 'checkbox';
                 cb.value = p.id;
                 cb.dataset.name = p.name;
-                cb.onchange = updateTypeCount;
-
                 label.appendChild(cb);
                 label.appendChild(document.createTextNode(' ' + p.name));
-                menu.appendChild(label);
+                dropdown.appendChild(label);
             });
-        }).catch(err => {
+
+            if (window._caseTypeSyncLabel) window._caseTypeSyncLabel();
+        }).catch(function(err) {
             console.error(err);
-            const menu = document.getElementById('caseTypeMenu');
-            if(menu) menu.innerHTML = '<div style="padding:5px;">加载失败</div>';
+            var dropdown = document.getElementById('caseTypeMsDropdown');
+            if (dropdown) dropdown.innerHTML = '<div style="padding:5px;">加载失败</div>';
         });
 }
 
 function collectFormData() {
-    const form = new FormData();
+    var form = new FormData();
     // Replace T with space
-    ['beginDate', 'endDate', 'm2mStartTime', 'm2mEndTime', 'y2yStartTime', 'y2yEndTime'].forEach(id => {
-        let v = document.getElementById(id).value;
+    var dateIds = ['beginDate', 'endDate', 'm2mStartTime', 'm2mEndTime', 'y2yStartTime', 'y2yEndTime'];
+    for (var i = 0; i < dateIds.length; i++) {
+        var v = document.getElementById(dateIds[i]).value;
         if (v) v = v.replace('T', ' ');
-        form.append(id, v);
-    });
+        form.append(dateIds[i], v);
+    }
 
-    // Dimensions
-    const checkedDims = document.querySelectorAll('#dimMenu input[type="checkbox"]:checked');
-    checkedDims.forEach(cb => {
-        form.append('dimensions[]', cb.value);
-    });
+    // Dimensions (exclude _all checkbox)
+    var dimBoxes = document.querySelectorAll('#dimMsDropdown input[type="checkbox"]');
+    for (var j = 0; j < dimBoxes.length; j++) {
+        if (dimBoxes[j].value !== '_all' && dimBoxes[j].checked) {
+            form.append('dimensions[]', dimBoxes[j].value);
+        }
+    }
 
-    // Selected Parent Node tags
-    const checkedTypes = document.querySelectorAll('#caseTypeMenu input[type="checkbox"]:checked');
-    let names = [];
-    let tags = [];
-    
-    checkedTypes.forEach(cb => {
-        const pid = cb.value;
-        const children = treeDataRaw.filter(item => item.pId === pid);
-        children.forEach(c => {
-            if(c.tag) {
+    // Selected case type parent nodes (exclude _all checkbox)
+    var typeBoxes = document.querySelectorAll('#caseTypeMsDropdown input[type="checkbox"]');
+    var names = [];
+    var tags = [];
+    for (var k = 0; k < typeBoxes.length; k++) {
+        if (typeBoxes[k].value === '_all' || !typeBoxes[k].checked) continue;
+        var pid = typeBoxes[k].value;
+        var children = treeDataRaw.filter(function(item) { return item.pId === pid; });
+        children.forEach(function(c) {
+            if (c.tag) {
                 tags.push(c.tag);
                 names.push(c.name);
             }
         });
-    });
+    }
 
     form.append('newOriCharaSubclassNo', tags.join(','));
     form.append('newOriCharaSubclass', names.join(','));

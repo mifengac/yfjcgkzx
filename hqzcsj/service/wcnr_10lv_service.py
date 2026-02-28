@@ -48,7 +48,7 @@ COMPOSITE_METRICS: List[Dict[str, str]] = [
         "label": "刑事占比",
         "rate_label": "刑事占比率",
         "num_key": "wcnr_xingshi",
-        "den_key": "xingshi",
+        "den_key": "jqaj_xingshi",
     },
     {
         "key": "yzbl_ratio",
@@ -366,7 +366,7 @@ def build_summary(
             label="刑事占比",
             rate_label="刑事占比率",
             num_key="wcnr_xingshi",
-            den_key="xingshi",
+            den_key="jqaj_xingshi",
         )
         add_composite_metric(
             row,
