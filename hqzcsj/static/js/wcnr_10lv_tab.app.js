@@ -36,6 +36,23 @@
     let lastMeta = null;
     let lastRows = [];
 
+    const busyMask = document.getElementById("wcnr10lvBusyMask");
+    const busyTextEl = document.getElementById("wcnr10lvBusyText");
+    let _busyTimer = null;
+
+    function setBusy(isBusy, text) {
+        if (!busyMask) return;
+        if (isBusy) {
+            if (_busyTimer) { clearTimeout(_busyTimer); _busyTimer = null; }
+            if (busyTextEl) busyTextEl.textContent = text || "处理中，请稍候...";
+            busyMask.style.display = "flex";
+            document.body.style.overflow = "hidden";
+        } else {
+            busyMask.style.display = "none";
+            document.body.style.overflow = "";
+        }
+    }
+
     function toResolvedUrl(pathOrUrl) {
         const s = String(pathOrUrl || "").trim();
         if (!s) return s;
@@ -252,8 +269,9 @@
 
     async function query() {
         errEl.textContent = "";
-        statusEl.textContent = "查询中...";
+        statusEl.textContent = "";
         queryBtn.disabled = true;
+        setBusy(true, "正在查询中，请稍候...");
         try {
             const showHb = !!(showHbEl && showHbEl.checked);
             const showRatio = !!(showRatioEl && showRatioEl.checked);
@@ -277,6 +295,7 @@
             tbl.innerHTML = "";
         } finally {
             queryBtn.disabled = false;
+            setBusy(false);
         }
     }
 
@@ -285,6 +304,8 @@
         usp.set("fmt", fmt);
         usp.set("show_hb", (showHbEl && showHbEl.checked) ? "1" : "0");
         usp.set("show_ratio", (showRatioEl && showRatioEl.checked) ? "1" : "0");
+        setBusy(true, "正在导出中，请稍候...");
+        _busyTimer = setTimeout(() => setBusy(false), 4000);
         window.location.href = `${EXPORT_SUMMARY}?${usp.toString()}`;
     }
 
@@ -293,6 +314,8 @@
         usp.set("fmt", fmt);
         usp.set("show_hb", (showHbEl && showHbEl.checked) ? "1" : "0");
         usp.set("show_ratio", (showRatioEl && showRatioEl.checked) ? "1" : "0");
+        setBusy(true, "正在导出详情中，请稍候...");
+        _busyTimer = setTimeout(() => setBusy(false), 4000);
         window.location.href = `${EXPORT_DETAIL}?${usp.toString()}`;
     }
 
@@ -353,27 +376,8 @@
 
     H.setDefaultTimeRange({ startEl, endEl, hbStartEl, hbEndEl });
 
-    let hasAutoQueried = false;
-    const typesLoaded = loadTypes().catch((e) => {
+    loadTypes().catch((e) => {
         errEl.textContent = e.message || String(e);
         if (msDisplay) msDisplay.textContent = "加载失败";
-        throw e;
     });
-
-    async function maybeAutoQuery() {
-        if (hasAutoQueried) return;
-        hasAutoQueried = true;
-        await typesLoaded;
-        await query();
-    }
-
-    const tabBtn = document.querySelector('#hqzcsjTabs .tab-btn[data-tab="wcnr10lv"]');
-    if (tabBtn) {
-        tabBtn.addEventListener("click", () => maybeAutoQuery().catch(() => {}));
-    }
-
-    const panel = document.getElementById("tab-wcnr10lv");
-    if (panel && panel.classList.contains("active")) {
-        maybeAutoQuery().catch(() => {});
-    }
 })();

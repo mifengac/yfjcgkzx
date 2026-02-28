@@ -375,8 +375,9 @@
 
     async function query() {
         errEl.textContent = "";
-        statusEl.textContent = "查询中...";
+        statusEl.textContent = "";
         queryBtn.disabled = true;
+        setExportBusy(true, "正在查询中，请稍候...");
         try {
             const usp = applyDisplayFlags(buildBaseQueryParams(), true, true);
             const resp = await fetch(`${API_SUMMARY_URL}?${usp.toString()}`);
@@ -392,6 +393,7 @@
             lastRows = [];
         } finally {
             queryBtn.disabled = false;
+            setExportBusy(false);
         }
     }
 
@@ -401,6 +403,8 @@
         const usp = applyDisplayFlags(buildBaseQueryParams(), showRatio, showHb);
         usp.set("fmt", fmt);
         const href = `${EXPORT_SUMMARY_URL}?${usp.toString()}`;
+        setExportBusy(true, "正在导出中，请稍候...");
+        setTimeout(() => setExportBusy(false), 4000);
         window.location.href = href;
     }
 
@@ -494,27 +498,8 @@
     H.setDefaultTimeRange({ startEl, endEl, hbStartEl, hbEndEl });
     initZaOptions();
 
-    let hasAutoQueried = false;
-    const typesLoaded = loadTypes().catch((e) => {
+    loadTypes().catch((e) => {
         errEl.textContent = e.message || String(e);
         msDisplay.textContent = "加载失败";
-        throw e;
     });
-
-    async function maybeAutoQuery() {
-        if (hasAutoQueried) return;
-        hasAutoQueried = true;
-        await typesLoaded;
-        await query();
-    }
-
-    const wcnrTabBtn = document.querySelector('#hqzcsjTabs .tab-btn[data-tab="wcnr"]');
-    if (wcnrTabBtn) {
-        wcnrTabBtn.addEventListener("click", () => maybeAutoQuery().catch(() => {}));
-    }
-
-    const wcnrPanel = document.getElementById("tab-wcnr");
-    if (wcnrPanel && wcnrPanel.classList.contains("active")) {
-        maybeAutoQuery().catch(() => {});
-    }
 })();

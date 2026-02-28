@@ -63,6 +63,22 @@
 
         let lastMeta = null;
 
+        const jzqkBusyMask = document.getElementById("jzqkBusyMask");
+        const jzqkBusyText = document.getElementById("jzqkBusyText");
+        let _busyTimer = null;
+        function setBusy(isBusy, text) {
+            if (!jzqkBusyMask) return;
+            if (isBusy) {
+                if (_busyTimer) { clearTimeout(_busyTimer); _busyTimer = null; }
+                if (jzqkBusyText) jzqkBusyText.textContent = text || "处理中，请稍候...";
+                jzqkBusyMask.style.display = "flex";
+                document.body.style.overflow = "hidden";
+            } else {
+                jzqkBusyMask.style.display = "none";
+                document.body.style.overflow = "";
+            }
+        }
+
         // 导出按钮下拉
         const exportDd = document.getElementById("jzqkExportDd");
         const exportBtn = document.getElementById("jzqkExportBtn");
@@ -222,8 +238,9 @@
 
         async function query() {
             errEl.textContent = "";
-            statusEl.textContent = "查询中...";
+            statusEl.textContent = "";
             queryBtn.disabled = true;
+            setBusy(true, "正在查询中，请稍候...");
             try {
                 const usp = buildQueryParams();
                 const resp = await fetch(`{{ url_for('jzqk_tongji.api_summary') }}?` + usp.toString());
@@ -237,6 +254,7 @@
                 statusEl.textContent = "";
             } finally {
                 queryBtn.disabled = false;
+                setBusy(false);
             }
         }
 
@@ -244,6 +262,8 @@
             const usp = buildQueryParams();
             usp.set("fmt", fmt);
             const href = `{{ url_for('jzqk_tongji.export_summary') }}?` + usp.toString();
+            setBusy(true, "正在导出中，请稍候...");
+            _busyTimer = setTimeout(() => setBusy(false), 4000);
             window.location.href = href;
         }
 
@@ -251,6 +271,8 @@
             const usp = buildQueryParams();
             usp.set("fmt", fmt);
             const href = `{{ url_for('jzqk_tongji.export_detail') }}?` + usp.toString();
+            setBusy(true, "正在导出详情中，请稍候...");
+            _busyTimer = setTimeout(() => setBusy(false), 4000);
             window.location.href = href;
         }
 
@@ -258,27 +280,16 @@
 
         setDefaultTimeRange();
 
-        let hasAutoQueried = false;
-        const typesLoaded = loadTypes().catch(e => {
+        loadTypes().catch(e => {
             errEl.textContent = e.message || String(e);
             msDisplay.textContent = "加载失败";
-            throw e;
         });
-
-        async function maybeAutoQuery() {
-            if (hasAutoQueried) return;
-            hasAutoQueried = true;
-            await typesLoaded;
-            await query();
-        }
-
-        const jzqkTabBtn = document.querySelector('#hqzcsjTabs .tab-btn[data-tab="jzqk"]');
-        if (jzqkTabBtn) {
-            jzqkTabBtn.addEventListener("click", () => maybeAutoQuery().catch(() => {}));
-        }
-        const jzqkPanel = document.getElementById("tab-jzqk");
-        if (jzqkPanel && jzqkPanel.classList.contains("active")) {
-            maybeAutoQuery().catch(() => {});
-        }
     })();
 </script>
+
+<div id="jzqkBusyMask" style="display:none; position:fixed; inset:0; z-index:2000; background:rgba(15,23,42,0.45); align-items:center; justify-content:center; pointer-events:all;">
+    <div style="min-width:280px; padding:18px 20px; border-radius:12px; background:#fff; box-shadow:0 12px 30px rgba(0,0,0,.2); display:flex; align-items:center; gap:10px; font-size:14px; font-weight:700; color:#1f2937;">
+        <span style="width:12px; height:12px; border-radius:50%; background:#1976d2; animation:jqaj-pulse 1s ease-in-out infinite; display:inline-block;"></span>
+        <span id="jzqkBusyText">处理中，请稍候...</span>
+    </div>
+</div>

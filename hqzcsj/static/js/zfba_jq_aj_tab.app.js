@@ -16,6 +16,7 @@
     const dailyReportDd = document.getElementById("jqajDailyReportDd");
     const dailyReportBtn = document.getElementById("jqajDailyReportBtn");
     const busyMask = document.getElementById("jqajBusyMask");
+    const busyTextEl = document.getElementById("jqajBusyText");
     const showHbEl = document.getElementById("jqajShowHb");
     const showRatioEl = document.getElementById("jqajShowRatio");
     const canExportDailyReport = !!endpoints.canExportDailyReport;
@@ -26,17 +27,23 @@
 
     let lastMeta = null;
     let lastRows = [];
+    let _busyTimer = null;
 
-    function setDailyReportBusy(isBusy) {
+    function setBusy(isBusy, text) {
         if (!busyMask) return;
         if (isBusy) {
+            if (_busyTimer) { clearTimeout(_busyTimer); _busyTimer = null; }
+            if (busyTextEl) busyTextEl.textContent = text || "处理中，请稍候...";
             busyMask.classList.add("active");
             document.body.style.overflow = "hidden";
-            return;
+        } else {
+            busyMask.classList.remove("active");
+            document.body.style.overflow = "";
         }
-        busyMask.classList.remove("active");
-        document.body.style.overflow = "";
     }
+
+    // kept for backward compat
+    function setDailyReportBusy(isBusy) { setBusy(isBusy, "日报生成中，请等待..."); }
 
     function initDailyReportPermission() {
         if (!dailyReportBtn) return;
@@ -274,8 +281,9 @@
 
     async function query() {
         errEl.textContent = "";
-        statusEl.textContent = "查询中...";
+        statusEl.textContent = "";
         queryBtn.disabled = true;
+        setBusy(true, "正在查询中，请稍候...");
         try {
             const usp = buildQueryParams();
             usp.set("show_hb", "1");
@@ -292,6 +300,7 @@
             lastRows = [];
         } finally {
             queryBtn.disabled = false;
+            setBusy(false);
         }
     }
 
@@ -301,6 +310,8 @@
         if (showRatioEl && showRatioEl.checked) usp.set("show_ratio", "1");
         usp.set("show_hb", (showHbEl && showHbEl.checked) ? "1" : "0");
         const href = `${endpoints.exportSummary}?${usp.toString()}`;
+        setBusy(true, "正在导出中，请稍候...");
+        _busyTimer = setTimeout(() => setBusy(false), 4000);
         window.location.href = href;
     }
 
@@ -316,6 +327,7 @@
             return;
         }
         reportBtn.disabled = true;
+        setBusy(true, "正在导出报表，请稍候...");
         statusEl.textContent = "正在导出报表...";
         try {
             const resp = await fetch(endpoints.reportExport, {
@@ -350,6 +362,7 @@
             statusEl.textContent = "";
         } finally {
             reportBtn.disabled = false;
+            setBusy(false);
         }
     }
 
@@ -376,7 +389,7 @@
         }
 
         if (dailyReportBtn) dailyReportBtn.disabled = true;
-        setDailyReportBusy(true);
+        setBusy(true, `日报生成中，请等待...（${outFmt.toUpperCase()}）`);
         statusEl.textContent = `日报生成中，请等待...（${outFmt.toUpperCase()}）`;
         try {
             const resp = await fetch(endpoints.dailyReportExport, {
@@ -413,7 +426,7 @@
             errEl.textContent = e.message || String(e);
             statusEl.textContent = "";
         } finally {
-            setDailyReportBusy(false);
+            setBusy(false);
             if (dailyReportBtn) dailyReportBtn.disabled = false;
         }
     }
@@ -452,7 +465,6 @@
     initDailyReportPermission();
 
     loadTypes()
-        .then(() => query())
         .catch((e) => {
             errEl.textContent = e.message || String(e);
             msDisplay.textContent = "加载失败";
