@@ -32,6 +32,12 @@
             rateLabel: "严重不良未成年人矫治教育占比率",
         },
         {
+            key: "sx_songjiao_ratio",
+            label: "涉刑人员送生占比",
+            type: "composite",
+            rateLabel: "涉刑人员送矫率",
+        },
+        {
             key: "zmjz_ratio",
             label: "专门(矫治)教育占比",
             type: "composite",

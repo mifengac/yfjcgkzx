@@ -3,15 +3,101 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>矛盾纠纷线索移交统计</title>
+    <title>矛盾纠纷</title>
     <link rel="stylesheet" href="{{ url_for('mdjfxsyj.static', filename='mdjfxsyj_mdj_xsyj.css') }}" />
+    <style>
+      /* ---- 公共 Tab 样式 ---- */
+      .tabs { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+      .tab-btn { height:34px; border:1px solid #d7dbe7; border-radius:999px; background:#fff;
+                 padding:0 16px; cursor:pointer; font-weight:800; color:#333; font-size:14px; }
+      .tab-btn.active { background:#1976d2; color:#fff; border-color:#1976d2; }
+      .tab-panel { display:none; }
+      .tab-panel.active { display:block; }
+
+      /* ---- cfbj 公共组件（card / btn / table / dropdown / switch / modal）---- */
+      .cfbj-card { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px;
+                   box-shadow:0 6px 22px rgba(18,38,63,.06); border:1px solid #e6e8ef; }
+      .cfbj-row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+      .cfbj-row label { font-size:14px; color:#333; }
+      .cfbj-btn { height:34px; border:0; border-radius:8px; background:#1976d2; color:#fff;
+                  padding:0 14px; font-weight:700; cursor:pointer; font-size:14px; }
+      .cfbj-btn:disabled { opacity:.6; cursor:not-allowed; }
+      .cfbj-muted { color:#666; font-size:12px; margin-top:8px; }
+      .cfbj-err   { color:#b42318; font-size:13px; margin-top:8px; white-space:pre-wrap; }
+
+      /* 多选下拉 */
+      .cfbj-ms { position:relative; display:inline-block; }
+      .cfbj-ms-display { height:34px; border:1px solid #d7dbe7; border-radius:8px; padding:0 10px;
+                         font-size:14px; background:#fff; cursor:pointer; display:flex;
+                         align-items:center; min-width:200px; user-select:none; }
+      .cfbj-ms-dropdown { display:none; position:absolute; top:38px; left:0; background:#fff;
+                          border:1px solid #e6e8ef; border-radius:10px; min-width:160px;
+                          box-shadow:0 8px 18px rgba(18,38,63,.12); z-index:30; padding:6px 8px; }
+      .cfbj-ms-dropdown.open { display:block; }
+      .cfbj-ms-option { display:flex; align-items:center; gap:6px; padding:6px 4px; font-size:13px; }
+
+      /* 表格 */
+      .cfbj-table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+      .cfbj-table { border-collapse:collapse; width:100%; min-width:520px; }
+      .cfbj-table th,
+      .cfbj-table td { border-bottom:1px solid #eef0f6; padding:10px 12px; font-size:13px;
+                       text-align:center; white-space:nowrap; }
+      .cfbj-table th { position:sticky; top:0; background:#fbfcff; z-index:2; font-weight:700; }
+      .cfbj-table td.cfbj-left { text-align:left; }
+      .cfbj-table td.cfbj-link { color:#1976d2; cursor:pointer; text-decoration:underline; }
+      .cfbj-table td.cfbj-link:hover { color:#1565c0; }
+
+      /* 导出下拉 */
+      .cfbj-dropdown { position:relative; display:inline-block; }
+      .cfbj-dropdown-menu { display:none; position:absolute; right:0; top:38px; background:#fff;
+                            border:1px solid #e6e8ef; border-radius:10px; min-width:130px;
+                            box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index:20; }
+      .cfbj-dropdown-menu a { display:block; padding:10px 12px; color:#111;
+                              text-decoration:none; font-size:13px; }
+      .cfbj-dropdown-menu a:hover { background:#f3f5fb; }
+      .cfbj-dropdown.open .cfbj-dropdown-menu { display:block; }
+
+      /* 滑动开关 */
+      .cfbj-switch { position:relative; display:inline-flex; align-items:center;
+                     gap:8px; cursor:pointer; user-select:none; }
+      .cfbj-switch input { position:absolute; opacity:0; width:0; height:0; }
+      .cfbj-switch-slider { position:relative; width:42px; height:22px; border-radius:999px;
+                            background:#c6ccd6; transition:background .2s; }
+      .cfbj-switch-slider::after { content:""; position:absolute; top:2px; left:2px; width:18px;
+                                   height:18px; border-radius:50%; background:#fff;
+                                   box-shadow:0 1px 3px rgba(0,0,0,.22); transition:transform .2s; }
+      .cfbj-switch input:checked + .cfbj-switch-slider { background:#1e88e5; }
+      .cfbj-switch input:checked + .cfbj-switch-slider::after { transform:translateX(20px); }
+
+      /* 弹出框 */
+      .cfbj-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35);
+                    z-index:80; align-items:center; justify-content:center; padding:16px; }
+      .cfbj-modal.open { display:flex; }
+      .cfbj-modal-panel { width:min(1200px,96vw); height:min(860px,92vh); background:#fff;
+                          border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.18);
+                          border:1px solid #e6e8ef; overflow:hidden; display:flex; flex-direction:column; }
+      .cfbj-modal-hd { padding:12px 14px; border-bottom:1px solid #eef0f6;
+                       display:flex; justify-content:space-between; align-items:center; }
+      .cfbj-modal-hd .cfbj-modal-title { font-weight:800; }
+      .cfbj-modal-bd { flex:1; overflow:hidden; }
+      .cfbj-modal-bd iframe { width:100%; height:100%; border:0; }
+    </style>
   </head>
   <body>
     <div class="container">
       <div class="page-head">
-        <h1>矛盾纠纷线索移交统计</h1>
+        <h1>矛盾纠纷</h1>
         <a class="back-home" href="{{ url_for('main') }}">返回主页</a>
       </div>
+
+      <!-- Tab 导航 -->
+      <div class="tabs" id="mdjTabs">
+        <button class="tab-btn active" data-tab="xsyj">线索移交</button>
+        <button class="tab-btn" data-tab="cfbj">重复报警统计</button>
+      </div>
+
+      <!-- Tab：线索移交（原有内容） -->
+      <div class="tab-panel active" id="tab-xsyj">
 
       {% if error_message %}
       <div class="error">{{ error_message }}</div>
@@ -139,11 +225,43 @@
         </div>
       </div>
       {% endif %}
-    </div>
+
+      <script>
+        window.__MDJXS_EXPORT_URL__ = "{{ url_for('mdjfxsyj.export') }}";
+      </script>
+      <script src="{{ url_for('mdjfxsyj.static', filename='mdjfxsyj_mdj_xsyj.js') }}"></script>
+    </div><!-- /tab-xsyj -->
+
+      <!-- Tab：重复报警统计 -->
+      <div class="tab-panel" id="tab-cfbj">
+        {% include 'mdjfxsyj_cfbj_tab.html' %}
+      </div><!-- /tab-cfbj -->
+
+    </div><!-- /container -->
 
     <script>
-      window.__MDJXS_EXPORT_URL__ = "{{ url_for('mdjfxsyj.export') }}";
+      window.__MDJ_CFBJ_ENDPOINTS__ = {
+        apiSummary:  "{{ url_for('mdjfxsyj_cfbj.api_summary') }}",
+        apiDetail:   "{{ url_for('mdjfxsyj_cfbj.api_detail') }}",
+        exportData:  "{{ url_for('mdjfxsyj_cfbj.export_data') }}",
+        modalDetail: "{{ url_for('mdjfxsyj_cfbj.modal_detail') }}",
+      };
     </script>
-    <script src="{{ url_for('mdjfxsyj.static', filename='mdjfxsyj_mdj_xsyj.js') }}"></script>
+    <script src="{{ url_for('mdjfxsyj.static', filename='mdjfxsyj_cfbj_tab.js') }}"></script>
+
+    <!-- Tab 切换逻辑 -->
+    <script>
+      (function () {
+        var tabs = document.querySelectorAll('#mdjTabs .tab-btn');
+        tabs.forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            tabs.forEach(function (b) { b.classList.remove('active'); });
+            document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
+            btn.classList.add('active');
+            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+          });
+        });
+      })();
+    </script>
   </body>
 </html>

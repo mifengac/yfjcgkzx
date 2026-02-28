@@ -47,6 +47,7 @@ from weichengnianren.routes.wcnr_9lbq_routes import wcnr_9lbq_bp  # noqa: E402
 from gzrzdd.routes.gzrzdd_routes import gzrzdd_bp  # noqa: E402
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp  # noqa: E402
 from mdjfxsyj.routes.mdjfxsyj_mdj_xsyj_routes import mdjfxsyj_bp  # noqa: E402
+from mdjfxsyj.routes.mdjfxsyj_cfbj_routes import mdjfxsyj_cfbj_bp  # noqa: E402
 from hqzcsj.routes.hqzcsj_zongcha_routes import hqzcsj_bp  # noqa: E402
 from hqzcsj.routes.zfba_jq_aj_routes import zfba_jq_aj_bp  # noqa: E402
 from hqzcsj.routes.zfba_wcnr_jqaj_routes import zfba_wcnr_jqaj_bp  # noqa: E402
@@ -173,7 +174,7 @@ def main():
                 "未成年人": {"endpoint": "weichengnianren.index", "label": "未成年人"},
                 "工作日志督导": {"endpoint": "gzrzdd.index", "label": "工作日志督导"},
                 "精神障碍": {"endpoint": "jszahzyj.index", "label": "精神障碍患者预警"},
-                "矛盾纠纷线索移交": {"endpoint": "mdjfxsyj.index", "label": "矛盾纠纷线索移交"},
+                "矛盾纠纷": {"endpoint": "mdjfxsyj.index", "label": "矛盾纠纷"},
                 "获取综查数据": {"endpoint": "hqzcsj.zongcha_index", "label": "获取综查数据"},
                 "数据提取": {"endpoint": "shuju_tiqu.index", "label": "数据提取"},
                 "警情分析": {"endpoint": "jingqing_fenxi.index", "label": "警情分析"},
@@ -374,6 +375,7 @@ app.register_blueprint(wcnr_9lbq_bp, url_prefix="/weichengnianren")
 app.register_blueprint(gzrzdd_bp, url_prefix="/gzrzdd")
 app.register_blueprint(jszahzyj_bp, url_prefix="/jszahzyj")
 app.register_blueprint(mdjfxsyj_bp, url_prefix="/mdjfxsyj")
+app.register_blueprint(mdjfxsyj_cfbj_bp, url_prefix="/mdjfxsyj/cfbj")
 app.register_blueprint(hqzcsj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(zfba_jq_aj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(zfba_wcnr_jqaj_bp, url_prefix="/hqzcsj")

@@ -58,6 +58,13 @@ COMPOSITE_METRICS: List[Dict[str, str]] = [
         "den_key": "yzbl_den",
     },
     {
+        "key": "sx_songjiao_ratio",
+        "label": "涉刑人员送生占比",
+        "rate_label": "涉刑人员送矫率",
+        "num_key": "sx_songjiao_num",
+        "den_key": "sx_songjiao_den",
+    },
+    {
         "key": "zmjz_ratio",
         "label": "专门(矫治)教育占比",
         "rate_label": "专门(矫治)教育占比率",
@@ -92,6 +99,7 @@ DETAIL_METRIC_LABEL: Dict[str, str] = {
     "cs_bqh_case": "案件(场所被侵害)",
     "xingshi_ratio": "刑事占比",
     "yzbl_ratio": "严重不良未成年人矫治教育占比",
+    "sx_songjiao_ratio": "涉刑人员送生占比",
     "zmjz_ratio": "专门(矫治)教育占比",
     "naguan_ratio": "纳管人员再犯占比",
     "zljiaqjh": "责令加强监护数",
@@ -103,6 +111,7 @@ COMPOSITE_METRIC_KEYS = {
     "zmjz_reoff",
     "xingshi_ratio",
     "yzbl_ratio",
+    "sx_songjiao_ratio",
     "zmjz_ratio",
     "naguan_ratio",
     "zljiaqjh",
@@ -379,6 +388,14 @@ def build_summary(
         add_composite_metric(
             row,
             code=code,
+            label="涉刑人员送生占比",
+            rate_label="涉刑人员送矫率",
+            num_key="sx_songjiao_num",
+            den_key="sx_songjiao_den",
+        )
+        add_composite_metric(
+            row,
+            code=code,
             label="专门(矫治)教育占比",
             rate_label="专门(矫治)教育占比率",
             num_key="zmjz_cover_num",
@@ -466,6 +483,7 @@ def get_display_columns(*, show_hb: bool, show_ratio: bool) -> List[str]:
     add_count("案件(场所被侵害)")
     add_composite("刑事占比", "刑事占比率")
     add_composite("严重不良未成年人矫治教育占比", "严重不良未成年人矫治教育占比率")
+    add_composite("涉刑人员送生占比", "涉刑人员送矫率")
     add_composite("专门(矫治)教育占比", "专门(矫治)教育占比率")
     add_composite("纳管人员再犯占比", "纳管人员再犯率")
     add_composite("责令加强监护数", "责令加强监护率")
@@ -629,6 +647,7 @@ def build_detail_export_sheets(
         "cs_bqh_case",
         "xingshi_ratio",
         "yzbl_ratio",
+        "sx_songjiao_ratio",
         "zmjz_ratio",
         "naguan_ratio",
         "zljiaqjh",

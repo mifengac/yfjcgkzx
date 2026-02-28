@@ -1,0 +1,117 @@
+<!-- 矛盾纠纷重复报警统计 Tab （mdjfxsyj_cfbj_tab.html）-->
+<!-- 该片段由 mdjfxsyj_mdj_xsyj.html 通过 include 标签引入 -->
+
+<!-- 查询区 -->
+<section class="cfbj-card" style="margin-top:12px;">
+  <div class="cfbj-row" style="justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+
+    <!-- 左侧查询控件组 -->
+    <div class="cfbj-row" style="gap:10px; flex-wrap:wrap;">
+
+      <!-- 开始时间 -->
+      <label style="font-size:14px;">开始时间
+        <input type="text" id="cfbjStart" placeholder="YYYY-MM-DD HH:MM:SS"
+               style="height:34px; border:1px solid #d7dbe7; border-radius:8px;
+                      padding:0 10px; font-size:14px; width:180px;" />
+      </label>
+
+      <!-- 结束时间 -->
+      <label style="font-size:14px;">结束时间
+        <input type="text" id="cfbjEnd" placeholder="YYYY-MM-DD HH:MM:SS"
+               style="height:34px; border:1px solid #d7dbe7; border-radius:8px;
+                      padding:0 10px; font-size:14px; width:180px;" />
+      </label>
+
+      <!-- 分局 多选下拉 -->
+      <label style="font-size:14px;">分局
+        <div class="cfbj-ms" id="cfbjFenjuMs">
+          <div class="cfbj-ms-display" id="cfbjFenjuDisplay">全部分局</div>
+          <div class="cfbj-ms-dropdown" id="cfbjFenjuDropdown">
+            {% for fj in ['云城','云安','罗定','新兴','郁南','市局'] %}
+            <label class="cfbj-ms-option">
+              <input type="checkbox" class="cfbj-fenju-cb" value="{{ fj }}" /> {{ fj }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </label>
+
+      <!-- 报警次数 -->
+      <label style="font-size:14px;">报警次数 ≥
+        <input type="text" id="cfbjMinCs" placeholder="1-100（整数）"
+               style="height:34px; border:1px solid #d7dbe7; border-radius:8px;
+                      padding:0 10px; font-size:14px; width:140px;" />
+      </label>
+
+      <button class="cfbj-btn" id="cfbjQueryBtn" style="align-self:flex-end;">查询</button>
+    </div>
+
+    <!-- 右侧：显示详情开关 + 导出 -->
+    <div class="cfbj-row" style="gap:12px; align-items:center; flex-wrap:wrap;">
+      <label class="cfbj-switch" title="打开后显示明细数据">
+        <span style="font-size:14px;">显示详情</span>
+        <input type="checkbox" id="cfbjShowDetail" />
+        <span class="cfbj-switch-slider"></span>
+      </label>
+
+      <div class="cfbj-dropdown" id="cfbjExportDd">
+        <button class="cfbj-btn" id="cfbjExportBtn"
+                onclick="document.getElementById('cfbjExportDd').classList.toggle('open')">
+          导出
+        </button>
+        <div class="cfbj-dropdown-menu">
+          <a href="#" data-cfbj-fmt="xlsx">导出 xlsx</a>
+          <a href="#" data-cfbj-fmt="csv">导出 csv</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 状态 / 错误提示 -->
+  <div class="cfbj-muted" id="cfbjStatus"></div>
+  <div class="cfbj-err"   id="cfbjErr"></div>
+</section>
+
+<!-- 数据展示区 -->
+<section class="cfbj-card">
+  <div class="cfbj-table-wrap">
+    <table class="cfbj-table" id="cfbjTbl">
+      <thead id="cfbjThead"></thead>
+      <tbody id="cfbjTbody"></tbody>
+    </table>
+    <div id="cfbjNoData" style="display:none; padding:24px; text-align:center; color:#888;">暂无数据</div>
+  </div>
+</section>
+
+<!-- 明细分页控件（仅显示详情时可见） -->
+<div id="cfbjPagination" style="display:none; padding:4px 0 12px 0;">
+  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:14px;">
+    <span>每页</span>
+    <select id="cfbjPageSize" style="height:32px; border:1px solid #d7dbe7; border-radius:8px;
+            padding:0 8px; font-size:14px; background:#fff;">
+      <option value="20" selected>20</option>
+      <option value="50">50</option>
+      <option value="100">100</option>
+      <option value="0">所有</option>
+    </select>
+    <span>条</span>
+    <button class="cfbj-btn" id="cfbjPrevBtn" style="height:32px;">上一页</button>
+    <span id="cfbjPageInfo" style="color:#555;">第 1 / 1 页</span>
+    <button class="cfbj-btn" id="cfbjNextBtn" style="height:32px;">下一页</button>
+    <span id="cfbjTotalInfo" style="color:#888;"></span>
+  </div>
+</div>
+
+<!-- 弹出框：分局总数 / 重复数 明细 -->
+<div class="cfbj-modal" id="cfbjModal" onclick="cfbjCloseModal(event)">
+  <div class="cfbj-modal-panel" onclick="event.stopPropagation()">
+    <div class="cfbj-modal-hd">
+      <span class="cfbj-modal-title" id="cfbjModalTitle">明细数据</span>
+      <button class="cfbj-btn" style="background:#555;" onclick="cfbjCloseModal()">关闭</button>
+    </div>
+    <div class="cfbj-modal-bd">
+      <iframe id="cfbjModalFrame" title="分局明细" style="width:100%;height:100%;border:0;"></iframe>
+    </div>
+  </div>
+</div>

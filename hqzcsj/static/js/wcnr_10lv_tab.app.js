@@ -242,11 +242,14 @@
             const tds = cols.map((c) => {
                 if (c === "地区") return `<td class="rowh">${diquName}</td>`;
 
-                const target = H.resolveDetailTarget(C.METRICS || [], c);
+                let target = H.resolveDetailTarget(C.METRICS || [], c);
                 const raw = (r[c] == null) ? "" : r[c];
                 const cellClass = String(c).includes("率") || String(c).includes("比例") ? "num-cell ratio-cell" : "num-cell";
                 if (!target) return `<td class="${cellClass}">${raw}</td>`;
 
+                if (H.isCompositeValue(raw)) {
+                    target = Object.assign({}, target, { part: "denominator" });
+                }
                 const href = buildDetailHref(target, diquCode);
                 return `<td class="${cellClass} clickable-cell" data-href="${href}" style="cursor:pointer; color:#1976d2; font-weight:800;">${raw}</td>`;
             });

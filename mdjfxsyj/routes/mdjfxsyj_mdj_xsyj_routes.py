@@ -33,7 +33,7 @@ def _check_access() -> None:
         with conn.cursor() as cur:
             cur.execute(
                 'SELECT 1 FROM "ywdata"."jcgkzx_permission" WHERE username=%s AND module=%s',
-                (session["username"], "矛盾纠纷线索移交"),
+                (session["username"], "矛盾纠纷"),
             )
             row = cur.fetchone()
         conn.close()

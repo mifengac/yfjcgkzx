@@ -45,6 +45,9 @@ _KEY_INDUSTRY_ADDR_KEYWORDS = (
     "游戏厅",
 )
 
+_SX_WS_CASE_ONLY_REGEX = "(不予立案通知书|撤销案件决定书)"
+_SX_WS_CASE_PERSON_REGEX = "(终止侦查决定书|不予行政处罚决定书)"
+
 
 def fetch_leixing_list(conn) -> List[str]:
     return zfba_jq_aj_dao.fetch_leixing_list(conn)
@@ -977,6 +980,121 @@ def _fetch_jzqk_compact_rows(
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
+def _fetch_sx_songjiao_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    require_songjiao: bool,
+) -> List[Dict[str, Any]]:
+    leixing = _normalize_leixing_list(leixing_list)
+    if leixing:
+        type_condition = """
+          AND EXISTS (
+              SELECT 1
+              FROM "ywdata"."case_type_config" ctc
+              WHERE ctc."leixing" = ANY(%s)
+                AND vw.案由 SIMILAR TO ctc."ay_pattern"
+          )
+        """
+        type_params: List[Any] = [list(leixing)]
+    else:
+        type_condition = ""
+        type_params = []
+
+    songjiao_condition = ""
+    if require_songjiao:
+        songjiao_condition = """
+          AND EXISTS (
+              SELECT 1
+              FROM "ywdata"."zq_wcnr_sfzxx" sfz
+              WHERE sfz."sfzhm" = vw.身份证号
+                AND sfz."rx_time" >= vw.立案时间
+          )
+        """
+
+    q = f"""
+        SELECT
+            vw.案件编号,
+            vw.人员编号,
+            vw.姓名,
+            vw.身份证号,
+            vw.案件类型,
+            vw.案由,
+            LEFT(COALESCE(vw.地区, ''), 6) AS "地区",
+            TO_CHAR(vw.立案时间, 'YYYY-MM-DD HH24:MI:SS') AS "立案时间",
+            TO_CHAR(vw.录入时间, 'YYYY-MM-DD HH24:MI:SS') AS "录入时间"
+        FROM "ywdata"."v_wcnr_wfry_base" vw
+        WHERE vw.录入时间 BETWEEN %s AND %s
+          AND vw.案件类型 = '刑事'
+          AND vw.年龄::text ~ '^\d+$'
+          AND CAST(vw.年龄 AS INTEGER) < 16
+          AND (
+            EXISTS (
+                SELECT 1
+                FROM "ywdata"."zfba_ws_001" ws1
+                WHERE ws1."asjbh" = vw.案件编号
+                  AND COALESCE(ws1."flws_zlmc", '') ~ %s
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM "ywdata"."zfba_ws_001" ws2
+                WHERE ws2."asjbh" = vw.案件编号
+                  AND COALESCE(ws2."flws_dxbh", '') = COALESCE(vw.人员编号::text, '')
+                  AND COALESCE(ws2."flws_zlmc", '') ~ %s
+            )
+          )
+          {type_condition}
+          {songjiao_condition}
+        ORDER BY vw.立案时间 DESC, vw.案件编号, vw.人员编号
+    """
+    params: List[Any] = [
+        start_time,
+        end_time,
+        _SX_WS_CASE_ONLY_REGEX,
+        _SX_WS_CASE_PERSON_REGEX,
+    ] + type_params
+
+    with conn.cursor() as cur:
+        cur.execute(q, params)
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    return _attach_region_fields(rows)
+
+
+def _fetch_sx_songjiao_den_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+) -> List[Dict[str, Any]]:
+    return _fetch_sx_songjiao_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        require_songjiao=False,
+    )
+
+
+def _fetch_sx_songjiao_num_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+) -> List[Dict[str, Any]]:
+    return _fetch_sx_songjiao_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        require_songjiao=True,
+    )
+
+
 def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str], metric: str) -> List[Dict[str, Any]]:
     if metric in ("警情", "转案数", "行政", "刑事"):
         rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
@@ -1098,8 +1216,38 @@ def fetch_metric_detail_rows(
         jzqk_rows = _attach_region_fields(jzqk_rows)
         return normalize_rows_for_output(jzqk_rows)
 
-    # ── 6b. 严重不良占比 / 专门矫治占比 ────────────────────────────────────
-    if metric in ("yzbl_ratio", "zmjz_ratio"):
+    # ── 6b. 涉刑人员送生占比 ───────────────────────────────────────────────
+    if metric == "sx_songjiao_ratio":
+        _, empty = _patterns_and_empty()
+        if empty:
+            return []
+        if part == "denominator":
+            rows = _fetch_sx_songjiao_den_rows(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+            )
+        else:
+            rows = _fetch_sx_songjiao_num_rows(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing,
+            )
+        return normalize_rows_for_output(rows)
+
+    # ── 6c. 严重不良占比 / 专门矫治占比 ────────────────────────────────────
+    if metric == "yzbl_ratio":
+        # 与“违法犯罪人员”保持强一致口径：使用原始 leixing_list 同源明细。
+        jzqk_rows = jzqk_tongji_dao.fetch_jzqk_data(
+            conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
+        )
+        jzqk_rows = _attach_region_fields(jzqk_rows)
+        rows = jzqk_rows if part == "denominator" else [r for r in jzqk_rows if _is_yzbl_num(r)]
+        return normalize_rows_for_output(rows)
+
+    if metric == "zmjz_ratio":
         _, empty = _patterns_and_empty()
         if empty:
             return []
@@ -1107,10 +1255,6 @@ def fetch_metric_detail_rows(
             conn, start_time=start_time, end_time=end_time, leixing_list=leixing
         )
         jzqk_rows = _attach_region_fields(jzqk_rows)
-        if metric == "yzbl_ratio":
-            rows = jzqk_rows if part == "denominator" else [r for r in jzqk_rows if _is_yzbl_num(r)]
-            return normalize_rows_for_output(rows)
-        # zmjz_ratio
         if part == "denominator":
             rows = [r for r in jzqk_rows if _is_zmjz_cover_den(r)]
         else:
@@ -1272,12 +1416,17 @@ def fetch_period_data(
             counts["cs_bqh_case"] = _count_rows_by_region(cs_rows)
             _mark("bqh_and_changsuo_summary_ms", t)
 
+    wfzf_jzqk_rows: List[Dict[str, Any]] = []
+    sx_songjiao_den_rows: List[Dict[str, Any]] = []
+    sx_songjiao_num_rows: List[Dict[str, Any]] = []
     yzbl_num_rows: List[Dict[str, Any]] = []
     zmjz_cover_num_rows: List[Dict[str, Any]] = []
     zmjz_cover_den_rows: List[Dict[str, Any]] = []
     if typed_patterns_empty:
         jzqk_rows = []
         counts["wfzf_people"] = _normalize_count_map({})
+        counts["sx_songjiao_num"] = _normalize_count_map({})
+        counts["sx_songjiao_den"] = _normalize_count_map({})
         counts["yzbl_num"] = _normalize_count_map({})
         counts["yzbl_den"] = _normalize_count_map({})
         counts["zmjz_cover_num"] = _normalize_count_map({})
@@ -1302,9 +1451,9 @@ def fetch_period_data(
             wfzf_jzqk_rows = _attach_region_fields(wfzf_jzqk_rows)
             counts["wfzf_people"] = _count_rows_by_region(wfzf_jzqk_rows)
 
-            yzbl_num_rows = [r for r in jzqk_rows if _is_yzbl_num(r)]
+            yzbl_num_rows = [r for r in wfzf_jzqk_rows if _is_yzbl_num(r)]
             counts["yzbl_num"] = _count_rows_by_region(yzbl_num_rows)
-            counts["yzbl_den"] = _count_rows_by_region(jzqk_rows)
+            counts["yzbl_den"] = _count_rows_by_region(wfzf_jzqk_rows)
 
             zmjz_cover_num_rows = [r for r in jzqk_rows if _is_zmjz_cover_num(r)]
             zmjz_cover_den_rows = [r for r in jzqk_rows if _is_zmjz_cover_den(r)]
@@ -1345,12 +1494,30 @@ def fetch_period_data(
                 end_time=end_time,
                 leixing_list=leixing_list,
             )
-            counts["wfzf_people"] = _count_rows_by_region(_attach_region_fields(_wfzf_rows))
-            counts["yzbl_num"] = _count_rows_by_region([r for r in logic_rows if _is_yzbl_num(r)])
-            counts["yzbl_den"] = _count_rows_by_region(logic_rows)
+            wfzf_jzqk_rows = _attach_region_fields(_wfzf_rows)
+            counts["wfzf_people"] = _count_rows_by_region(wfzf_jzqk_rows)
+            counts["yzbl_num"] = _count_rows_by_region([r for r in wfzf_jzqk_rows if _is_yzbl_num(r)])
+            counts["yzbl_den"] = _count_rows_by_region(wfzf_jzqk_rows)
             counts["zmjz_cover_num"] = _count_rows_by_region([r for r in logic_rows if _is_zmjz_cover_num(r)])
             counts["zmjz_cover_den"] = _count_rows_by_region([r for r in logic_rows if _is_zmjz_cover_den(r)])
             _mark("jzqk_compact_ms", t)
+
+        t = time.perf_counter()
+        sx_songjiao_den_rows = _fetch_sx_songjiao_den_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+        )
+        sx_songjiao_num_rows = _fetch_sx_songjiao_num_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+        )
+        counts["sx_songjiao_den"] = _count_rows_by_region(sx_songjiao_den_rows)
+        counts["sx_songjiao_num"] = _count_rows_by_region(sx_songjiao_num_rows)
+        _mark("sx_songjiao_ms", t)
 
     zmy_den_rows: List[Dict[str, Any]] = []
     zmy_num_rows: List[Dict[str, Any]] = []
@@ -1544,7 +1711,10 @@ def fetch_period_data(
         details["xingshi_ratio:denominator"] = _attach_region_fields(_jqaj_xingshi_rows)
 
         details["yzbl_ratio:numerator"] = yzbl_num_rows
-        details["yzbl_ratio:denominator"] = jzqk_rows
+        details["yzbl_ratio:denominator"] = wfzf_jzqk_rows
+
+        details["sx_songjiao_ratio:numerator"] = sx_songjiao_num_rows
+        details["sx_songjiao_ratio:denominator"] = sx_songjiao_den_rows
 
         details["zmjz_ratio:numerator"] = zmjz_cover_num_rows
         details["zmjz_ratio:denominator"] = zmjz_cover_den_rows
