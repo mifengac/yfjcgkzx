@@ -1090,8 +1090,16 @@ def fetch_metric_detail_rows(
                    if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
         return normalize_rows_for_output(cs_rows)
 
-    # ── 6. 违法犯罪人员 / 严重不良占比 / 专门矫治占比 ──────────────────────
-    if metric in ("wfzf_people", "yzbl_ratio", "zmjz_ratio"):
+    # ── 6. 违法犯罪人员（与jzqk_tongji_tab同源，用原始leixing_list）───────
+    if metric == "wfzf_people":
+        jzqk_rows = jzqk_tongji_dao.fetch_jzqk_data(
+            conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
+        )
+        jzqk_rows = _attach_region_fields(jzqk_rows)
+        return normalize_rows_for_output(jzqk_rows)
+
+    # ── 6b. 严重不良占比 / 专门矫治占比 ────────────────────────────────────
+    if metric in ("yzbl_ratio", "zmjz_ratio"):
         _, empty = _patterns_and_empty()
         if empty:
             return []
@@ -1099,8 +1107,6 @@ def fetch_metric_detail_rows(
             conn, start_time=start_time, end_time=end_time, leixing_list=leixing
         )
         jzqk_rows = _attach_region_fields(jzqk_rows)
-        if metric == "wfzf_people":
-            return normalize_rows_for_output(jzqk_rows)
         if metric == "yzbl_ratio":
             rows = jzqk_rows if part == "denominator" else [r for r in jzqk_rows if _is_yzbl_num(r)]
             return normalize_rows_for_output(rows)
@@ -1286,7 +1292,15 @@ def fetch_period_data(
                 leixing_list=leixing,
             )
             jzqk_rows = _attach_region_fields(jzqk_rows)
-            counts["wfzf_people"] = _count_rows_by_region(jzqk_rows)
+            # wfzf_people 使用原始leixing_list（与jzqk_tongji_tab一致）
+            wfzf_jzqk_rows = jzqk_tongji_dao.fetch_jzqk_data(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing_list,
+            )
+            wfzf_jzqk_rows = _attach_region_fields(wfzf_jzqk_rows)
+            counts["wfzf_people"] = _count_rows_by_region(wfzf_jzqk_rows)
 
             yzbl_num_rows = [r for r in jzqk_rows if _is_yzbl_num(r)]
             counts["yzbl_num"] = _count_rows_by_region(yzbl_num_rows)
@@ -1324,7 +1338,14 @@ def fetch_period_data(
                 )
 
             logic_rows = _attach_region_fields(logic_rows)
-            counts["wfzf_people"] = _count_rows_by_region(logic_rows)
+            # wfzf_people 使用原始leixing_list（与jzqk_tongji_tab一致）
+            _wfzf_rows = jzqk_tongji_dao.fetch_jzqk_data(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                leixing_list=leixing_list,
+            )
+            counts["wfzf_people"] = _count_rows_by_region(_attach_region_fields(_wfzf_rows))
             counts["yzbl_num"] = _count_rows_by_region([r for r in logic_rows if _is_yzbl_num(r)])
             counts["yzbl_den"] = _count_rows_by_region(logic_rows)
             counts["zmjz_cover_num"] = _count_rows_by_region([r for r in logic_rows if _is_zmjz_cover_num(r)])
@@ -1494,7 +1515,7 @@ def fetch_period_data(
         )
 
         details["bqh_case:value"] = bqh_rows
-        details["wfzf_people:value"] = jzqk_rows
+        details["wfzf_people:value"] = wfzf_jzqk_rows
         details["cs_bqh_case:value"] = cs_bqh_rows
 
         details["zmy_reoff:numerator"] = zmy_num_rows
