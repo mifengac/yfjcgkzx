@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>警情分析</title>
+    <!-- 引入全局样式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+</head>
+<body>
+    <header class="header">
+        <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+            <div>
+                <h1>警情分析</h1>
+            </div>
+            <div>
+                <a href="/" style="background:#1976d2; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none; margin-right:10px;">返回首页</a>
+                <a href="{{ url_for('logout') }}" style="background:#e53935; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">退出登录</a>
+            </div>
+        </div>
+    </header>
+
+<style>
+    .dropdown-container {
+        position: relative;
+        display: inline-block;
+    }
+    .dropdown-btn {
+        border: 1px solid #ccc;
+        background: #fff;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        min-width: 160px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        user-select: none;
+    }
+    .dropdown-btn::after {
+        content: "▼";
+        font-size: 10px;
+        margin-left: 10px;
+        color: #666;
+    }
+    .dropdown-menu {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        margin-top: 2px;
+        background: #fff;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        min-width: 100%;
+        max-height: 250px;
+        overflow-y: auto;
+        z-index: 100;
+    }
+    .dropdown-menu.show {
+        display: block;
+    }
+    .dropdown-item {
+        display: block;
+        padding: 5px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .dropdown-item:hover {
+        background: #f0f0f0;
+    }
+    .dropdown-item input {
+        margin-right: 5px;
+    }
+    .fenxi-container {
+        padding: 20px;
+        background: #fff;
+    }
+    .query-area {
+        border-bottom: 1px solid #ccc;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        align-items: center;
+    }
+    .query-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .query-item input, .query-item select {
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    .charts-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    .chart-box {
+        border: 1px solid #eee;
+        padding: 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        display: none;
+    }
+    .chart-box.active {
+        display: block;
+    }
+    canvas {
+        width: 100% !important;
+        height: 300px !important;
+    }
+    .btn {
+        padding: 6px 15px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .btn:hover { background: #0056b3; }
+    #loading {
+        display: none;
+        color: #ff9800;
+        font-weight: bold;
+    }
+</style>
+
+<div class="fenxi-container">
+    <h2>警情分析</h2>
+    
+    <div class="query-area">
+        <div class="query-item">
+            <label>开始时间:</label>
+            <input type="datetime-local" step="1" id="beginDate">
+        </div>
+        <div class="query-item">
+            <label>结束时间:</label>
+            <input type="datetime-local" step="1" id="endDate">
+        </div>
+        
+        <div class="query-item">
+            <label>环比开始:</label>
+            <input type="datetime-local" step="1" id="m2mStartTime">
+        </div>
+        <div class="query-item">
+            <label>环比结束:</label>
+            <input type="datetime-local" step="1" id="m2mEndTime">
+        </div>
+        
+        <div class="query-item" style="display:none;">
+            <!-- Hidden inputs as we don't strictly need UI for year ring ratio right now, but back-end accepts it if populated. -->
+            <input type="datetime-local" step="1" id="y2yStartTime">
+            <input type="datetime-local" step="1" id="y2yEndTime">
+        </div>
+
+        <div class="query-item">
+            <label>警情类型:</label>
+            <div class="dropdown-container">
+                <div class="dropdown-btn" id="caseTypeBtn" onclick="toggleDropdown(event, 'caseTypeMenu')">已选择 0 项</div>
+                <div class="dropdown-menu" id="caseTypeMenu">
+                    <div style="padding:5px;" id="caseTypeLoading">加载中...</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="query-item">
+            <label>分析维度:</label>
+            <div class="dropdown-container">
+                <div class="dropdown-btn" id="dimBtn" onclick="toggleDropdown(event, 'dimMenu')">已选择 0 项</div>
+                <div class="dropdown-menu" id="dimMenu">
+                    <label class="dropdown-item" style="border-bottom:1px solid #eee;font-weight:bold;" onclick="event.stopPropagation()"><input type="checkbox" id="dimSelectAll" onchange="selectAllDims(this)"> 全选</label>
+                    <label class="dropdown-item"><input type="checkbox" value="srr" onchange="updateDimCount()"> 各地同环比</label>
+                    <label class="dropdown-item"><input type="checkbox" value="time" onchange="updateDimCount()"> 时段</label>
+                    <label class="dropdown-item"><input type="checkbox" value="dept" onchange="updateDimCount()"> 派出所</label>
+                    <label class="dropdown-item"><input type="checkbox" value="phone" onchange="updateDimCount()"> 重复报警电话</label>
+                    <label class="dropdown-item"><input type="checkbox" value="cluster" onchange="updateDimCount()"> 半径50米内重复报警地址</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="query-item">
+            <button class="btn" onclick="doAnalyze()">分析</button>
+            <button class="btn" style="background:#28a745" onclick="doExport()">导出报表</button>
+            <span id="loading">正在处理中，请稍候...</span>
+        </div>
+    </div>
+
+    <div class="charts-container">
+        <div class="chart-box" id="box-srr" style="grid-column: 1 / -1;">
+            <div id="table-srr"></div>
+        </div>
+        <div class="chart-box" id="box-time">
+            <canvas id="chart-time"></canvas>
+        </div>
+        <div class="chart-box" id="box-dept">
+            <canvas id="chart-dept"></canvas>
+        </div>
+        <div class="chart-box" id="box-phone">
+            <canvas id="chart-phone"></canvas>
+        </div>
+        <div class="chart-box" id="box-cluster">
+            <canvas id="chart-cluster"></canvas>
+        </div>
+    </div>
+</div>
+
+<script src="/jingqing_fenxi/static/js/chart.min.js"></script>
+<script src="/jingqing_fenxi/static/js/jingqing_fenxi_main.js"></script>
+</body>
+</html>
+</html>

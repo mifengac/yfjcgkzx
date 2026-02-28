@@ -54,6 +54,7 @@ from hqzcsj.routes.jzqk_tongji_routes import jzqk_tongji_bp  # noqa: E402
 from hqzcsj.routes.wcnr_1393zhibiao_routes import wcnr_1393zhibiao_bp  # noqa: E402
 from hqzcsj.routes.wcnr_10lv_routes import wcnr_10lv_bp  # noqa: E402
 from shuju_tiqu.routes.shuju_tiqu_routes import shuju_tiqu_bp  # noqa: E402
+from jingqing_fenxi.routes.jingqing_fenxi_routes import jingqing_fenxi_bp  # noqa: E402
 try:
     from wcnr_djdo import wcnr_djdo_bp  # type: ignore  # noqa: E402
 except Exception:
@@ -79,6 +80,7 @@ MODULE_DEFINITIONS: List[Dict[str, str]] = [
     {"key": "xunfang", "label": "巡防统计", "endpoint": "xunfang.xunfang"},
     {"key": "zhizong", "label": "治综平台数据统计", "endpoint": "zhizong.index"},
     {"key": "weichengnianren_djdo", "label": "未成年人(打架斗殴)", "endpoint": "wcnr_djdo.index"},
+    {"key": "jingqing_fenxi", "label": "警情分析", "endpoint": "jingqing_fenxi.index"},
 ]
 
 
@@ -174,6 +176,7 @@ def main():
                 "矛盾纠纷线索移交": {"endpoint": "mdjfxsyj.index", "label": "矛盾纠纷线索移交"},
                 "获取综查数据": {"endpoint": "hqzcsj.zongcha_index", "label": "获取综查数据"},
                 "数据提取": {"endpoint": "shuju_tiqu.index", "label": "数据提取"},
+                "警情分析": {"endpoint": "jingqing_fenxi.index", "label": "警情分析"},
             }
             if wcnr_djdo_bp is not None:
                 conf_map["未成年人(打架斗殴)"] = {"endpoint": "wcnr_djdo.index", "label": "未成年人(打架斗殴)"}
@@ -378,6 +381,7 @@ app.register_blueprint(jzqk_tongji_bp, url_prefix="/hqzcsj")
 app.register_blueprint(wcnr_1393zhibiao_bp, url_prefix="/hqzcsj")
 app.register_blueprint(wcnr_10lv_bp, url_prefix="/hqzcsj")
 app.register_blueprint(shuju_tiqu_bp, url_prefix="/shuju_tiqu")
+app.register_blueprint(jingqing_fenxi_bp, url_prefix="/jingqing_fenxi")
 if wcnr_djdo_bp is not None:
     app.register_blueprint(wcnr_djdo_bp, url_prefix="/weichengnianren-djdo")
 try:
