@@ -644,6 +644,61 @@ def _fetch_zljiaqjh_summary(
     return out
 
 
+def _fetch_zljiaqjh_detail_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+) -> List[Dict[str, Any]]:
+    """
+    《责令加强监护》案件级明细（分组前口径）：
+    每个案件编号一行，输出应开/实开文书数。
+    """
+    q = """
+        WITH Case_Required AS (
+            SELECT
+                LEFT(COALESCE("\u5730\u533a", ''), 6) AS diqu,
+                "\u6848\u4ef6\u7f16\u53f7" AS ajbh,
+                COUNT(*) AS yingkai
+            FROM ywdata.v_wcnr_wfry_base
+            WHERE "\u5f55\u5165\u65f6\u95f4" BETWEEN %(start_time)s AND %(end_time)s
+            GROUP BY LEFT(COALESCE("\u5730\u533a", ''), 6), "\u6848\u4ef6\u7f16\u53f7"
+        ),
+        Case_Actual AS (
+            SELECT
+                ajbh,
+                COUNT(DISTINCT id) AS shikai
+            FROM ywdata.zq_zfba_jtjyzdtzs2
+            GROUP BY ajbh
+        )
+        SELECT
+            r.diqu,
+            r.ajbh,
+            r.yingkai::bigint,
+            COALESCE(a.shikai, 0)::bigint AS shikai
+        FROM Case_Required r
+        LEFT JOIN Case_Actual a ON r.ajbh = a.ajbh
+        ORDER BY r.diqu, r.ajbh
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, {"start_time": start_time, "end_time": end_time})
+        raw = cur.fetchall()
+
+    out: List[Dict[str, Any]] = []
+    for diqu, ajbh, yingkai, shikai in raw or []:
+        code = _extract_region_code(str(diqu or "").strip())
+        if not code:
+            continue
+        out.append({
+            "\u5730\u533a\u4ee3\u7801": code,
+            "\u5730\u533a": REGION_CODE_NAME.get(code, code),
+            "\u6848\u4ef6\u7f16\u53f7": str(ajbh or "").strip(),
+            "\u5e94\u5f00\u6587\u4e66\u6570": int(yingkai or 0),
+            "\u5b9e\u5f00\u6587\u4e66\u6570": int(shikai or 0),
+        })
+    return out
+
+
 def _count_naguan_base_by_region(conn) -> Dict[str, int]:
     q = """
         SELECT
@@ -918,7 +973,7 @@ def _fetch_jzqk_compact_rows(
             WHERE vw.录入时间 BETWEEN %s AND %s
             {type_condition}
         )
-        SELECT DISTINCT
+        SELECT
             bd.地区,
             bd.案件类型,
             bd.年龄数值,
@@ -1303,7 +1358,7 @@ def fetch_metric_detail_rows(
 
     # ── 10. 责令加强监护数 ─────────────────────────────────────────────────
     if metric == "zljiaqjh":
-        rows = _fetch_zljiaqjh_summary(conn, start_time=start_time, end_time=end_time)
+        rows = _fetch_zljiaqjh_detail_rows(conn, start_time=start_time, end_time=end_time)
         return normalize_rows_for_output(rows)
 
     return []
@@ -1649,6 +1704,9 @@ def fetch_period_data(
     _mark("zljiaqjh_ms", t)
 
     if include_details:
+        zljiaqjh_detail_rows = _fetch_zljiaqjh_detail_rows(
+            conn, start_time=start_time, end_time=end_time
+        )
         t = time.perf_counter()
         details["jq:value"] = _load_detail_rows(
             conn,
@@ -1722,8 +1780,8 @@ def fetch_period_data(
         details["naguan_ratio:numerator"] = naguan_num_rows
         details["naguan_ratio:denominator"] = naguan_den_rows
 
-        details["zljiaqjh:numerator"] = zljiaqjh_rows
-        details["zljiaqjh:denominator"] = zljiaqjh_rows
+        details["zljiaqjh:numerator"] = zljiaqjh_detail_rows
+        details["zljiaqjh:denominator"] = zljiaqjh_detail_rows
         _mark("assemble_details_ms", t)
 
     perf["total_ms"] = round((time.perf_counter() - t_all) * 1000, 2)
