@@ -794,32 +794,40 @@ function calculateTotals(data, displayFields) {
 
 // 加载案件类型数据
 function loadCaseTypes() {
+    const caseTypeSelect = document.getElementById('caseType');
+    const caseTypeDetailsSelect = document.getElementById('caseTypeDetails');
+    const caseTypePersonSelect = document.getElementById('caseTypePerson');
+
+    // 首页等不含案件查询模块时，直接跳过加载，避免空节点报错
+    if (!caseTypeSelect && !caseTypeDetailsSelect && !caseTypePersonSelect) {
+        return;
+    }
+
     // 发起AJAX请求获取案件类型数据
     fetch('/api/case_types')
         .then(response => response.json())
         .then(result => {
             if (result.success) {
-                // 获取下拉框元素
-                const caseTypeSelect = document.getElementById('caseType');
-                const caseTypeDetailsSelect = document.getElementById('caseTypeDetails');
-                const caseTypePersonSelect = document.getElementById('caseTypePerson');
-
                 // 清空现有选项（保留"全部类型"选项）
-                caseTypeSelect.innerHTML = '<option value="">全部类型</option>';
-                caseTypeDetailsSelect.innerHTML = '<option value="">全部类型</option>';
+                if (caseTypeSelect) caseTypeSelect.innerHTML = '<option value="">全部类型</option>';
+                if (caseTypeDetailsSelect) caseTypeDetailsSelect.innerHTML = '<option value="">全部类型</option>';
                 if (caseTypePersonSelect) caseTypePersonSelect.innerHTML = '<option value="">全部类型</option>';
 
                 // 添加从数据库获取的选项
                 result.data.forEach(item => {
-                    const option1 = document.createElement('option');
-                    option1.value = item.leixing;
-                    option1.textContent = item.leixing;
-                    caseTypeSelect.appendChild(option1);
+                    if (caseTypeSelect) {
+                        const option1 = document.createElement('option');
+                        option1.value = item.leixing;
+                        option1.textContent = item.leixing;
+                        caseTypeSelect.appendChild(option1);
+                    }
 
-                    const option2 = document.createElement('option');
-                    option2.value = item.leixing;
-                    option2.textContent = item.leixing;
-                    caseTypeDetailsSelect.appendChild(option2);
+                    if (caseTypeDetailsSelect) {
+                        const option2 = document.createElement('option');
+                        option2.value = item.leixing;
+                        option2.textContent = item.leixing;
+                        caseTypeDetailsSelect.appendChild(option2);
+                    }
 
                     if (caseTypePersonSelect) {
                         const option3 = document.createElement('option');

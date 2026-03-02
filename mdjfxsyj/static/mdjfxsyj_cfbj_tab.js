@@ -93,13 +93,18 @@
    * --------------------------------------------------------------------- */
 
   function initFlatpickr() {
+    if (typeof window.flatpickr !== 'function') {
+      setErr('日期组件加载失败，请联系管理员检查本地静态资源。');
+      return;
+    }
+    var zhLocale = (window.flatpickr.l10ns && (window.flatpickr.l10ns.zh || window.flatpickr.l10ns.zh_cn)) || 'zh';
     var commonCfg = {
       enableTime: true,
       enableSeconds: true,
       dateFormat: 'Y-m-d H:i:S',
       time_24hr: true,
       allowInput: true,
-      locale: 'zh',
+      locale: zhLocale,
     };
     _fpStart = flatpickr(document.getElementById('cfbjStart'),
       Object.assign({}, commonCfg, { onChange: function () { updateHuanbi(); } }));

@@ -174,10 +174,14 @@ def export_cfbj_to_csv(
         writer.writeheader()
         writer.writerows(rows)
     encoded = buf.getvalue().encode("utf-8-sig")
-
-    resp = Response(encoded, mimetype="text/csv; charset=utf-8-sig")
-    resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return resp
+    out = BytesIO(encoded)
+    out.seek(0)
+    return send_file(
+        out,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="text/csv; charset=utf-8-sig",
+    )
 
 
 def export_cfbj_to_xlsx(

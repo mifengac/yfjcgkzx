@@ -86,9 +86,9 @@
       .flatpickr-input { cursor: pointer; }
     </style>
     <!-- Flatpickr 日期时间选择器 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh.js"></script>
+    <link rel="stylesheet" href="{{ url_for('mdjfxsyj.static', filename='vendor/flatpickr/flatpickr.min.css') }}" />
+    <script src="{{ url_for('mdjfxsyj.static', filename='vendor/flatpickr/flatpickr.min.js') }}"></script>
+    <script src="{{ url_for('mdjfxsyj.static', filename='vendor/flatpickr/l10n/zh.js') }}"></script>
   </head>
   <body>
     <div class="container">
