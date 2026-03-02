@@ -28,6 +28,14 @@
   var _detailPageSize = 20;   // 每页条数，0=全部
 
   /* -----------------------------------------------------------------------
+   * Flatpickr 实例
+   * --------------------------------------------------------------------- */
+  var _fpStart   = null;
+  var _fpEnd     = null;
+  var _fpHBStart = null;
+  var _fpHBEnd   = null;
+
+  /* -----------------------------------------------------------------------
    * 工具
    * --------------------------------------------------------------------- */
 
@@ -59,10 +67,12 @@
   /** 获取当前查询参数对象 */
   function getQueryParams() {
     return {
-      start_time: document.getElementById('cfbjStart').value.trim(),
-      end_time:   document.getElementById('cfbjEnd').value.trim(),
-      fenju:      getSelectedFenju(),
-      min_cs:     document.getElementById('cfbjMinCs').value.trim(),
+      start_time:   document.getElementById('cfbjStart').value.trim(),
+      end_time:     document.getElementById('cfbjEnd').value.trim(),
+      huanbi_start: document.getElementById('cfbjHBStart').value.trim(),
+      huanbi_end:   document.getElementById('cfbjHBEnd').value.trim(),
+      fenju:        getSelectedFenju(),
+      min_cs:       document.getElementById('cfbjMinCs').value.trim(),
     };
   }
 
@@ -73,9 +83,54 @@
   function initDefaultTimes() {
     var now   = new Date();
     var today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    var start = new Date(today.getTime() - 7 * 24 * 3600 * 1000);
+    var start = new Date(now.getFullYear(), 0, 1, 0, 0, 0);  // 今年1月1日
     document.getElementById('cfbjStart').value = fmtDate(start);
     document.getElementById('cfbjEnd').value   = fmtDate(today);
+  }
+
+  /* -----------------------------------------------------------------------
+   * Flatpickr 日期时间选择器初始化
+   * --------------------------------------------------------------------- */
+
+  function initFlatpickr() {
+    var commonCfg = {
+      enableTime: true,
+      enableSeconds: true,
+      dateFormat: 'Y-m-d H:i:S',
+      time_24hr: true,
+      allowInput: true,
+      locale: 'zh',
+    };
+    _fpStart = flatpickr(document.getElementById('cfbjStart'),
+      Object.assign({}, commonCfg, { onChange: function () { updateHuanbi(); } }));
+    _fpEnd   = flatpickr(document.getElementById('cfbjEnd'),
+      Object.assign({}, commonCfg, { onChange: function () { updateHuanbi(); } }));
+    _fpHBStart = flatpickr(document.getElementById('cfbjHBStart'), Object.assign({}, commonCfg));
+    _fpHBEnd   = flatpickr(document.getElementById('cfbjHBEnd'),   Object.assign({}, commonCfg));
+  }
+
+  /* -----------------------------------------------------------------------
+   * 环比时间联动计算
+   * 间隔天数 = (end - start) / 天
+   * 环比结束 = 开始时间
+   * 环比开始 = 开始时间 - 间隔天数
+   * --------------------------------------------------------------------- */
+
+  function updateHuanbi() {
+    var startVal = document.getElementById('cfbjStart').value.trim();
+    var endVal   = document.getElementById('cfbjEnd').value.trim();
+    if (!startVal || !endVal) return;
+    var startMs = new Date(startVal.replace(' ', 'T')).getTime();
+    var endMs   = new Date(endVal.replace(' ', 'T')).getTime();
+    if (isNaN(startMs) || isNaN(endMs)) return;
+    var diffDays = Math.floor((endMs - startMs) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return;
+    var hbEnd   = new Date(startMs);
+    var hbStart = new Date(startMs - diffDays * 24 * 3600 * 1000);
+    if (_fpHBEnd)   _fpHBEnd.setDate(hbEnd,   true);
+    else document.getElementById('cfbjHBEnd').value   = fmtDate(hbEnd);
+    if (_fpHBStart) _fpHBStart.setDate(hbStart, true);
+    else document.getElementById('cfbjHBStart').value = fmtDate(hbStart);
   }
 
   /* -----------------------------------------------------------------------
@@ -142,10 +197,10 @@
    * 表格渲染
    * --------------------------------------------------------------------- */
 
-  var SUMMARY_COLS = ['所属分局', '总数', '重复数', '发生率'];
+  var SUMMARY_COLS = ['所属分局', '总数', '同比', '环比', '同比比例', '环比比例', '重复数', '发生率'];
 
   /**
-   * 渲染统计表（含可点击行 + 总计行加粗）
+   * 渲染统计表（含可点击行 + 总计行加粗 + 同比/环比比例）
    */
   function renderSummaryTable(rows) {
     var thead  = document.getElementById('cfbjThead');
@@ -164,6 +219,14 @@
       return '<th>' + c + '</th>';
     }).join('') + '</tr>';
 
+    /** 比例字段格式化：万分比→百分比，分母为0返回—  */
+    function fmtPct(val) {
+      if (val === null || val === undefined || val === '') return '—';
+      var n = parseFloat(val);
+      if (isNaN(n)) return '—';
+      return (n * 100).toFixed(2) + '%';
+    }
+
     var html = rows.map(function (row) {
       var isTotalRow = row['所属分局'] === '总计';
       var rowStyle   = isTotalRow ? ' style="font-weight:800; background:#f0f4ff;"' : '';
@@ -181,7 +244,12 @@
 
       return '<tr' + rowStyle + '>'
         + '<td class="cfbj-left">' + escHtml(row['所属分局'] || '') + '</td>'
-        + zdCell + cfCell
+        + zdCell
+        + '<td>' + escHtml(row['同比'] != null ? String(row['同比']) : '0') + '</td>'
+        + '<td>' + escHtml(row['环比'] != null ? String(row['环比']) : '0') + '</td>'
+        + '<td>' + fmtPct(row['同比比例']) + '</td>'
+        + '<td>' + fmtPct(row['环比比例']) + '</td>'
+        + cfCell
         + '<td>' + escHtml(fslStr) + '</td>'
         + '</tr>';
     }).join('');
@@ -410,6 +478,8 @@
 
   function init() {
     initDefaultTimes();
+    initFlatpickr();
+    updateHuanbi();
     initFenjuDropdown();
     initDetailSwitch();
     initExportDropdown();

@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^\\$gitPath = \\(Get-Command git -ErrorAction SilentlyContinue\\)\\.Source; if \\(\\$gitPath\\) \\{ Write-Host \"Git found at: \\$gitPath\" \\} else \\{ Write-Host \"Git not found in PATH\" \\}$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

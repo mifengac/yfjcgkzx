@@ -77,6 +77,14 @@ def _normalize_range(start_time: Optional[str], end_time: Optional[str]) -> Tupl
         raise ValueError("开始时间不能晚于结束时间")
     return s, e
 
+def _subtract_one_year(dt_str: str) -> str:
+    """将时间字符串年份减 1，处理闰年 2/29 边界（回落至 2/28）。"""
+    dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+    try:
+        return dt.replace(year=dt.year - 1).strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        # Feb 29 in leap year → Feb 28 in previous year
+        return dt.replace(year=dt.year - 1, day=28).strftime("%Y-%m-%d %H:%M:%S")
 
 # --------------------------------------------------------------------------
 # 查询接口
@@ -86,14 +94,35 @@ def get_cfbj_summary(
     *,
     start_time: Optional[str],
     end_time: Optional[str],
+    huanbi_start: Optional[str] = None,
+    huanbi_end: Optional[str] = None,
     fenju_list: Optional[List[str]],
     min_cs: Optional[int],
 ) -> Tuple[List[Dict[str, Any]], str, str]:
     s, e = _normalize_range(start_time, end_time)
     patterns = _fenju_list_to_patterns(fenju_list)
+    # 同比：去年同期
+    tongbi_s = _subtract_one_year(s)
+    tongbi_e = _subtract_one_year(e)
+    # 环比：前端传入；若未传则默认 [start - (end - start), start]
+    if huanbi_start and huanbi_end:
+        hb_s = _parse_dt_str(huanbi_start)
+        hb_e = _parse_dt_str(huanbi_end)
+    else:
+        s_dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        e_dt = datetime.strptime(e, "%Y-%m-%d %H:%M:%S")
+        diff = e_dt - s_dt
+        hb_e = s
+        hb_s = (s_dt - diff).strftime("%Y-%m-%d %H:%M:%S")
     conn = get_database_connection()
     try:
-        rows = fetch_cfbj_summary(conn, start_time=s, end_time=e, fenju_patterns=patterns, min_cs=min_cs)
+        rows = fetch_cfbj_summary(
+            conn,
+            start_time=s, end_time=e,
+            tongbi_start=tongbi_s, tongbi_end=tongbi_e,
+            huanbi_start=hb_s, huanbi_end=hb_e,
+            fenju_patterns=patterns, min_cs=min_cs,
+        )
     finally:
         conn.close()
     return rows, s, e

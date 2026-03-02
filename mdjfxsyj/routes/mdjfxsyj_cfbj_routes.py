@@ -102,6 +102,8 @@ def api_summary():
         rows, s, e = get_cfbj_summary(
             start_time=request.args.get("start_time") or None,
             end_time=request.args.get("end_time") or None,
+            huanbi_start=request.args.get("huanbi_start") or None,
+            huanbi_end=request.args.get("huanbi_end") or None,
             fenju_list=_parse_fenju_list(),
             min_cs=_parse_min_cs(),
         )

@@ -50,6 +50,40 @@ WITH base AS (
 )
 """
 
+# Inner SELECT body for one time period (reused in multi-period summary SQL)
+# 4 %s placeholders: period_start, period_end, period_start, period_end
+_PERIOD_BLOCK = """
+    SELECT
+        a.jjdbh                         AS 警情编号,
+        a.jqxzmc                        AS 警情性质,
+        a.ysjqxzmc                      AS 原始警情性质,
+        a.bjsj                          AS 报警时间,
+        a.bjrlxdh                       AS 报警人联系电话,
+        b.cs                            AS 报警电话次数,
+        a.afdd                          AS 报警地址,
+        a.bjnr                          AS 报警内容,
+        a.cjqk                          AS 处警情况,
+        '云浮市公安局'                   AS 所属市局,
+        CASE
+            WHEN substring(a.gxdwmc, 1, 4) = '云城分局' THEN '1云城分局'
+            WHEN substring(a.gxdwmc, 1, 4) = '云安分局' THEN '2云安分局'
+            WHEN substring(a.gxdwmc, 1, 4) = '罗定市局' THEN '3罗定市局'
+            WHEN substring(a.gxdwmc, 1, 4) = '新兴县局' THEN '4新兴县局'
+            WHEN substring(a.gxdwmc, 1, 4) = '郁南县局' THEN '5郁南县局'
+            WHEN substring(a.gxdwmc, 1, 4) = '云浮市局' THEN '6云浮市局'
+            ELSE a.gxdwmc
+        END                             AS 所属分局,
+        substring(a.gxdwmc, 5, 5)      AS 所属派出所
+    FROM ywdata.v_b_jq_xjzd2025 a
+    LEFT JOIN (
+        SELECT bjrlxdh, count(*) AS cs
+        FROM ywdata.v_b_jq_xjzd2025
+        WHERE bjsj >= %s AND bjsj < %s
+        GROUP BY bjrlxdh
+    ) b ON a.bjrlxdh = b.bjrlxdh
+    WHERE a.bjsj >= %s AND a.bjsj < %s
+"""
+
 
 def _build_where(
     *,
@@ -81,45 +115,97 @@ def fetch_cfbj_summary(
     *,
     start_time: str,
     end_time: str,
+    tongbi_start: str,
+    tongbi_end: str,
+    huanbi_start: str,
+    huanbi_end: str,
     fenju_patterns: Optional[List[str]] = None,
     min_cs: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """按 所属分局 分组，返回 总数/重复数/发生率 统计列表（末行为总计）。"""
+    """按 所属分局 分组，返回 总数/同比/环比/同比比例/环比比例/重复数/发生率 统计列表（末行为总计）。"""
     where, extra_params = _build_where(fenju_patterns=fenju_patterns, min_cs=min_cs)
 
-    # 使用 filtered CTE 避免 WHERE 参数重复，同时用 UNION ALL 追加总计行
-    # _sort=1 分局行，_sort=2 总计行（确保总计始终排最后）
-    sql = (
-        _BASE_CTE.rstrip()
-        + f""",
-filtered AS (SELECT * FROM base {where})
+    sql = f"""
+WITH
+base           AS ({_PERIOD_BLOCK}),
+tongbi_base    AS ({_PERIOD_BLOCK}),
+huanbi_base    AS ({_PERIOD_BLOCK}),
+filtered AS (
+    SELECT * FROM base {where}
+),
+tongbi_filtered AS (
+    SELECT * FROM tongbi_base {where}
+),
+huanbi_filtered AS (
+    SELECT * FROM huanbi_base {where}
+),
+tongbi_agg AS (
+    SELECT 所属分局, count(*) AS cnt FROM tongbi_filtered GROUP BY 所属分局
+),
+huanbi_agg AS (
+    SELECT 所属分局, count(*) AS cnt FROM huanbi_filtered GROUP BY 所属分局
+)
 SELECT
-    所属分局,
-    count(*)::bigint                                                              AS 总数,
-    count(CASE WHEN 报警电话次数 > 2 THEN 1 END)::bigint                         AS 重复数,
-    CASE
-        WHEN count(*) = 0 THEN 0
-        ELSE round(count(CASE WHEN 报警电话次数 > 2 THEN 1 END)::numeric / count(*), 4)
-    END                                                                           AS 发生率,
+    f.所属分局,
+    count(*)::bigint                                                                    AS 总数,
+    COALESCE(ta.cnt, 0)::bigint                                                         AS 同比,
+    COALESCE(ha.cnt, 0)::bigint                                                         AS 环比,
+    CASE WHEN COALESCE(ta.cnt, 0) = 0 THEN NULL
+         ELSE round((count(*)::numeric - ta.cnt) / ta.cnt, 4)
+    END                                                                                 AS 同比比例,
+    CASE WHEN COALESCE(ha.cnt, 0) = 0 THEN NULL
+         ELSE round((count(*)::numeric - ha.cnt) / ha.cnt, 4)
+    END                                                                                 AS 环比比例,
+    count(CASE WHEN f.报警电话次数 > 2 THEN 1 END)::bigint                              AS 重复数,
+    CASE WHEN count(*) = 0 THEN 0
+         ELSE round(count(CASE WHEN f.报警电话次数 > 2 THEN 1 END)::numeric / count(*), 4)
+    END                                                                                 AS 发生率,
     1 AS _sort
-FROM filtered
-GROUP BY 所属分局
+FROM filtered f
+LEFT JOIN tongbi_agg ta ON f.所属分局 = ta.所属分局
+LEFT JOIN huanbi_agg ha ON f.所属分局 = ha.所属分局
+GROUP BY f.所属分局, ta.cnt, ha.cnt
 UNION ALL
 SELECT
     '总计',
-    count(*)::bigint,
-    count(CASE WHEN 报警电话次数 > 2 THEN 1 END)::bigint,
-    CASE
-        WHEN count(*) = 0 THEN 0
-        ELSE round(count(CASE WHEN 报警电话次数 > 2 THEN 1 END)::numeric / count(*), 4)
+    (SELECT count(*) FROM filtered)::bigint,
+    (SELECT count(*) FROM tongbi_filtered)::bigint,
+    (SELECT count(*) FROM huanbi_filtered)::bigint,
+    CASE WHEN (SELECT count(*) FROM tongbi_filtered) = 0 THEN NULL
+         ELSE round(
+             ((SELECT count(*) FROM filtered)::numeric - (SELECT count(*) FROM tongbi_filtered))
+             / (SELECT count(*) FROM tongbi_filtered)::numeric, 4
+         )
+    END,
+    CASE WHEN (SELECT count(*) FROM huanbi_filtered) = 0 THEN NULL
+         ELSE round(
+             ((SELECT count(*) FROM filtered)::numeric - (SELECT count(*) FROM huanbi_filtered))
+             / (SELECT count(*) FROM huanbi_filtered)::numeric, 4
+         )
+    END,
+    (SELECT count(CASE WHEN 报警电话次数 > 2 THEN 1 END) FROM filtered)::bigint,
+    CASE WHEN (SELECT count(*) FROM filtered) = 0 THEN 0
+         ELSE round(
+             (SELECT count(CASE WHEN 报警电话次数 > 2 THEN 1 END) FROM filtered)::numeric
+             / (SELECT count(*) FROM filtered)::numeric, 4
+         )
     END,
     2
-FROM filtered
 ORDER BY _sort, 所属分局
 """
+    # Parameter order:
+    #   base (4) + tongbi_base (4) + huanbi_base (4)
+    #   + filtered WHERE (extra_params)
+    #   + tongbi_filtered WHERE (extra_params)
+    #   + huanbi_filtered WHERE (extra_params)
+    params: List[Any] = (
+        [start_time, end_time, start_time, end_time]
+        + [tongbi_start, tongbi_end, tongbi_start, tongbi_end]
+        + [huanbi_start, huanbi_end, huanbi_start, huanbi_end]
+        + extra_params
+        + extra_params
+        + extra_params
     )
-    # CTE 内有 4 个占位: start_time, end_time, start_time, end_time
-    params: List[Any] = [start_time, end_time, start_time, end_time] + extra_params
 
     with conn.cursor() as cur:
         cur.execute(sql, params)
