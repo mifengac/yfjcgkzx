@@ -230,14 +230,22 @@ function collectFormData() {
     var typeBoxes = document.querySelectorAll('#caseTypeMsDropdown input[type="checkbox"]');
     var names = [];
     var tags = [];
+    var tagSeen = {};
+    var nameSeen = {};
     for (var k = 0; k < typeBoxes.length; k++) {
         if (typeBoxes[k].value === '_all' || !typeBoxes[k].checked) continue;
         var pid = typeBoxes[k].value;
         var children = treeDataRaw.filter(function(item) { return item.pId === pid; });
         children.forEach(function(c) {
             if (c.tag) {
-                tags.push(c.tag);
-                names.push(c.name);
+                if (!tagSeen[c.tag]) {
+                    tags.push(c.tag);
+                    tagSeen[c.tag] = true;
+                }
+                if (c.name && !nameSeen[c.name]) {
+                    names.push(c.name);
+                    nameSeen[c.name] = true;
+                }
             }
         });
     }
@@ -246,6 +254,14 @@ function collectFormData() {
     form.append('newOriCharaSubclass', names.join(','));
     
     return form;
+}
+
+function renderSrrEmptyState() {
+    var box = document.getElementById('box-srr');
+    box.classList.add('active');
+    var container = document.getElementById('table-srr');
+    container.innerHTML = '<h3 style="margin:0 0 10px 0;">各地同环比</h3>'
+        + '<div style="padding:16px;border:1px dashed #d0d7de;border-radius:6px;color:#666;">无符合条件数据</div>';
 }
 
 function renderSrrTable(rows) {
@@ -272,10 +288,10 @@ function renderSrrTable(rows) {
         const m2mColor = (r.m2mProportion || '').includes('↑') ? 'color:#e53935;' : ((r.m2mProportion || '').includes('↓') ? 'color:#43a047;' : '');
         html += `<tr style="background:${bg};${fw}">`;
         html += `<td style="padding:5px 10px;">${r.name || ''}</td>`;
-        html += `<td style="padding:5px 10px;text-align:right;">${r.presentCycle ?? ''}</td>`;
-        html += `<td style="padding:5px 10px;text-align:right;">${r.upperY2yCycle ?? ''}</td>`;
+        html += `<td style="padding:5px 10px;text-align:right;">${r.presentCycle == null ? '' : r.presentCycle}</td>`;
+        html += `<td style="padding:5px 10px;text-align:right;">${r.upperY2yCycle == null ? '' : r.upperY2yCycle}</td>`;
         html += `<td style="padding:5px 10px;text-align:right;${y2yColor}">${r.y2yProportion || ''}</td>`;
-        html += `<td style="padding:5px 10px;text-align:right;">${r.upperM2mCycle ?? ''}</td>`;
+        html += `<td style="padding:5px 10px;text-align:right;">${r.upperM2mCycle == null ? '' : r.upperM2mCycle}</td>`;
         html += `<td style="padding:5px 10px;text-align:right;${m2mColor}">${r.m2mProportion || ''}</td>`;
         html += '</tr>';
     });
@@ -368,12 +384,14 @@ function renderChart(boxId, chartId, label, dataPairs, reverse = false, type = '
 
 function doAnalyze() {
     const formData = collectFormData();
+    const selectedDims = formData.getAll('dimensions[]');
     if (!formData.has('dimensions[]')) {
         alert("请选择至少一个分析维度");
         return;
     }
     if (!formData.get('newOriCharaSubclassNo')) {
         alert("请选警情类型(对应无子节点或者为空时不拉取数据)");
+        return;
     }
 
     // hide all boxes first
@@ -394,8 +412,12 @@ function doAnalyze() {
         
         const data = res.data;
         
-        if (data.srr && data.srr.length > 0) {
-            renderSrrTable(data.srr);
+        if (selectedDims.indexOf('srr') >= 0) {
+            if (data.srr && data.srr.length > 0) {
+                renderSrrTable(data.srr);
+            } else {
+                renderSrrEmptyState();
+            }
         }
         if (data.time) {
             // Backend returns descending by count, requirement: "倒序显示", we can keep backend sort or reverse here
@@ -422,6 +444,10 @@ function doExport() {
     const formData = collectFormData();
     if (!formData.has('dimensions[]')) {
         alert("请选择至少一个分析维度");
+        return;
+    }
+    if (!formData.get('newOriCharaSubclassNo')) {
+        alert("请先选择警情类型");
         return;
     }
     
