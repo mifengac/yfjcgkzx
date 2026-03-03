@@ -57,7 +57,7 @@ def detail() -> str:
 
 
 @gzrzdd_bp.route("/api/stats", methods=["POST"])
-@handle_errors("工作日志督导统计")
+@handle_errors("矛盾纠纷风险人员工作日志重复度统计")
 def api_stats() -> Response:
     payload: Dict[str, Any] = request.json or {}
     count = int(payload.get("count") or 5)
@@ -70,7 +70,7 @@ def api_stats() -> Response:
 
 
 @gzrzdd_bp.route("/api/detail")
-@handle_errors("工作日志督导明细")
+@handle_errors("矛盾纠纷风险人员工作日志重复度明细")
 def api_detail() -> Response:
     result_id = (request.args.get("result_id") or "").strip()
     branch = (request.args.get("branch") or "").strip()
@@ -113,4 +113,5 @@ def download_detail() -> Response:
 
 # 注册“工作日志超期统计”子功能路由（与 gzrzdd_bp 同一个蓝图）
 from gzrzdd.routes import gzrzdd_cqtj_routes_impl  # noqa: E402,F401
+from gzrzdd.routes import gzrygzrz_routes_impl  # noqa: E402,F401
 

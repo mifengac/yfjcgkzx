@@ -130,6 +130,19 @@ function cqtjExport(fmt) {
 function gzrzddInitTabs() {
   const tabs = document.getElementById("gzrzddTabs");
   if (!tabs) return;
+  const repeatBtn = tabs.querySelector('.tab-btn[data-tab="repeat"]');
+  const cqtjBtn = tabs.querySelector('.tab-btn[data-tab="cqtj"]');
+  if (repeatBtn) repeatBtn.textContent = "矛盾纠纷风险人员工作日志重复度统计";
+  if (cqtjBtn) cqtjBtn.textContent = "矛盾纠纷风险人员工作日志超期统计";
+  let gzryBtn = tabs.querySelector('.tab-btn[data-tab="gzrygzrz"]');
+  if (!gzryBtn) {
+    gzryBtn = document.createElement("button");
+    gzryBtn.className = "tab-btn";
+    gzryBtn.setAttribute("data-tab", "gzrygzrz");
+    gzryBtn.textContent = "关注人员工作日志";
+    tabs.appendChild(gzryBtn);
+  }
+
   tabs.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", function () {
       tabs.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
@@ -137,6 +150,8 @@ function gzrzddInitTabs() {
       const t = btn.getAttribute("data-tab");
       document.getElementById("tab-repeat").classList.toggle("active", t === "repeat");
       document.getElementById("tab-cqtj").classList.toggle("active", t === "cqtj");
+      const gzryPanel = document.getElementById("tab-gzrygzrz");
+      if (gzryPanel) gzryPanel.classList.toggle("active", t === "gzrygzrz");
       if (t === "cqtj") {
         // 首次进入时自动加载默认数据
         if (!btn.dataset.loaded) {

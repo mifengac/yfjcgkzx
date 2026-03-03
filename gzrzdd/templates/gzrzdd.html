@@ -6,6 +6,7 @@
     <title>工作日志督导</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('gzrzdd.static', filename='gzrzdd_cqtj.css') }}">
+    <link rel="stylesheet" href="{{ url_for('gzrzdd.static', filename='gzrygzrz.css') }}">
     <style>
         .card { background: #fff; padding: 16px; border-radius: 10px; margin-bottom: 16px; box-shadow: 0 6px 22px rgba(18,38,63,.06); border: 1px solid #e6e8ef; }
         .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
@@ -183,9 +184,13 @@
             </div>
         </section>
     </div>
+    <div class="tab-panel" id="tab-gzrygzrz">
+        {% include "gzrygzrz_tab.html" %}
+    </div>
 </main>
 
 <script src="{{ url_for('static', filename='js/gzrzdd.js') }}"></script>
 <script src="{{ url_for('gzrzdd.static', filename='gzrzdd_cqtj.js') }}"></script>
+<script src="{{ url_for('gzrzdd.static', filename='gzrygzrz_main.js') }}"></script>
 </body>
 </html>

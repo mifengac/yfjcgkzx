@@ -269,7 +269,7 @@ def export_cqtj(
     now, records = query_cqtj(mode=mode, level=level, risk_types=risk_types, branches=branches)
     ts = now.strftime("%Y%m%d_%H%M%S")
     fmt = (fmt or "xlsx").lower()
-    filename = f"工作日志超期情况_{ts}.{fmt}"
+    filename = f"矛盾纠纷风险人员工作日志超期统计_{ts}.{fmt}"
 
     # 导出不需要前端行颜色字段
     clean_records = [{k: v for k, v in r.items() if k != "__row_color"} for r in records]

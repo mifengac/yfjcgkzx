@@ -1,8 +1,10 @@
-import requests
 import logging
 import urllib.parse
 
+import requests
+
 logger = logging.getLogger(__name__)
+
 
 class JingQingApiClient:
     _instance = None
@@ -18,48 +20,50 @@ class JingQingApiClient:
         self.base_url = "http://68.253.2.111"
         self.username = "270378"
         self.password = "jpx8hLPMyV7EDVX1p9d89Q=="  # Hardcoded encrypted password
-        
-        # User agent to fake regular browser
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"
-        })
+        self.session.headers.update(
+            {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/100.0.0.0 Safari/537.36"
+                )
+            }
+        )
         self.login()
 
     def login(self):
         """Perform login and hold session cookies."""
-        # Initial GET to set up basic cookies
         login_page_url = f"{self.base_url}/dsjfx/login"
         try:
             self.session.get(login_page_url, timeout=10)
-            
-            # Post authentication
-            payload = {
-                "username": self.username,
-                "password": self.password,
-                "rememberMe": "true"
-            }
+            payload = {"username": self.username, "password": self.password, "rememberMe": "true"}
             res = self.session.post(
-                login_page_url, 
+                login_page_url,
                 data=payload,
-                headers={"Content-Type": "application/x-www-form-urlencoded", "Referer": login_page_url},
-                timeout=10
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Referer": login_page_url,
+                },
+                timeout=10,
             )
-            # You might want to check res for "success" or specific string
-            # Generally if we don't get redirected to /dsjfx/login it's successful
             logger.info("JingQingApiClient login attempted. Status: %s", res.status_code)
-        except Exception as e:
-            logger.error("JingQingApiClient Login Failed: %s", e)
+        except Exception as exc:
+            logger.error("JingQingApiClient login failed: %s", exc)
+
+    def _looks_like_login_page(self, response_text):
+        sample = str(response_text or "")[:3000]
+        markers = ["/dsjfx/login", "name=\"username\"", "name=\"password\"", "rememberMe", "登录", "鐧诲綍"]
+        return any(marker in sample for marker in markers)
 
     def _ensure_logged_in(self, response):
-        """Check if response implies we're logged out (redirect to login)"""
+        """Check if response implies logged-out status."""
         content_type = response.headers.get("Content-Type", "")
-        # If it's JSON, we're definitely logged in
-        if "json" in content_type:
+        if "json" in content_type.lower():
             return True
-        # If it's HTML and contains login-related strings, we're logged out
         if content_type.startswith("text/html"):
-            text_sample = response.text[:2000]
-            if "未登录" in text_sample or ("/login" in response.url and "dsjfx" in response.url):
+            if self._looks_like_login_page(response.text) or (
+                "/login" in response.url and "dsjfx" in response.url
+            ):
                 return False
         return True
 
@@ -68,66 +72,122 @@ class JingQingApiClient:
         retries = 2
         for i in range(retries):
             try:
-                if method.upper() == 'GET':
+                if method.upper() == "GET":
                     res = self.session.get(url, **kwargs)
-                elif method.upper() == 'POST':
+                elif method.upper() == "POST":
                     res = self.session.post(url, **kwargs)
                 else:
                     raise ValueError(f"Unsupported method {method}")
-                
+
                 if self._ensure_logged_in(res):
                     return res
-                else:
-                    logger.info("Session expired, re-logging in...")
-                    self.login()
-            except requests.exceptions.RequestException as e:
-                logger.error("API Request failed: %s", e)
+                logger.info("Session expired, re-logging in...")
+                self.login()
+            except requests.exceptions.RequestException as exc:
+                logger.error("API request failed: %s", exc)
                 if i == retries - 1:
-                    raise e
+                    raise
         return None
 
     def get_tree_view_data(self):
-        """获取警情类型树形数据"""
+        """Get case-type tree data."""
         res = self.request_with_retry("GET", "/dsjfx/plan/treeViewData", timeout=15)
         if res and res.status_code == 200:
             return res.json()
         return []
 
-    def get_srr_list(self, payload):
-        """获取各地同环比数据"""
-        # urlencode with quote() + safe='[]' to keep bracket keys literal
-        # Default quote_plus encodes [ ] to %5B %5D which the server won't match
-        body = urllib.parse.urlencode(
-            payload,
-            quote_via=urllib.parse.quote,
-            safe='[]'
-        )
+    def get_srr_list(self, payload, trace_id=None):
+        """Get same-period and month-over-month regional comparison data."""
+        trace = trace_id or "-"
+        body = urllib.parse.urlencode(payload, quote_via=urllib.parse.quote, safe="[]")
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "X-Requested-With": "XMLHttpRequest",
         }
-        logger.info("SRR request body: %s", body[:300])
-        res = self.request_with_retry("POST", "/dsjfx/srr/list",
-                                      data=body, headers=headers, timeout=20)
-        if res and res.status_code == 200:
-            try:
-                result = res.json()
-                logger.info("SRR list response code=%s total=%s rows=%s",
-                            result.get('code'), result.get('total'), len(result.get('rows', [])))
-                return result
-            except Exception as e:
-                logger.error("SRR list JSON parse failed: %s | body: %s", e, res.text[:500])
+
+        chara_no = str((payload or {}).get("charaNo", "")).strip()
+        jsession = self.session.cookies.get("JSESSIONID") if self.session else ""
+        logger.info(
+            "[trace:%s] SRR request charaNoLen=%s hasJSESSIONID=%s body=%s",
+            trace,
+            len(chara_no),
+            bool(jsession),
+            body[:300],
+        )
+
+        res = self.request_with_retry(
+            "POST", "/dsjfx/srr/list", data=body, headers=headers, timeout=20
+        )
+        if not res or res.status_code != 200:
+            logger.error(
+                "[trace:%s] SRR list request failed, status=%s",
+                trace,
+                res.status_code if res else "None",
+            )
+            return {"total": 0, "rows": [], "code": -1}
+
+        content_type = (res.headers.get("Content-Type", "") or "").lower()
+        if "json" not in content_type and self._looks_like_login_page(res.text):
+            logger.warning(
+                "[trace:%s] SRR non-JSON looks like login page, force relogin+retry",
+                trace,
+            )
+            self.login()
+            res = self.request_with_retry(
+                "POST", "/dsjfx/srr/list", data=body, headers=headers, timeout=20
+            )
+            if not res or res.status_code != 200:
+                logger.error("[trace:%s] SRR retry after relogin failed", trace)
                 return {"total": 0, "rows": [], "code": -1}
-        logger.error("SRR list request failed, status=%s", res.status_code if res else 'None')
-        return {"total": 0, "rows": [], "code": -1}
+
+        try:
+            result = res.json()
+        except Exception as exc:
+            logger.error(
+                "[trace:%s] SRR list JSON parse failed: %s | body=%s",
+                trace,
+                exc,
+                (res.text or "")[:500],
+            )
+            return {"total": 0, "rows": [], "code": -1}
+
+        rows_len = len(result.get("rows", []))
+        logger.info(
+            "[trace:%s] SRR list response code=%s total=%s rows=%s",
+            trace,
+            result.get("code"),
+            result.get("total"),
+            rows_len,
+        )
+
+        upstream_code = result.get("code")
+        if upstream_code != 0:
+            logger.error(
+                "[trace:%s] SRR upstream business error code=%s msg=%s head=%s",
+                trace,
+                upstream_code,
+                result.get("msg"),
+                (res.text or "")[:300],
+            )
+            return result
+
+        # code=0 but rows empty: only log diagnostics, do not relogin/retry.
+        if rows_len == 0 and chara_no:
+            logger.warning(
+                "[trace:%s] SRR empty rows with non-empty charaNo; no relogin retry (business-empty)",
+                trace,
+            )
+            logger.warning("[trace:%s] SRR empty response head=%s", trace, (res.text or "")[:300])
+
+        return result
 
     def get_case_list(self, payload):
-        """获取警情明细列表数据"""
+        """Get case detail list."""
         res = self.request_with_retry("POST", "/dsjfx/case/list", data=payload, timeout=20)
         if res and res.status_code == 200:
             return res.json()
         return {"total": 0, "rows": [], "code": -1}
 
-# Singleton instance for simple usage
+
 api_client = JingQingApiClient()

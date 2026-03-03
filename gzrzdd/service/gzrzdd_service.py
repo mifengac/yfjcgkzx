@@ -466,7 +466,7 @@ def export_summary(result_id: str, *, fmt: str, count: int) -> Tuple[bytes, str,
 
     ts = _now_ts()
     fmt = (fmt or "xlsx").lower()
-    filename = f"各地最近{count}条工作日志重复度{ts}.{fmt}"
+    filename = f"矛盾纠纷风险人员工作日志重复度统计_{count}_{ts}.{fmt}"
     if fmt == "csv":
         return _df_to_csv_bytes(df_out), "text/csv; charset=utf-8", filename
     return _df_to_xlsx_bytes(df_out, sheet="汇总"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename
@@ -493,7 +493,7 @@ def export_detail(result_id: str, *, branch: str, station: str, fmt: str, count:
 
     ts = _now_ts()
     fmt = (fmt or "xlsx").lower()
-    filename = f"最近{count}条重复工作日志详情{ts}.{fmt}"
+    filename = f"矛盾纠纷风险人员工作日志重复度统计明细_{count}_{ts}.{fmt}"
     if fmt == "csv":
         return _df_to_csv_bytes(df_out), "text/csv; charset=utf-8", filename
     return _df_to_xlsx_bytes(df_out, sheet="明细"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename

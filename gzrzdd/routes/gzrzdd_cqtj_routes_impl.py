@@ -11,7 +11,7 @@ from gzrzdd.service.gzrzdd_cqtj_service import export_cqtj, query_cqtj
 
 
 @gzrzdd_bp.route("/api/cqtj/query", methods=["POST"])
-@handle_errors("工作日志超期统计查询")
+@handle_errors("矛盾纠纷风险人员工作日志超期统计查询")
 def api_cqtj_query() -> Response:
     payload: Dict[str, Any] = request.json or {}
     mode = (payload.get("mode") or "detail").strip()

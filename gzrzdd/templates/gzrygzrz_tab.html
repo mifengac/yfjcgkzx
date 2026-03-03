@@ -1,0 +1,50 @@
+<section class="card">
+    <div class="row">
+        <label>是否存在进京指向
+            <select id="gzrygzrzSfczjjzx" style="height:34px;border:1px solid #d7dbe7;border-radius:8px;padding:0 8px;">
+                <option value="">全部</option>
+                <option value="是">是</option>
+                <option value="否">否</option>
+            </select>
+        </label>
+
+        <label>分局
+            <div class="multi-select" id="gzrygzrzBranchMs">
+                <div class="multi-select-display" id="gzrygzrzBranchDisplay">全部</div>
+                <div class="multi-select-dropdown" id="gzrygzrzBranchDropdown">
+                    <label class="multi-select-option">
+                        <input type="checkbox" value="_all">
+                        <span>全选</span>
+                    </label>
+                </div>
+            </div>
+        </label>
+
+        <label>工作日志系统登记时间 开始
+            <input id="gzrygzrzStartTime" type="text" placeholder="YYYY-MM-DD HH:MM:SS" style="width:180px;">
+        </label>
+        <label>结束
+            <input id="gzrygzrzEndTime" type="text" placeholder="YYYY-MM-DD HH:MM:SS" style="width:180px;">
+        </label>
+
+        <button class="btn" id="gzrygzrzQueryBtn">查询</button>
+    </div>
+    <div id="gzrygzrzErr" class="err"></div>
+</section>
+
+<div class="toolbar">
+    <div class="muted" id="gzrygzrzStatus"></div>
+    <div class="dropdown" id="gzrygzrzDd">
+        <button class="btn" id="gzrygzrzExportBtn">导出</button>
+        <div class="dropdown-menu">
+            <a href="#" data-fmt="xlsx">导出 xlsx</a>
+            <a href="#" data-fmt="csv">导出 csv</a>
+        </div>
+    </div>
+</div>
+
+<section class="card">
+    <div class="table-wrap">
+        <table id="gzrygzrzTbl"></table>
+    </div>
+</section>

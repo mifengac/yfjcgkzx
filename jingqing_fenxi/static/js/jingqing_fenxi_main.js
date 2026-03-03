@@ -264,6 +264,26 @@ function renderSrrEmptyState() {
         + '<div style="padding:16px;border:1px dashed #d0d7de;border-radius:6px;color:#666;">无符合条件数据</div>';
 }
 
+function renderSrrErrorState(errInfo, fallbackTraceId) {
+    var box = document.getElementById('box-srr');
+    box.classList.add('active');
+    var container = document.getElementById('table-srr');
+    var message = (errInfo && errInfo.message) ? errInfo.message : '上游接口异常';
+    var upstreamCode = (errInfo && errInfo.upstream_code !== undefined && errInfo.upstream_code !== null)
+        ? errInfo.upstream_code
+        : '';
+    var traceId = (errInfo && errInfo.trace_id) ? errInfo.trace_id : (fallbackTraceId || '');
+    var codeText = upstreamCode === '' ? '' : ('code=' + upstreamCode);
+    var traceText = traceId ? ('trace_id=' + traceId) : '';
+    var extra = codeText && traceText ? (codeText + ' | ' + traceText) : (codeText || traceText);
+
+    container.innerHTML = '<h3 style="margin:0 0 10px 0;">各地同环比</h3>'
+        + '<div style="padding:14px 16px;border:1px solid #f5c2c7;border-radius:6px;background:#fff5f5;color:#842029;">'
+        + '<div style="font-weight:bold;margin-bottom:4px;">同环比取数失败：' + message + '</div>'
+        + (extra ? ('<div style="font-size:12px;opacity:0.85;">' + extra + '</div>') : '')
+        + '</div>';
+}
+
 function renderSrrTable(rows) {
     const box = document.getElementById('box-srr');
     box.classList.add('active');
@@ -411,9 +431,12 @@ function doAnalyze() {
         }
         
         const data = res.data;
+        const traceId = res.trace_id || '';
         
         if (selectedDims.indexOf('srr') >= 0) {
-            if (data.srr && data.srr.length > 0) {
+            if (data.srr_error) {
+                renderSrrErrorState(data.srr_error, traceId);
+            } else if (data.srr && data.srr.length > 0) {
                 renderSrrTable(data.srr);
             } else {
                 renderSrrEmptyState();

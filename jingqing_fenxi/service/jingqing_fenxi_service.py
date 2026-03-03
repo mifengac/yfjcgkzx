@@ -56,11 +56,11 @@ def fetch_all_case_list(base_payload):
         
     return all_rows
 
-def fetch_srr_list(payload):
+def fetch_srr_list(payload, trace_id=None):
     """
     Fetch srr data directly from the system.
     """
-    return api_client.get_srr_list(payload)
+    return api_client.get_srr_list(payload, trace_id=trace_id)
 
 def calc_time_period(data):
     """

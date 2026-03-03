@@ -1,5 +1,8 @@
 from flask import Blueprint, render_template, request, jsonify, send_file
 import urllib.parse
+import logging
+import uuid
+import re
 
 from jingqing_fenxi.service.jingqing_api_client import api_client
 from jingqing_fenxi.service.jingqing_fenxi_service import (
@@ -10,6 +13,7 @@ from jingqing_fenxi.service.jingqing_fenxi_service import (
 )
 
 jingqing_fenxi_bp = Blueprint('jingqing_fenxi', __name__, template_folder='../templates', static_folder='../static')
+logger = logging.getLogger(__name__)
 
 @jingqing_fenxi_bp.route('/', methods=['GET'])
 def index():
@@ -22,9 +26,11 @@ def tree_data():
     return jsonify(data)
 
 def _build_base_payload(form):
+    begin_date = _normalize_datetime(form.get("beginDate", ""))
+    end_date = _normalize_datetime(form.get("endDate", ""))
     return {
-        "beginDate": form.get("beginDate", ""),
-        "endDate": form.get("endDate", ""),
+        "beginDate": begin_date,
+        "endDate": end_date,
         "newOriCharaSubclassNo": form.get("newOriCharaSubclassNo", ""),
         "newOriCharaSubclass": form.get("newOriCharaSubclass", ""),
         # default fixed parameters
@@ -38,16 +44,45 @@ def _build_base_payload(form):
         "isAsc": "desc",
     }
 
+def _normalize_csv(value):
+    tokens = [t.strip() for t in str(value or "").split(",") if t and t.strip()]
+    seen = set()
+    out = []
+    for token in tokens:
+        if token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return ",".join(out)
+
+def _normalize_datetime(value):
+    val = str(value or "").strip().replace("T", " ")
+    if not val:
+        return ""
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", val):
+        return val + " 00:00:00"
+    if re.match(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$", val):
+        return val + ":00"
+    return val
+
 def _build_srr_payload(form):
+    chara_no = _normalize_csv(form.get("newOriCharaSubclassNo", ""))
+    chara_name = _normalize_csv(form.get("newOriCharaSubclass", ""))
+    start_time = _normalize_datetime(form.get("beginDate", ""))
+    end_time = _normalize_datetime(form.get("endDate", ""))
+    y2y_start_time = _normalize_datetime(form.get("y2yStartTime", ""))
+    y2y_end_time = _normalize_datetime(form.get("y2yEndTime", ""))
+    m2m_start_time = _normalize_datetime(form.get("m2mStartTime", ""))
+    m2m_end_time = _normalize_datetime(form.get("m2mEndTime", ""))
     return {
-        "params[startTime]": form.get("beginDate", ""),
-        "params[endTime]": form.get("endDate", ""),
-        "params[y2yStartTime]": form.get("y2yStartTime", ""),
-        "params[y2yEndTime]": form.get("y2yEndTime", ""),
-        "params[m2mStartTime]": form.get("m2mStartTime", ""),
-        "params[m2mEndTime]": form.get("m2mEndTime", ""),
-        "charaNo": form.get("newOriCharaSubclassNo", ""),
-        "chara": form.get("newOriCharaSubclass", ""),
+        "params[startTime]": start_time,
+        "params[endTime]": end_time,
+        "params[y2yStartTime]": y2y_start_time,
+        "params[y2yEndTime]": y2y_end_time,
+        "params[m2mStartTime]": m2m_start_time,
+        "params[m2mEndTime]": m2m_end_time,
+        "charaNo": chara_no,
+        "chara": chara_name,
         "groupField": "duty_dept_no",
         "charaType": "chara_ok",
         "charaLevel": "1",
@@ -68,9 +103,21 @@ def _build_srr_payload(form):
         "isAsc": "asc"
     }
 
-def _run_analysis(form, dimensions_selected):
+def _run_analysis(form, dimensions_selected, trace_id=None):
     results = {}
     all_data = []
+    trace = trace_id or "-"
+
+    chara_no = _normalize_csv(form.get("newOriCharaSubclassNo", ""))
+    logger.info(
+        "[trace:%s] analyze form begin=%s end=%s dims=%s charaNoLen=%s charaNoHead=%s",
+        trace,
+        form.get("beginDate", ""),
+        form.get("endDate", ""),
+        list(dimensions_selected or []),
+        len(chara_no),
+        chara_no[:100],
+    )
 
     # Requires case data for any of the local dimension calculations
     requires_case_data = any(d in dimensions_selected for d in ["time", "dept", "phone", "cluster"])
@@ -90,12 +137,33 @@ def _run_analysis(form, dimensions_selected):
             
     if "srr" in dimensions_selected:
         srr_payload = _build_srr_payload(form)
-        srr_res = fetch_srr_list(srr_payload)
-        import logging
-        logging.getLogger(__name__).info("SRR analyze result: code=%s rows=%s",
-                                         srr_res.get('code'), len(srr_res.get('rows', [])))
-        results["srr"] = srr_res.get("rows", [])
-        
+        logger.info(
+            "[trace:%s] srr payload charaNoLen=%s y2yStart=%s y2yEnd=%s m2mStart=%s m2mEnd=%s",
+            trace,
+            len(str(srr_payload.get("charaNo", ""))),
+            srr_payload.get("params[y2yStartTime]", ""),
+            srr_payload.get("params[y2yEndTime]", ""),
+            srr_payload.get("params[m2mStartTime]", ""),
+            srr_payload.get("params[m2mEndTime]", ""),
+        )
+        srr_res = fetch_srr_list(srr_payload, trace_id=trace)
+        logger.info(
+            "[trace:%s] SRR analyze result: code=%s total=%s rows=%s",
+            trace,
+            srr_res.get('code'),
+            srr_res.get('total'),
+            len(srr_res.get('rows', []))
+        )
+        if srr_res.get("code") == 0:
+            results["srr"] = srr_res.get("rows", [])
+        else:
+            results["srr"] = []
+            results["srr_error"] = {
+                "upstream_code": srr_res.get("code", -1),
+                "message": srr_res.get("msg") or "上游接口异常",
+                "trace_id": trace,
+            }
+
     return results, all_data
 
 @jingqing_fenxi_bp.route('/debug_srr', methods=['GET'])
@@ -144,16 +212,18 @@ def debug_srr():
 def analyze():
     form = request.form
     dimensions = form.getlist('dimensions[]')
+    trace_id = uuid.uuid4().hex[:12]
     
-    results, _ = _run_analysis(form, dimensions)
-    return jsonify({"code": 0, "data": results})
+    results, _ = _run_analysis(form, dimensions, trace_id=trace_id)
+    return jsonify({"code": 0, "data": results, "trace_id": trace_id})
 
 @jingqing_fenxi_bp.route('/export', methods=['POST'])
 def export_report():
     form = request.form
     dimensions = form.getlist('dimensions[]')
+    trace_id = uuid.uuid4().hex[:12]
     
-    results, all_data = _run_analysis(form, dimensions)
+    results, all_data = _run_analysis(form, dimensions, trace_id=trace_id)
     
     excel_file = generate_excel_report(results, all_data, dimensions)
     
