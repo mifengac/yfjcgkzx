@@ -6,6 +6,14 @@ const gzrygzrzState = {
   lastFilters: null,
 };
 
+const GZRYGZRZ_FIXED_BRANCH_OPTIONS = [
+  { value: "云城分局", label: "云城分局" },
+  { value: "云安分局", label: "云安分局" },
+  { value: "罗定市公安局", label: "罗定市公安局" },
+  { value: "新兴县公安局", label: "新兴县公安局" },
+  { value: "郁南县公安局", label: "郁南县公安局" },
+];
+
 function gzrygzrz$(id) {
   return document.getElementById(id);
 }
@@ -30,6 +38,20 @@ function gzrygzrzFormatDateTime(dt) {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
+function gzrygzrzFormatDateTimeForInput(dt) {
+  return gzrygzrzFormatDateTime(dt).replace(" ", "T");
+}
+
+function gzrygzrzNormalizeDateTimeValue(value) {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  const text = raw.replace("T", " ");
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text)) {
+    return `${text}:00`;
+  }
+  return text;
+}
+
 function gzrygzrzInitDefaultTimes() {
   const startEl = gzrygzrz$("gzrygzrzStartTime");
   const endEl = gzrygzrz$("gzrygzrzEndTime");
@@ -38,8 +60,8 @@ function gzrygzrzInitDefaultTimes() {
   const now = new Date();
   const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   const start = new Date(todayZero.getTime() - 7 * 24 * 3600 * 1000);
-  startEl.value = gzrygzrzFormatDateTime(start);
-  endEl.value = gzrygzrzFormatDateTime(todayZero);
+  startEl.value = gzrygzrzFormatDateTimeForInput(start);
+  endEl.value = gzrygzrzFormatDateTimeForInput(todayZero);
 }
 
 function gzrygzrzSelectedBranchesFromUI() {
@@ -67,7 +89,17 @@ function gzrygzrzRenderBranchOptions(options) {
   if (!dd) return;
 
   const selectedSet = new Set(gzrygzrzState.selectedBranches || []);
-  gzrygzrzState.branchOptions = options || [];
+  gzrygzrzState.branchOptions = (options || [])
+    .map((item) => {
+      if (typeof item === "string") {
+        return { value: item, label: item };
+      }
+      return {
+        value: (item && item.value) || "",
+        label: (item && item.label) || ((item && item.value) || ""),
+      };
+    })
+    .filter((item) => item.value);
 
   let html =
     '<label class="multi-select-option">' +
@@ -77,8 +109,8 @@ function gzrygzrzRenderBranchOptions(options) {
   gzrygzrzState.branchOptions.forEach((b) => {
     html +=
       '<label class="multi-select-option">' +
-      `<input type="checkbox" value="${b}">` +
-      `<span>${b}</span>` +
+      `<input type="checkbox" value="${b.value}">` +
+      `<span>${b.label}</span>` +
       "</label>";
   });
   dd.innerHTML = html;
@@ -131,8 +163,8 @@ function gzrygzrzRenderTable(records) {
 }
 
 function gzrygzrzBuildFilters() {
-  const start_time = (gzrygzrz$("gzrygzrzStartTime") || {}).value || "";
-  const end_time = (gzrygzrz$("gzrygzrzEndTime") || {}).value || "";
+  const start_time = gzrygzrzNormalizeDateTimeValue((gzrygzrz$("gzrygzrzStartTime") || {}).value || "");
+  const end_time = gzrygzrzNormalizeDateTimeValue((gzrygzrz$("gzrygzrzEndTime") || {}).value || "");
   const sfczjjzx = (gzrygzrz$("gzrygzrzSfczjjzx") || {}).value || "";
   const branches = gzrygzrzState.selectedBranches || [];
   return { start_time, end_time, sfczjjzx, branches };
@@ -154,9 +186,11 @@ async function gzrygzrzQuery() {
       throw new Error((js && js.message) || "查询失败");
     }
 
-    const serverOptions = js.branch_options || [];
+    const serverOptions = js.branch_options || GZRYGZRZ_FIXED_BRANCH_OPTIONS;
     const selectedSet = new Set(gzrygzrzState.selectedBranches || []);
-    gzrygzrzState.selectedBranches = serverOptions.filter((x) => selectedSet.has(x));
+    gzrygzrzState.selectedBranches = serverOptions
+      .map((item) => (typeof item === "string" ? item : item && item.value))
+      .filter((value) => value && selectedSet.has(value));
     gzrygzrzRenderBranchOptions(serverOptions);
     gzrygzrzRenderTable(js.records || []);
     gzrygzrzState.lastFilters = js.filters || filters;
@@ -234,7 +268,7 @@ function gzrygzrzBindExportDropdown() {
 function gzrygzrzInit() {
   if (!gzrygzrz$("tab-gzrygzrz")) return;
   gzrygzrzInitDefaultTimes();
-  gzrygzrzRenderBranchOptions([]);
+  gzrygzrzRenderBranchOptions(GZRYGZRZ_FIXED_BRANCH_OPTIONS);
   gzrygzrzBindBranchMultiSelect();
   gzrygzrzBindExportDropdown();
   const queryBtn = gzrygzrz$("gzrygzrzQueryBtn");

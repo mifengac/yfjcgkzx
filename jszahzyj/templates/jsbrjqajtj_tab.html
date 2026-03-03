@@ -1,0 +1,37 @@
+<section class="filter-form">
+    <div class="filter-row">
+        <div class="filter-group">
+            <label for="jsbrjqajtjStartTime">报警时间开始</label>
+            <input id="jsbrjqajtjStartTime" type="datetime-local" step="1">
+        </div>
+        <div class="filter-group">
+            <label for="jsbrjqajtjEndTime">报警时间结束</label>
+            <input id="jsbrjqajtjEndTime" type="datetime-local" step="1">
+        </div>
+        <div class="filter-group">
+            <label>分局</label>
+            <div class="multi-select-box" id="jsbrjqajtjBranchDisplay">全部</div>
+            <div class="multi-select-menu" id="jsbrjqajtjBranchDropdown"></div>
+        </div>
+        <div class="filter-group">
+            <button type="button" class="module-button" id="jsbrjqajtjQueryBtn">查询</button>
+        </div>
+    </div>
+    <div id="jsbrjqajtjErr" class="error-message jsbrjqajtj-hidden"></div>
+</section>
+
+<div class="results-header">
+    <div class="results-info" id="jsbrjqajtjStatus"></div>
+    <div class="download-menu" id="jsbrjqajtjDd">
+        <button type="button" class="module-button" id="jsbrjqajtjExportBtn">导出</button>
+        <div class="download-menu-content">
+            <button type="button" data-fmt="xlsx">Excel (xlsx)</button>
+            <button type="button" data-fmt="csv">CSV</button>
+        </div>
+    </div>
+</div>
+
+<div class="results-table-container">
+    <table id="jsbrjqajtjTbl" class="jsbrjqajtj-table"></table>
+</div>
+

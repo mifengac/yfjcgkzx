@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>精神障碍患者预警</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('jszahzyj.static', filename='jsbrjqajtj.css') }}">
     <style>
         body {
             font-family: 'Microsoft YaHei', Arial, sans-serif;
@@ -276,129 +277,141 @@
         <div class="error-message">{{ error_message }}</div>
         {% endif %}
 
-        <!-- 过滤表单 -->
-        <form method="GET" action="{{ url_for('jszahzyj.index') }}" class="filter-form">
-            <div class="filter-row">
-                <!-- 列管时间 -->
-                <div class="filter-group">
-                    <label for="liguan_start">列管时间开始</label>
-                    <input type="datetime-local" id="liguan_start" name="liguan_start"
-                           value="{{ liguan_start }}" step="1">
-                </div>
-                <div class="filter-group">
-                    <label for="liguan_end">列管时间结束</label>
-                    <input type="datetime-local" id="liguan_end" name="liguan_end"
-                           value="{{ liguan_end }}" step="1">
-                </div>
-
-                <!-- 矛盾纠纷录入时间 -->
-                <div class="filter-group">
-                    <label for="maodun_start">矛盾纠纷录入时间开始</label>
-                    <input type="datetime-local" id="maodun_start" name="maodun_start"
-                           value="{{ maodun_start }}" step="1">
-                </div>
-                <div class="filter-group">
-                    <label for="maodun_end">矛盾纠纷录入时间结束</label>
-                    <input type="datetime-local" id="maodun_end" name="maodun_end"
-                           value="{{ maodun_end }}" step="1">
-                </div>
-
-                <!-- 分局多选 -->
-                <div class="filter-group">
-                    <label>分局</label>
-                    <div class="multi-select-box" id="fenjuSelectBox">
-                        <span id="fenjuSelectedText">请选择分局</span>
-                    </div>
-                    <div class="multi-select-menu" id="fenjuSelectMenu">
-                        <label><input type="checkbox" name="fenju" value="云城分局"
-                            {% if '云城分局' in fenju_selected %}checked{% endif %}> 云城分局</label>
-                        <label><input type="checkbox" name="fenju" value="云安分局"
-                            {% if '云安分局' in fenju_selected %}checked{% endif %}> 云安分局</label>
-                        <label><input type="checkbox" name="fenju" value="罗定市公安局"
-                            {% if '罗定市公安局' in fenju_selected %}checked{% endif %}> 罗定市公安局</label>
-                        <label><input type="checkbox" name="fenju" value="新兴县公安局"
-                            {% if '新兴县公安局' in fenju_selected %}checked{% endif %}> 新兴县公安局</label>
-                        <label><input type="checkbox" name="fenju" value="郁南县公安局"
-                            {% if '郁南县公安局' in fenju_selected %}checked{% endif %}> 郁南县公安局</label>
-                    </div>
-                </div>
-
-                <!-- 查询按钮 -->
-                <div class="filter-group">
-                    <button type="submit" class="module-button">查询</button>
-                </div>
-            </div>
-        </form>
-
-        <!-- 结果区域 -->
-        <div class="results-header">
-            <div class="results-info">
-                共 <strong>{{ total }}</strong> 条记录
-            </div>
-            <div class="download-menu">
-                <button type="button" class="module-button" id="exportBtn">导出</button>
-                <div class="download-menu-content" id="exportMenu">
-                    <button type="button" onclick="exportData('xlsx')">Excel (xlsx)</button>
-                    <button type="button" onclick="exportData('csv')">CSV</button>
-                </div>
-            </div>
+        <div class="jszahzyj-tabs" id="jszahzyjTabs">
+            <button class="jszahzyj-tab-btn active" data-tab="jszahzyj-main">精神障碍患者预警</button>
+            <button class="jszahzyj-tab-btn" data-tab="jsbrjqajtj">精神病人警情案件统计</button>
         </div>
 
-        <!-- 数据表格 -->
-        <div class="results-table-container">
-            {% if rows %}
-            <table>
-                <thead>
-                    <tr>
-                        {% for key in rows[0].keys() %}
-                        <th>{{ key }}</th>
+        <div class="jszahzyj-tab-panel active" id="tab-jszahzyj-main">
+            <!-- 过滤表单 -->
+            <form method="GET" action="{{ url_for('jszahzyj.index') }}" class="filter-form">
+                <div class="filter-row">
+                    <!-- 列管时间 -->
+                    <div class="filter-group">
+                        <label for="liguan_start">列管时间开始</label>
+                        <input type="datetime-local" id="liguan_start" name="liguan_start"
+                               value="{{ liguan_start }}" step="1">
+                    </div>
+                    <div class="filter-group">
+                        <label for="liguan_end">列管时间结束</label>
+                        <input type="datetime-local" id="liguan_end" name="liguan_end"
+                               value="{{ liguan_end }}" step="1">
+                    </div>
+
+                    <!-- 矛盾纠纷录入时间 -->
+                    <div class="filter-group">
+                        <label for="maodun_start">矛盾纠纷录入时间开始</label>
+                        <input type="datetime-local" id="maodun_start" name="maodun_start"
+                               value="{{ maodun_start }}" step="1">
+                    </div>
+                    <div class="filter-group">
+                        <label for="maodun_end">矛盾纠纷录入时间结束</label>
+                        <input type="datetime-local" id="maodun_end" name="maodun_end"
+                               value="{{ maodun_end }}" step="1">
+                    </div>
+
+                    <!-- 分局多选 -->
+                    <div class="filter-group">
+                        <label>分局</label>
+                        <div class="multi-select-box" id="fenjuSelectBox">
+                            <span id="fenjuSelectedText">请选择分局</span>
+                        </div>
+                        <div class="multi-select-menu" id="fenjuSelectMenu">
+                            <label><input type="checkbox" name="fenju" value="云城分局"
+                                {% if '云城分局' in fenju_selected %}checked{% endif %}> 云城分局</label>
+                            <label><input type="checkbox" name="fenju" value="云安分局"
+                                {% if '云安分局' in fenju_selected %}checked{% endif %}> 云安分局</label>
+                            <label><input type="checkbox" name="fenju" value="罗定市公安局"
+                                {% if '罗定市公安局' in fenju_selected %}checked{% endif %}> 罗定市公安局</label>
+                            <label><input type="checkbox" name="fenju" value="新兴县公安局"
+                                {% if '新兴县公安局' in fenju_selected %}checked{% endif %}> 新兴县公安局</label>
+                            <label><input type="checkbox" name="fenju" value="郁南县公安局"
+                                {% if '郁南县公安局' in fenju_selected %}checked{% endif %}> 郁南县公安局</label>
+                        </div>
+                    </div>
+
+                    <!-- 查询按钮 -->
+                    <div class="filter-group">
+                        <button type="submit" class="module-button">查询</button>
+                    </div>
+                </div>
+            </form>
+
+            <!-- 结果区域 -->
+            <div class="results-header">
+                <div class="results-info">
+                    共 <strong>{{ total }}</strong> 条记录
+                </div>
+                <div class="download-menu">
+                    <button type="button" class="module-button" id="exportBtn">导出</button>
+                    <div class="download-menu-content" id="exportMenu">
+                        <button type="button" onclick="exportData('xlsx')">Excel (xlsx)</button>
+                        <button type="button" onclick="exportData('csv')">CSV</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据表格 -->
+            <div class="results-table-container">
+                {% if rows %}
+                <table>
+                    <thead>
+                        <tr>
+                            {% for key in rows[0].keys() %}
+                            <th>{{ key }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            {% for value in row.values() %}
+                            <td>{{ value if value is not none else '' }}</td>
+                            {% endfor %}
+                        </tr>
                         {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in rows %}
-                    <tr>
-                        {% for value in row.values() %}
-                        <td>{{ value if value is not none else '' }}</td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="no-data">暂无数据</div>
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="no-data">暂无数据</div>
+                {% endif %}
+            </div>
+
+            <!-- 分页 -->
+            {% if total > 0 %}
+            <div class="pagination">
+                <div class="pagination-info">
+                    第 {{ page }} / {{ total_pages }} 页
+                </div>
+                <div class="pagination-controls">
+                    {% if page > 1 %}
+                    <a href="{{ url_for('jszahzyj.index', liguan_start=liguan_start, liguan_end=liguan_end,
+                        maodun_start=maodun_start, maodun_end=maodun_end, fenju=fenju_selected,
+                        page=page-1, page_size=page_size) }}">上一页</a>
+                    {% else %}
+                    <a class="disabled">上一页</a>
+                    {% endif %}
+
+                    <span class="current">{{ page }}</span>
+
+                    {% if page < total_pages %}
+                    <a href="{{ url_for('jszahzyj.index', liguan_start=liguan_start, liguan_end=liguan_end,
+                        maodun_start=maodun_start, maodun_end=maodun_end, fenju=fenju_selected,
+                        page=page+1, page_size=page_size) }}">下一页</a>
+                    {% else %}
+                    <a class="disabled">下一页</a>
+                    {% endif %}
+                </div>
+            </div>
             {% endif %}
         </div>
 
-        <!-- 分页 -->
-        {% if total > 0 %}
-        <div class="pagination">
-            <div class="pagination-info">
-                第 {{ page }} / {{ total_pages }} 页
-            </div>
-            <div class="pagination-controls">
-                {% if page > 1 %}
-                <a href="{{ url_for('jszahzyj.index', liguan_start=liguan_start, liguan_end=liguan_end,
-                    maodun_start=maodun_start, maodun_end=maodun_end, fenju=fenju_selected,
-                    page=page-1, page_size=page_size) }}">上一页</a>
-                {% else %}
-                <a class="disabled">上一页</a>
-                {% endif %}
-
-                <span class="current">{{ page }}</span>
-
-                {% if page < total_pages %}
-                <a href="{{ url_for('jszahzyj.index', liguan_start=liguan_start, liguan_end=liguan_end,
-                    maodun_start=maodun_start, maodun_end=maodun_end, fenju=fenju_selected,
-                    page=page+1, page_size=page_size) }}">下一页</a>
-                {% else %}
-                <a class="disabled">下一页</a>
-                {% endif %}
-            </div>
+        <div class="jszahzyj-tab-panel" id="tab-jsbrjqajtj">
+            {% include "jsbrjqajtj_tab.html" %}
         </div>
-        {% endif %}
     </div>
 
     <script src="{{ url_for('static', filename='js/jszahzyj.js') }}"></script>
+    <script src="{{ url_for('jszahzyj.static', filename='jsbrjqajtj_main.js') }}"></script>
 </body>
 </html>

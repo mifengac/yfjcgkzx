@@ -33,7 +33,12 @@ logging.basicConfig(
 )
 
 # 创建蓝图
-jszahzyj_bp = Blueprint("jszahzyj", __name__, template_folder="../templates")
+jszahzyj_bp = Blueprint(
+    "jszahzyj",
+    __name__,
+    template_folder="../templates",
+    static_folder="../static",
+)
 
 
 @jszahzyj_bp.before_request
@@ -183,3 +188,7 @@ def export() -> Response:
     except Exception as e:
         logging.error(f"导出数据失败: {e}")
         abort(500, description=f"导出失败: {str(e)}")
+
+
+# 注册“精神病人警情案件统计”子功能路由（与 jszahzyj_bp 同一个蓝图）
+from jszahzyj.routes import jsbrjqajtj_routes_impl  # noqa: E402,F401

@@ -80,7 +80,7 @@ def _run_query(sql: str, params: Sequence[object]) -> pd.DataFrame:
 
 
 def normalize_datetime_text(value: str) -> str:
-    text = (value or "").strip()
+    text = (value or "").strip().replace("T", " ")
     if not text:
         raise ValueError("时间不能为空")
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):

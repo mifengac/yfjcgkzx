@@ -1,0 +1,43 @@
+.jszahzyj-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.jszahzyj-tab-btn {
+  height: 34px;
+  border: 1px solid #d7dbe7;
+  border-radius: 999px;
+  background: #fff;
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 700;
+  color: #333;
+}
+
+.jszahzyj-tab-btn.active {
+  background: #1976d2;
+  color: #fff;
+  border-color: #1976d2;
+}
+
+.jszahzyj-tab-panel {
+  display: none;
+}
+
+.jszahzyj-tab-panel.active {
+  display: block;
+}
+
+.jsbrjqajtj-hidden {
+  display: none;
+}
+
+.download-menu.open .download-menu-content {
+  display: block;
+}
+
+.jsbrjqajtj-table th,
+.jsbrjqajtj-table td {
+  text-align: left;
+}
