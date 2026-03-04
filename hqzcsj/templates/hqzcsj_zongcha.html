@@ -67,6 +67,7 @@
     <div class="tabs" id="hqzcsjTabs">
         <button class="tab-btn" data-tab="fetch">获取综查数据</button>
         <button class="tab-btn active" data-tab="jqaj">警情案件统计</button>
+        <button class="tab-btn" data-tab="pcsjqajtj">派出所警情案件统计</button>
         <button class="tab-btn" data-tab="wcnr">未成年人警情案件统计</button>
         <button class="tab-btn" data-tab="jzqk">矫治情况统计</button>
         <button class="tab-btn" data-tab="wcnr1393">未成年人1393指标</button>
@@ -129,6 +130,10 @@
 
     <div class="tab-panel active" id="tab-jqaj">
         {% include "zfba_jq_aj_tab.html" %}
+    </div>
+
+    <div class="tab-panel" id="tab-pcsjqajtj">
+        {% include "pcsjqajtj_tab.html" %}
     </div>
 
     <div class="tab-panel" id="tab-wcnr">
@@ -528,6 +533,7 @@
         tabs.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.getAttribute("data-tab") === t));
         document.getElementById("tab-fetch").classList.toggle("active", t === "fetch");
         document.getElementById("tab-jqaj").classList.toggle("active", t === "jqaj");
+        document.getElementById("tab-pcsjqajtj").classList.toggle("active", t === "pcsjqajtj");
         document.getElementById("tab-wcnr").classList.toggle("active", t === "wcnr");
         document.getElementById("tab-jzqk").classList.toggle("active", t === "jzqk");
         document.getElementById("tab-wcnr1393").classList.toggle("active", t === "wcnr1393");

@@ -1,6 +1,3 @@
-# 在hqzcsj增加一个tab页,名为"派出所警情案件统计",代码前缀为"pcsjqajtj_*",后端(py)and前端code(js,html)all放在hqzcsj中对应的子文件夹中
-## 数据源:
-```SQL
 -- ====================================================
 -- 各派出所警情案件综合统计（含类型过滤）
 -- 修改 start_time / end_time 切换统计时间范围
@@ -178,13 +175,14 @@ qisu_stats AS (
 )
 
 SELECT
+    d.ssfj                           AS 所属分局,
     d.sspcs                          AS 派出所名称,
     d.sspcsdm                        AS 派出所代码,
     COALESCE(j.jq_cnt,    0)         AS 警情,
     COALESCE(j.za_cnt,    0)         AS 转案,
     COALESCE(a.xz_cnt,    0)         AS 行政,
     COALESCE(a.xs_cnt,    0)         AS 刑事,
-    COALESCE(a.bjxz_cnt,  0)         AS 办结行政,
+    COALESCE(a.bjxz_cnt,  0)         AS 办结,
     COALESCE(a.pa_cnt,    0)         AS 破案,
     COALESCE(a.gzl_cnt,   0)         AS 高质量,
     COALESCE(z.zhiju_cnt, 0)         AS 治拘,
@@ -199,128 +197,3 @@ LEFT JOIN  xingju_stats x  ON x.pcsdm  = d.sspcsdm
 LEFT JOIN  daibu_stats  db ON db.pcsdm = d.sspcsdm
 LEFT JOIN  qisu_stats   q  ON q.pcsdm  = d.sspcsdm
 ORDER BY   d.sspcs;
-
-```
-## 分组字段:使用"派出所代码",匹配逻辑是截取"办案单位代码"前8位,然后再后面拼接'0000'
-## 只显示(其中括号中的字段通过"显示比例"滑动按钮控制):"所属分局","派出所名称","警情","同比警情",("同比警情比例"),转案率:转案/警情,同比转案率:同比转案/同比警情,行政,同比行政,(同比行政比例),刑事,同比刑事,(同比刑事比例),办结率:办结/行政,破案率:破案/刑事,高质量,同比高质量,(同比高质量比例),治拘,同比治拘,(同比治拘比例),刑拘,同比刑拘,(同比刑拘比例),逮捕,同比逮捕,(同比逮捕比例),起诉,同比起诉,(同比起诉比例)
-### 筛选区 
-#### 1. 时间:
-  - 格式:时间区间,包含开始和结束,显示格式为'YYYY-MM-DD HH:MM:SS'
-  - 默认值:
-      + 开始:当前日期向前推7天,如今天是'2026-01-08 00:00:00',默认为'2026-01-01:00:00:00'
-      + 结束:当前日期0点,如今天是'2026-01-08 00:00:00',默认为'2026-01-08:00:00:00'
-  - 过滤对应表的对应字段
-    +案件
-#### 2. 分局:对stdata.b_dic_zzjgdm中的ssfjdm分组去重
-  - 格式: 多选下拉框
-  - 显示使用`ssfj`显示,后台传值使用`ssfjdm`过滤
-#### 3. 类型:
-  - 数据源:ywdata.case_type_config
-  - 格式:多选下拉框
-  - 显示:`leixing`
-  - 过滤:其中"警情"使用`newcharasubclass_list`过滤,其他使用`ay_pattern`匹配
-#### 4. 显示比例:
-  - 格式:滑动开关
-  - 开启后数据集表格显示同比数据比例,百分比2位小数
-    - 当同比数值为0时,当前数值不为0时,显示结果为上升X起/人次,其中治拘,刑拘,逮捕,起诉为'人次'其他为'起'
-    - 当当前数值为0,同比数不为0时,显示结果为下降X起/人次,其中治拘,刑拘,逮捕,起诉为'人次'其他为'起'
-    - 当同比数值=当前数值时,显示结果为'持平'
-### 数据展示区:
-#### 1. 右上角"导出"按钮,导出的值为"查询"按钮在前端查询到的结果集
-  - 逻辑:单击"导出"显示下拉'xlsx','csv'两个选项,点击对应选项下载对应格式文件
-  - 文件名:{开始}至{结束}_{所属分局}+{sspcs}警情案件统计{时间戳}.xlsx/csv
-#### 2. 所有计数值均可点击,点击后弹出弹出框,显示详细数据,比如点击XX派出所的行政,则可以显示`ajxx_lasj`区间内,对应"类型"的,对应left(aj.ajxx_cbdw_bh_dm, 8) || '0000'的所有详细案件,参考hqzcsj\templates\zfba_jq_aj_tab.html
-===
-# 帮我写一个sql,主要是查询各个时间范围内各派出所的警情,转案,行政,刑事,办结行政,破案,高质量,治拘,刑拘,逮捕,起诉的计数
-## 派出所表stdata.b_dic_zzjgdm
-  - sspcs 派出所名称
-  - sspcsdm 派出所代码
-## 警情表ywdata.zq_kshddpt_dsjfx_jq(警情,转案)
-  - left(ajxx_cbqy_bh_dm,8)||'0000' 派出所代码
-  - calltime 时间
-  - 转案(警情表通过`caseno`和案件表的`ajxx_jqbh`字段匹配,匹配到则为"转案")
-## 案件表ywdata.zq_zfba_ajxx(行政、刑事)
-  - left(ajxx_cbqy_bh_dm,8)||'0000' 派出所代码
-  - ajxx_lasj 时间
-  - ajxx_ajzt 案件状态,当
-    + ajxx_ajlx='行政'且案件状态 NOT IN ('已立案','已受理')则为"办结行政"
-    + ajxx_ajlx='刑事'且案件状态 NOT IN ('已立案','已受理')则为"破案"
-  - 高质量打击:刑拘大于等于3人以上(案件表通过`ajxx_ajbh`与拘留证表的`ajxx_ajbh`字段匹配,对`ajxx_ajbh`分组计数,如果计数值大于2则属于"高质量")
-## 治拘表ywdata.zq_zfba_xzcfjds(治拘),只过滤xzcfjds_cfzl ~ '拘留'的数据
-  - left(xzcfjds_cbdw_bh_dm,8)||'0000' 派出所代码
-  - xzcfjds_spsj 时间
-## 刑拘表ywdata.zq_zfba_jlz
-  - left(jlz_cbdw_bh_dm,8)||'0000' 派出所代码
-  - jlz_pzsj 时间
-## 逮捕表ywdata.zq_zfba_dbz
-  - left(dbz_cbqy_bh_dm,8)||'0000' 派出所代码
-  - dbz_pzsj 时间
-## 起诉表ywdata.zq_zfba_qsryxx
-  - left(qsryxx_cbdw_bh_dm,8)||'0000' 派出所代码
-  - qsryxx_tfsj 时间
-## 当前各表数据量
-zq_zfba_dbz,逮捕证,3292,
-zq_zfba_jlz,拘留证,7003,
-zq_zfba_ajxx,案件信息,29240,
-zq_kshddpt_dsjfx_jq,可视化调度平台-大数据分析-警情,1207412,
-zq_zfba_qsryxx,起诉人员信息,4454,58:44.9
-zq_zfba_xzcfjds,行政处罚决定书,29363,
-# 现在帮我优化一下SQL语句
-## 增加类型过滤
-### 类型表ywdata.case_type_config
-  - leixing,给前端用户选择用的{打架斗殴,涉黄,赌博...}
-  - newcharasubclass_list,警情类型编号集合,示例{02xxx,03xxxx}与警情表的`neworicharasubclass`字段匹配
-  - ay_parttern,案由,与案件的"案由"字段模糊匹配,值的格式示例:%(殴打|打架|滋事)%对应leixing='打架斗殴'
-#### 警情表ywdata.zq_kshddpt_dsjfx_jq(警情,转案)
-  - neworicharasubclass 警情编号
-#### 案件表ywdata.zq_zfba_ajxx(行政、刑事)
-  - ajxx_aymc 案由
-#### 治拘表ywdata.zq_zfba_xzcfjds(治拘),只过滤xzcfjds_cfzl ~ '拘留'的数据
-  - 案由通过`ajxx_ajbh`字段与案件表的`ajxx_ajbh`字段匹配,再通过案件表的`ajxx_aymc`过滤
-#### 刑拘表ywdata.zq_zfba_jlz
-  - jlz_ay_mc 案由
-#### 逮捕表ywdata.zq_zfba_dbz
-  - dbz_ay_mc 案由
-#### 起诉表ywdata.zq_zfba_qsryxx
-  - ajxx_ay 案由
--- ====================================================
--- 各派出所警情案件综合统计
--- 修改 start_time / end_time 切换统计时间范围
--- ====================================================
-WITH
-params AS (
-    SELECT
-        '2026-01-01 00:00:00'::timestamp AS start_time,
-        '2026-03-04 00:00:00'::timestamp AS end_time
-),
-
--- 高质量案件：同一 ajxx_ajbh 在拘留证表中出现 ≥3 条
-high_quality_cases AS (
-    SELECT ajxx_ajbh
-    FROM   ywdata.zq_zfba_jlz
-    GROUP  BY ajxx_ajbh
-    HAVING COUNT(*) >= 3
-),
-
--- 警情 + 转案（警情表用 dutydeptno 作为派出所代码）
-jq_stats AS (
-    SELECT
-        left(jq.dutydeptno, 8) || '0000'       AS pcsdm,
-        COUNT(*)                                 AS jq_cnt,
-        COUNT(aj.ajxx_jqbh)                      AS za_cnt   -- 匹配到案件则为转案
-    FROM   ywdata.zq_kshddpt_dsjfx_jq jq
-    CROSS  JOIN params p
-    LEFT   JOIN ywdata.zq_zfba_ajxx aj
-           ON  jq.caseno = aj.ajxx_jqbh
-    WHERE  jq.calltime::timestamp >= p.start_time
-      AND  jq.calltime::timestamp <  p.end_time
-    GROUP  BY left(jq.dutydeptno, 8) || '0000'
-),
-
--- 行政、刑事、办结行政、破案、高质量
-aj_stats AS (
-    SELECT
-        left(aj.ajxx_cbqy_bh_dm, 8) || '0000'                          AS pcsdm,
-        -- 行政案件
-        COUNT(*) FILTER (WHERE aj.ajxx_ajlx = '行政')                  AS xz_cnt,
-     
