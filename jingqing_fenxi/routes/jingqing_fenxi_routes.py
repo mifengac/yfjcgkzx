@@ -3,13 +3,14 @@ import urllib.parse
 import logging
 import uuid
 import re
+from datetime import datetime
 
 from jingqing_fenxi.service.jingqing_api_client import api_client
 from jingqing_fenxi.service.jingqing_fenxi_service import (
     fetch_all_case_list, fetch_srr_list,
     calc_time_period, calc_duty_dept,
-    calc_repeat_phone, calc_50m_cluster,
-    generate_excel_report
+    calc_repeat_phone, calc_repeat_address,
+    generate_excel_report, calc_time_hourly_counts
 )
 
 jingqing_fenxi_bp = Blueprint('jingqing_fenxi', __name__, template_folder='../templates', static_folder='../static')
@@ -65,6 +66,69 @@ def _normalize_datetime(value):
         return val + ":00"
     return val
 
+def _parse_int(value, default=None):
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
+
+def _clamp(value, minimum, maximum):
+    return max(minimum, min(value, maximum))
+
+def _build_analysis_options(form):
+    valid_time_buckets = [1, 2, 3, 4, 6, 8, 12]
+
+    time_bucket_hours = _parse_int(form.get("timeBucketHours"), 3)
+    if time_bucket_hours not in valid_time_buckets:
+        time_bucket_hours = 3
+
+    dept_top_n_raw = str(form.get("deptTopN", "all")).strip().lower()
+    if dept_top_n_raw in ("", "all", "0"):
+        dept_top_n = None
+    else:
+        dept_top_n = _parse_int(dept_top_n_raw, None)
+        if not dept_top_n or dept_top_n < 1:
+            dept_top_n = None
+
+    repeat_phone_min_count = _parse_int(form.get("repeatPhoneMinCount"), 2)
+    if repeat_phone_min_count is None:
+        repeat_phone_min_count = 2
+    repeat_phone_min_count = _clamp(repeat_phone_min_count, 2, 10)
+
+    repeat_addr_radius_meters = _parse_int(form.get("repeatAddrRadiusMeters"), 50)
+    if repeat_addr_radius_meters is None:
+        repeat_addr_radius_meters = 50
+    repeat_addr_radius_meters = _clamp(repeat_addr_radius_meters, 50, 500)
+    repeat_addr_radius_meters = int(round(repeat_addr_radius_meters / 50.0) * 50)
+    repeat_addr_radius_meters = _clamp(repeat_addr_radius_meters, 50, 500)
+
+    return {
+        "timeBucketHours": time_bucket_hours,
+        "deptTopN": dept_top_n,
+        "repeatPhoneMinCount": repeat_phone_min_count,
+        "repeatAddrRadiusMeters": repeat_addr_radius_meters,
+    }
+
+def _parse_datetime(value):
+    val = _normalize_datetime(value)
+    if not val:
+        return None
+    try:
+        return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+def _format_datetime(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+def _shift_year_safe(dt, years):
+    target_year = dt.year + years
+    try:
+        return dt.replace(year=target_year)
+    except ValueError:
+        # Leap day fallback: 2024-02-29 -> 2023-02-28
+        return dt.replace(year=target_year, month=2, day=28)
+
 def _build_chara_no_from_case_type_ids(case_type_ids):
     ids = [str(x).strip() for x in (case_type_ids or []) if str(x).strip()]
     if not ids:
@@ -89,10 +153,30 @@ def _build_srr_payload(form):
     chara_name = _normalize_csv(form.get("newOriCharaSubclass", ""))
     start_time = _normalize_datetime(form.get("beginDate", ""))
     end_time = _normalize_datetime(form.get("endDate", ""))
+    start_dt = _parse_datetime(start_time)
+    end_dt = _parse_datetime(end_time)
+
     y2y_start_time = _normalize_datetime(form.get("y2yStartTime", ""))
     y2y_end_time = _normalize_datetime(form.get("y2yEndTime", ""))
     m2m_start_time = _normalize_datetime(form.get("m2mStartTime", ""))
     m2m_end_time = _normalize_datetime(form.get("m2mEndTime", ""))
+
+    # Y2Y default: one year before begin/end
+    if (not _parse_datetime(y2y_start_time)) and start_dt:
+        y2y_start_time = _format_datetime(_shift_year_safe(start_dt, -1))
+    if (not _parse_datetime(y2y_end_time)) and end_dt:
+        y2y_end_time = _format_datetime(_shift_year_safe(end_dt, -1))
+
+    # M2M default: [begin - (end-begin), begin]
+    if start_dt and end_dt:
+        duration = end_dt - start_dt
+        default_m2m_end = start_dt
+        default_m2m_start = default_m2m_end - duration
+        if not _parse_datetime(m2m_end_time):
+            m2m_end_time = _format_datetime(default_m2m_end)
+        if not _parse_datetime(m2m_start_time):
+            m2m_start_time = _format_datetime(default_m2m_start)
+
     return {
         "params[startTime]": start_time,
         "params[endTime]": end_time,
@@ -124,18 +208,21 @@ def _build_srr_payload(form):
 
 def _run_analysis(form, dimensions_selected, trace_id=None):
     results = {}
+    analysis_base = {}
     all_data = []
     trace = trace_id or "-"
+    analysis_options = _build_analysis_options(form)
 
     chara_no = _normalize_csv(form.get("newOriCharaSubclassNo", ""))
     logger.info(
-        "[trace:%s] analyze form begin=%s end=%s dims=%s charaNoLen=%s charaNoHead=%s",
+        "[trace:%s] analyze form begin=%s end=%s dims=%s charaNoLen=%s charaNoHead=%s options=%s",
         trace,
         form.get("beginDate", ""),
         form.get("endDate", ""),
         list(dimensions_selected or []),
         len(chara_no),
         chara_no[:100],
+        analysis_options,
     )
 
     # Requires case data for any of the local dimension calculations
@@ -146,13 +233,24 @@ def _run_analysis(form, dimensions_selected, trace_id=None):
         all_data = fetch_all_case_list(base_payload)
         
         if "time" in dimensions_selected:
-            results["time"] = calc_time_period(all_data)
+            analysis_base["timeHourly"] = calc_time_hourly_counts(all_data)
+            results["time"] = calc_time_period(
+                all_data, bucket_hours=analysis_options["timeBucketHours"]
+            )
         if "dept" in dimensions_selected:
-            results["dept"] = calc_duty_dept(all_data)
+            analysis_base["deptAll"] = calc_duty_dept(all_data, top_n=None)
+            results["dept"] = calc_duty_dept(
+                all_data, top_n=analysis_options["deptTopN"]
+            )
         if "phone" in dimensions_selected:
-            results["phone"] = calc_repeat_phone(all_data)
+            analysis_base["phoneAll"] = calc_repeat_phone(all_data, min_count=2)
+            results["phone"] = calc_repeat_phone(
+                all_data, min_count=analysis_options["repeatPhoneMinCount"]
+            )
         if "cluster" in dimensions_selected:
-            results["cluster"] = calc_50m_cluster(all_data)
+            results["cluster"] = calc_repeat_address(
+                all_data, radius_meters=analysis_options["repeatAddrRadiusMeters"]
+            )
             
     if "srr" in dimensions_selected:
         srr_payload = _build_srr_payload(form)
@@ -183,7 +281,7 @@ def _run_analysis(form, dimensions_selected, trace_id=None):
                 "trace_id": trace,
             }
 
-    return results, all_data
+    return results, analysis_base, all_data, analysis_options
 
 @jingqing_fenxi_bp.route('/debug_srr', methods=['GET'])
 def debug_srr():
@@ -233,8 +331,14 @@ def analyze():
     dimensions = form.getlist('dimensions[]')
     trace_id = uuid.uuid4().hex[:12]
     
-    results, _ = _run_analysis(form, dimensions, trace_id=trace_id)
-    return jsonify({"code": 0, "data": results, "trace_id": trace_id})
+    results, analysis_base, _, analysis_options = _run_analysis(form, dimensions, trace_id=trace_id)
+    return jsonify({
+        "code": 0,
+        "data": results,
+        "analysisBase": analysis_base,
+        "analysisOptions": analysis_options,
+        "trace_id": trace_id
+    })
 
 @jingqing_fenxi_bp.route('/export', methods=['POST'])
 def export_report():
@@ -242,9 +346,11 @@ def export_report():
     dimensions = form.getlist('dimensions[]')
     trace_id = uuid.uuid4().hex[:12]
     
-    results, all_data = _run_analysis(form, dimensions, trace_id=trace_id)
+    results, _, all_data, analysis_options = _run_analysis(form, dimensions, trace_id=trace_id)
     
-    excel_file = generate_excel_report(results, all_data, dimensions)
+    excel_file = generate_excel_report(
+        results, all_data, dimensions, analysis_options=analysis_options
+    )
     
     encoded_name = urllib.parse.quote("警情分析报表.xlsx")
     return send_file(

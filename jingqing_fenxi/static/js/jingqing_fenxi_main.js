@@ -1,8 +1,25 @@
-var treeDataRaw = [];
+﻿var treeDataRaw = [];
 var chartsMap = {};
+var TIME_BUCKET_CHOICES = [1, 2, 3, 4, 6, 8, 12];
 
-// ---- Multi-select: 警情类型 ----
-(function() {
+var lastAnalyzeState = {
+    data: null,
+    base: null,
+    dims: [],
+    traceId: ''
+};
+var clusterRefreshTimer = null;
+
+function getSelectedDimensions() {
+    var boxes = document.querySelectorAll('#dimMsDropdown input[type="checkbox"]');
+    var dims = [];
+    for (var i = 0; i < boxes.length; i++) {
+        if (boxes[i].value !== '_all' && boxes[i].checked) dims.push(boxes[i].value);
+    }
+    return dims;
+}
+
+function initCaseTypeMultiSelect() {
     var display = document.getElementById('caseTypeMsDisplay');
     var dropdown = document.getElementById('caseTypeMsDropdown');
     if (!display || !dropdown) return;
@@ -11,28 +28,41 @@ var chartsMap = {};
         var allBox = dropdown.querySelector('input[value="_all"]');
         if (!allBox) return;
         var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
-        var total = 0, checked = 0;
+        var total = 0;
+        var checked = 0;
         for (var i = 0; i < boxes.length; i++) {
             if (boxes[i].value === '_all') continue;
             total++;
             if (boxes[i].checked) checked++;
         }
-        allBox.checked = (total > 0 && checked === total);
-        allBox.indeterminate = (checked > 0 && checked < total);
+        allBox.checked = total > 0 && checked === total;
+        allBox.indeterminate = checked > 0 && checked < total;
     }
+
     function renderLabel() {
         var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
-        var total = 0, checked = 0;
+        var total = 0;
+        var checked = 0;
         for (var i = 0; i < boxes.length; i++) {
             if (boxes[i].value === '_all') continue;
             total++;
             if (boxes[i].checked) checked++;
         }
-        if (total === 0) { display.innerHTML = '加载中...'; return; }
-        if (checked === 0) { display.innerHTML = '未选择(默认全量)'; return; }
-        if (checked === total) { display.innerHTML = '全部'; return; }
+        if (total === 0) {
+            display.innerHTML = '加载中...';
+            return;
+        }
+        if (checked === 0) {
+            display.innerHTML = '未选择(默认全量)';
+            return;
+        }
+        if (checked === total) {
+            display.innerHTML = '全部';
+            return;
+        }
         display.innerHTML = '已选 ' + checked + ' 项';
     }
+
     display.onclick = function(e) {
         e = e || window.event;
         if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
@@ -42,14 +72,17 @@ var chartsMap = {};
             dropdown.className += ' open';
         }
     };
+
     dropdown.onclick = function(e) {
         e = e || window.event;
         if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
     };
+
     dropdown.onchange = function(e) {
         e = e || window.event;
         var t = e.target || e.srcElement;
         if (!t || t.tagName !== 'INPUT') return;
+
         if (t.value === '_all') {
             var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
             for (var i = 0; i < boxes.length; i++) {
@@ -60,14 +93,15 @@ var chartsMap = {};
         }
         renderLabel();
     };
+
     document.addEventListener('click', function() {
         dropdown.className = dropdown.className.replace(/\s*open/g, '');
     });
-    window._caseTypeSyncLabel = renderLabel;
-})();
 
-// ---- Multi-select: 分析维度 ----
-(function() {
+    window._caseTypeSyncLabel = renderLabel;
+}
+
+function initDimensionMultiSelect() {
     var display = document.getElementById('dimMsDisplay');
     var dropdown = document.getElementById('dimMsDropdown');
     if (!display || !dropdown) return;
@@ -76,27 +110,37 @@ var chartsMap = {};
         var allBox = dropdown.querySelector('input[value="_all"]');
         if (!allBox) return;
         var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
-        var total = 0, checked = 0;
+        var total = 0;
+        var checked = 0;
         for (var i = 0; i < boxes.length; i++) {
             if (boxes[i].value === '_all') continue;
             total++;
             if (boxes[i].checked) checked++;
         }
-        allBox.checked = (total > 0 && checked === total);
-        allBox.indeterminate = (checked > 0 && checked < total);
+        allBox.checked = total > 0 && checked === total;
+        allBox.indeterminate = checked > 0 && checked < total;
     }
+
     function renderLabel() {
-        var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
-        var total = 0, checked = 0;
-        for (var i = 0; i < boxes.length; i++) {
-            if (boxes[i].value === '_all') continue;
-            total++;
-            if (boxes[i].checked) checked++;
+        var dims = getSelectedDimensions();
+        if (dims.length === 0) {
+            display.innerHTML = '请选择维度';
+            return;
         }
-        if (checked === 0) { display.innerHTML = '请选择维度'; return; }
-        if (checked === total) { display.innerHTML = '全部'; return; }
-        display.innerHTML = '已选 ' + checked + ' 项';
+
+        var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
+        var total = 0;
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].value !== '_all') total++;
+        }
+
+        if (dims.length === total) {
+            display.innerHTML = '全部';
+            return;
+        }
+        display.innerHTML = '已选 ' + dims.length + ' 项';
     }
+
     display.onclick = function(e) {
         e = e || window.event;
         if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
@@ -106,14 +150,17 @@ var chartsMap = {};
             dropdown.className += ' open';
         }
     };
+
     dropdown.onclick = function(e) {
         e = e || window.event;
         if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
     };
+
     dropdown.onchange = function(e) {
         e = e || window.event;
         var t = e.target || e.srcElement;
         if (!t || t.tagName !== 'INPUT') return;
+
         if (t.value === '_all') {
             var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
             for (var i = 0; i < boxes.length; i++) {
@@ -122,48 +169,281 @@ var chartsMap = {};
         } else {
             syncAllBox();
         }
+
         renderLabel();
+        updateDimensionOptionVisibility();
     };
+
     document.addEventListener('click', function() {
         dropdown.className = dropdown.className.replace(/\s*open/g, '');
     });
-})();
+
+    renderLabel();
+}
+
 function initDates() {
-    const format = (date) => {
-        const d = new Date(date);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const hh = String(d.getHours()).padStart(2, '0');
-        const min = String(d.getMinutes()).padStart(2, '0');
-        const ss = String(d.getSeconds()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
+    var format = function(date) {
+        var d = new Date(date);
+        var yyyy = d.getFullYear();
+        var mm = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
+        var hh = String(d.getHours()).padStart(2, '0');
+        var min = String(d.getMinutes()).padStart(2, '0');
+        var ss = String(d.getSeconds()).padStart(2, '0');
+        return yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + min + ':' + ss;
     };
 
-    const now = new Date();
-    const todayBegin = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    
-    // Begin Date: 7 days ago
-    const start = new Date(todayBegin.getTime() - 7 * 24 * 3600 * 1000);
-    const end = todayBegin;
-    
-    // MoM dates
-    const m2mStart = new Date(todayBegin.getTime() - 14 * 24 * 3600 * 1000);
-    const m2mEnd = new Date(todayBegin.getTime() - 7 * 24 * 3600 * 1000);
+    var parse = function(value) {
+        if (!value) return null;
+        var normalized = String(value).trim().replace(' ', 'T');
+        var match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (!match) return null;
+        return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6] || 0), 0);
+    };
+
+    var shiftYearSafe = function(date, years) {
+        var d = new Date(date.getTime());
+        var month = d.getMonth();
+        d.setFullYear(d.getFullYear() + years);
+        if (d.getMonth() !== month) d.setDate(0);
+        return d;
+    };
+
+    var syncCompareRangeByMainRange = function() {
+        var beginInput = document.getElementById('beginDate');
+        var endInput = document.getElementById('endDate');
+        var m2mStartInput = document.getElementById('m2mStartTime');
+        var m2mEndInput = document.getElementById('m2mEndTime');
+        var y2yStartInput = document.getElementById('y2yStartTime');
+        var y2yEndInput = document.getElementById('y2yEndTime');
+        if (!beginInput || !endInput || !m2mStartInput || !m2mEndInput || !y2yStartInput || !y2yEndInput) return;
+
+        var begin = parse(beginInput.value);
+        var end = parse(endInput.value);
+        if (!begin || !end) return;
+
+        var durationMs = end.getTime() - begin.getTime();
+        var m2mEnd = new Date(begin.getTime());
+        var m2mStart = new Date(m2mEnd.getTime() - durationMs);
+        var y2yStart = shiftYearSafe(begin, -1);
+        var y2yEnd = shiftYearSafe(end, -1);
+
+        m2mEndInput.value = format(m2mEnd);
+        m2mStartInput.value = format(m2mStart);
+        y2yStartInput.value = format(y2yStart);
+        y2yEndInput.value = format(y2yEnd);
+    };
+
+    var now = new Date();
+    var todayBegin = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    var start = new Date(todayBegin.getTime() - 7 * 24 * 3600 * 1000);
+    var end = todayBegin;
 
     document.getElementById('beginDate').value = format(start);
     document.getElementById('endDate').value = format(end);
-    document.getElementById('m2mStartTime').value = format(m2mStart);
-    document.getElementById('m2mEndTime').value = format(m2mEnd);
-    
-    // set Y2Y artificially
-    const y2yStart = new Date(start);
-    y2yStart.setFullYear(y2yStart.getFullYear() - 1);
-    const y2yEnd = new Date(end);
-    y2yEnd.setFullYear(y2yEnd.getFullYear() - 1);
-    
-    document.getElementById('y2yStartTime').value = format(y2yStart);
-    document.getElementById('y2yEndTime').value = format(y2yEnd);
+
+    syncCompareRangeByMainRange();
+    document.getElementById('beginDate').addEventListener('change', syncCompareRangeByMainRange);
+    document.getElementById('endDate').addEventListener('change', syncCompareRangeByMainRange);
+}
+
+function updateTimeBucketLabel() {
+    var idxInput = document.getElementById('optTimeBucketIndex');
+    var label = document.getElementById('optTimeBucketLabel');
+    if (!idxInput || !label) return;
+
+    var idx = Number(idxInput.value);
+    if (Number.isNaN(idx) || idx < 0 || idx >= TIME_BUCKET_CHOICES.length) idx = 2;
+    label.innerHTML = TIME_BUCKET_CHOICES[idx] + '小时';
+}
+
+function updateDeptTopNLabel() {
+    var allCheckbox = document.getElementById('optDeptAll');
+    var range = document.getElementById('optDeptTopN');
+    var label = document.getElementById('optDeptTopNLabel');
+    if (!allCheckbox || !range || !label) return;
+
+    range.disabled = allCheckbox.checked;
+    if (allCheckbox.checked) {
+        label.innerHTML = '全部';
+    } else {
+        label.innerHTML = 'Top ' + range.value;
+    }
+}
+
+function syncDeptTopNRangeFromData(deptAllData) {
+    var range = document.getElementById('optDeptTopN');
+    if (!range) return;
+
+    var total = Array.isArray(deptAllData) ? deptAllData.length : 0;
+    var max = total > 0 ? total : 1;
+    range.max = String(max);
+
+    var current = Number(range.value);
+    if (Number.isNaN(current) || current < 1) current = 1;
+    if (current > max) current = max;
+    range.value = String(current);
+}
+
+function updatePhoneMinCountLabel() {
+    var range = document.getElementById('optPhoneMinCount');
+    var label = document.getElementById('optPhoneMinCountLabel');
+    if (!range || !label) return;
+    label.innerHTML = '>=' + range.value + '次';
+}
+
+function updateClusterRadiusLabel() {
+    var range = document.getElementById('optClusterRadius');
+    var label = document.getElementById('optClusterRadiusLabel');
+    if (!range || !label) return;
+    label.innerHTML = range.value + '米';
+}
+
+function getAnalysisOptionValues() {
+    var timeBucketIdx = Number(document.getElementById('optTimeBucketIndex').value);
+    if (Number.isNaN(timeBucketIdx) || timeBucketIdx < 0 || timeBucketIdx >= TIME_BUCKET_CHOICES.length) {
+        timeBucketIdx = 2;
+    }
+
+    var deptAll = document.getElementById('optDeptAll').checked;
+    var deptTopN = deptAll ? null : Number(document.getElementById('optDeptTopN').value);
+
+    return {
+        timeBucketHours: TIME_BUCKET_CHOICES[timeBucketIdx],
+        deptTopN: deptTopN,
+        repeatPhoneMinCount: Number(document.getElementById('optPhoneMinCount').value),
+        repeatAddrRadiusMeters: Number(document.getElementById('optClusterRadius').value)
+    };
+}
+
+function updateDimensionOptionVisibility() {
+    var dims = getSelectedDimensions();
+    var visibleMap = {
+        time: dims.indexOf('time') >= 0,
+        dept: dims.indexOf('dept') >= 0,
+        phone: dims.indexOf('phone') >= 0,
+        cluster: dims.indexOf('cluster') >= 0
+    };
+
+    document.getElementById('opt-time').style.display = visibleMap.time ? 'flex' : 'none';
+    document.getElementById('opt-dept').style.display = visibleMap.dept ? 'flex' : 'none';
+    document.getElementById('opt-phone').style.display = visibleMap.phone ? 'flex' : 'none';
+    document.getElementById('opt-cluster').style.display = visibleMap.cluster ? 'flex' : 'none';
+}
+
+function buildTimeDataFromHourly(hourly, bucketHours) {
+    if (!hourly || hourly.length !== 24) return [];
+    var pairs = [];
+    for (var start = 0; start < 24; start += bucketHours) {
+        var end = start + bucketHours;
+        var count = 0;
+        for (var h = start; h < end; h++) count += (hourly[h] || 0);
+        pairs.push([start + '-' + end + '时', count]);
+    }
+    pairs.sort(function(a, b) { return b[1] - a[1]; });
+    return pairs;
+}
+
+function buildDeptDataFromAll(allData, topN) {
+    if (!allData) return [];
+    if (!topN) return allData;
+    return allData.slice(0, topN);
+}
+
+function buildPhoneDataFromAll(allData, minCount) {
+    if (!allData) return [];
+    return allData.filter(function(item) { return item[1] >= minCount; });
+}
+
+function renderFromCurrentState() {
+    if (!lastAnalyzeState.data) return;
+
+    var data = lastAnalyzeState.data || {};
+    var base = lastAnalyzeState.base || {};
+    var dims = lastAnalyzeState.dims || [];
+    var opts = getAnalysisOptionValues();
+
+    document.querySelectorAll('.chart-box').forEach(function(b) { b.classList.remove('active'); });
+
+    if (dims.indexOf('srr') >= 0) {
+        if (data.srr_error) {
+            renderSrrErrorState(data.srr_error, lastAnalyzeState.traceId || '');
+        } else if (data.srr && data.srr.length > 0) {
+            renderSrrTable(data.srr);
+        } else {
+            renderSrrEmptyState();
+        }
+    }
+
+    if (dims.indexOf('time') >= 0) {
+        var timeData = base.timeHourly ? buildTimeDataFromHourly(base.timeHourly, opts.timeBucketHours) : (data.time || []);
+        renderChart('box-time', 'chart-time', '时段报警数(每' + opts.timeBucketHours + '小时)', timeData, false, 'bar');
+    }
+
+    if (dims.indexOf('dept') >= 0) {
+        syncDeptTopNRangeFromData(base.deptAll || data.dept || []);
+        updateDeptTopNLabel();
+        var deptData = base.deptAll ? buildDeptDataFromAll(base.deptAll, opts.deptTopN) : (data.dept || []);
+        var deptLabel = opts.deptTopN ? ('派出所报警数(Top ' + opts.deptTopN + ')') : '派出所报警数(全部)';
+        renderChart('box-dept', 'chart-dept', deptLabel, deptData, false, 'horizontalBar');
+    }
+
+    if (dims.indexOf('phone') >= 0) {
+        var phoneData = base.phoneAll ? buildPhoneDataFromAll(base.phoneAll, opts.repeatPhoneMinCount) : (data.phone || []);
+        renderChart('box-phone', 'chart-phone', '重复报警电话(>=' + opts.repeatPhoneMinCount + '次)', phoneData, false, 'bar');
+    }
+
+    if (dims.indexOf('cluster') >= 0) {
+        renderChart('box-cluster', 'chart-cluster', '重复报警地址(半径' + opts.repeatAddrRadiusMeters + '米)', data.cluster || [], false, 'horizontalBar');
+    }
+}
+
+function triggerClusterRefreshIfNeeded() {
+    if ((lastAnalyzeState.dims || []).indexOf('cluster') < 0) return;
+    if (clusterRefreshTimer) clearTimeout(clusterRefreshTimer);
+    clusterRefreshTimer = setTimeout(function() {
+        doAnalyze();
+    }, 400);
+}
+
+function onOptionChangedRealtime(optionType) {
+    renderFromCurrentState();
+    if (optionType === 'cluster') {
+        triggerClusterRefreshIfNeeded();
+    }
+}
+
+function initAnalysisOptions() {
+    document.getElementById('optTimeBucketIndex').addEventListener('input', function() {
+        updateTimeBucketLabel();
+        onOptionChangedRealtime('time');
+    });
+
+    document.getElementById('optDeptAll').addEventListener('change', function() {
+        updateDeptTopNLabel();
+        onOptionChangedRealtime('dept');
+    });
+
+    document.getElementById('optDeptTopN').addEventListener('input', function() {
+        updateDeptTopNLabel();
+        onOptionChangedRealtime('dept');
+    });
+
+    document.getElementById('optPhoneMinCount').addEventListener('input', function() {
+        updatePhoneMinCountLabel();
+        onOptionChangedRealtime('phone');
+    });
+
+    document.getElementById('optClusterRadius').addEventListener('input', function() {
+        updateClusterRadiusLabel();
+        onOptionChangedRealtime('cluster');
+    });
+
+    updateTimeBucketLabel();
+    updateDeptTopNLabel();
+    updatePhoneMinCountLabel();
+    updateClusterRadiusLabel();
+    updateDimensionOptionVisibility();
 }
 
 function loadTreeData() {
@@ -175,7 +455,6 @@ function loadTreeData() {
             if (!dropdown) return;
             dropdown.innerHTML = '';
 
-            // 全选 item
             var allLabel = document.createElement('label');
             allLabel.className = 'multi-select-option';
             allLabel.style.cssText = 'border-bottom:1px solid #eee;font-weight:bold;';
@@ -186,7 +465,6 @@ function loadTreeData() {
             allLabel.appendChild(document.createTextNode(' 全选'));
             dropdown.appendChild(allLabel);
 
-            // Only add nodes without pId
             var parents = treeDataRaw.filter(function(item) { return !item.pId; });
             parents.forEach(function(p) {
                 var label = document.createElement('label');
@@ -201,7 +479,8 @@ function loadTreeData() {
             });
 
             if (window._caseTypeSyncLabel) window._caseTypeSyncLabel();
-        }).catch(function(err) {
+        })
+        .catch(function(err) {
             console.error(err);
             var dropdown = document.getElementById('caseTypeMsDropdown');
             if (dropdown) dropdown.innerHTML = '<div style="padding:5px;">加载失败</div>';
@@ -210,7 +489,7 @@ function loadTreeData() {
 
 function collectFormData() {
     var form = new FormData();
-    // Replace T with space
+
     var dateIds = ['beginDate', 'endDate', 'm2mStartTime', 'm2mEndTime', 'y2yStartTime', 'y2yEndTime'];
     for (var i = 0; i < dateIds.length; i++) {
         var v = document.getElementById(dateIds[i]).value;
@@ -218,7 +497,6 @@ function collectFormData() {
         form.append(dateIds[i], v);
     }
 
-    // Dimensions (exclude _all checkbox)
     var dimBoxes = document.querySelectorAll('#dimMsDropdown input[type="checkbox"]');
     for (var j = 0; j < dimBoxes.length; j++) {
         if (dimBoxes[j].value !== '_all' && dimBoxes[j].checked) {
@@ -226,7 +504,6 @@ function collectFormData() {
         }
     }
 
-    // Selected case type parent nodes (exclude _all checkbox)
     var typeBoxes = document.querySelectorAll('#caseTypeMsDropdown input[type="checkbox"]');
     var names = [];
     var tags = [];
@@ -257,7 +534,13 @@ function collectFormData() {
     for (var x = 0; x < selectedParentIds.length; x++) {
         form.append('caseTypeIds[]', selectedParentIds[x]);
     }
-    
+
+    var options = getAnalysisOptionValues();
+    form.append('timeBucketHours', options.timeBucketHours);
+    form.append('deptTopN', options.deptTopN == null ? 'all' : String(options.deptTopN));
+    form.append('repeatPhoneMinCount', String(options.repeatPhoneMinCount));
+    form.append('repeatAddrRadiusMeters', String(options.repeatAddrRadiusMeters));
+
     return form;
 }
 
@@ -265,8 +548,8 @@ function renderSrrEmptyState() {
     var box = document.getElementById('box-srr');
     box.classList.add('active');
     var container = document.getElementById('table-srr');
-    container.innerHTML = '<h3 style="margin:0 0 10px 0;">各地同环比</h3>'
-        + '<div style="padding:16px;border:1px dashed #d0d7de;border-radius:6px;color:#666;">无符合条件数据</div>';
+    container.innerHTML = '<h3 style="margin:0 0 10px 0;">各地同环比</h3>' +
+        '<div style="padding:16px;border:1px dashed #d0d7de;border-radius:6px;color:#666;">无符合条件数据</div>';
 }
 
 function renderSrrErrorState(errInfo, fallbackTraceId) {
@@ -274,27 +557,25 @@ function renderSrrErrorState(errInfo, fallbackTraceId) {
     box.classList.add('active');
     var container = document.getElementById('table-srr');
     var message = (errInfo && errInfo.message) ? errInfo.message : '上游接口异常';
-    var upstreamCode = (errInfo && errInfo.upstream_code !== undefined && errInfo.upstream_code !== null)
-        ? errInfo.upstream_code
-        : '';
+    var upstreamCode = (errInfo && errInfo.upstream_code !== undefined && errInfo.upstream_code !== null) ? errInfo.upstream_code : '';
     var traceId = (errInfo && errInfo.trace_id) ? errInfo.trace_id : (fallbackTraceId || '');
     var codeText = upstreamCode === '' ? '' : ('code=' + upstreamCode);
     var traceText = traceId ? ('trace_id=' + traceId) : '';
     var extra = codeText && traceText ? (codeText + ' | ' + traceText) : (codeText || traceText);
 
-    container.innerHTML = '<h3 style="margin:0 0 10px 0;">各地同环比</h3>'
-        + '<div style="padding:14px 16px;border:1px solid #f5c2c7;border-radius:6px;background:#fff5f5;color:#842029;">'
-        + '<div style="font-weight:bold;margin-bottom:4px;">同环比取数失败：' + message + '</div>'
-        + (extra ? ('<div style="font-size:12px;opacity:0.85;">' + extra + '</div>') : '')
-        + '</div>';
+    container.innerHTML = '<h3 style="margin:0 0 10px 0;">各地同环比</h3>' +
+        '<div style="padding:14px 16px;border:1px solid #f5c2c7;border-radius:6px;background:#fff5f5;color:#842029;">' +
+        '<div style="font-weight:bold;margin-bottom:4px;">同环比取数失败：' + message + '</div>' +
+        (extra ? ('<div style="font-size:12px;opacity:0.85;">' + extra + '</div>') : '') +
+        '</div>';
 }
 
 function renderSrrTable(rows) {
-    const box = document.getElementById('box-srr');
+    var box = document.getElementById('box-srr');
     box.classList.add('active');
-    const container = document.getElementById('table-srr');
+    var container = document.getElementById('table-srr');
 
-    let html = '<h3 style="margin:0 0 10px 0;">各地同环比</h3>';
+    var html = '<h3 style="margin:0 0 10px 0;">各地同环比</h3>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
     html += '<thead><tr style="background:#1976d2;color:#fff;">';
     html += '<th style="padding:6px 10px;text-align:left;">单位名称</th>';
@@ -305,19 +586,17 @@ function renderSrrTable(rows) {
     html += '<th style="padding:6px 10px;text-align:right;">环比比例</th>';
     html += '</tr></thead><tbody>';
 
-    rows.forEach((r, idx) => {
-        const isTotal = !r.code;
-        const bg = isTotal ? '#e3f2fd' : (idx % 2 === 0 ? '#fff' : '#f9f9f9');
-        const fw = isTotal ? 'font-weight:bold;' : '';
-        const y2yColor = (r.y2yProportion || '').includes('↑') ? 'color:#e53935;' : ((r.y2yProportion || '').includes('↓') ? 'color:#43a047;' : '');
-        const m2mColor = (r.m2mProportion || '').includes('↑') ? 'color:#e53935;' : ((r.m2mProportion || '').includes('↓') ? 'color:#43a047;' : '');
-        html += `<tr style="background:${bg};${fw}">`;
-        html += `<td style="padding:5px 10px;">${r.name || ''}</td>`;
-        html += `<td style="padding:5px 10px;text-align:right;">${r.presentCycle == null ? '' : r.presentCycle}</td>`;
-        html += `<td style="padding:5px 10px;text-align:right;">${r.upperY2yCycle == null ? '' : r.upperY2yCycle}</td>`;
-        html += `<td style="padding:5px 10px;text-align:right;${y2yColor}">${r.y2yProportion || ''}</td>`;
-        html += `<td style="padding:5px 10px;text-align:right;">${r.upperM2mCycle == null ? '' : r.upperM2mCycle}</td>`;
-        html += `<td style="padding:5px 10px;text-align:right;${m2mColor}">${r.m2mProportion || ''}</td>`;
+    rows.forEach(function(r, idx) {
+        var isTotal = !r.code;
+        var bg = isTotal ? '#e3f2fd' : (idx % 2 === 0 ? '#fff' : '#f9f9f9');
+        var fw = isTotal ? 'font-weight:bold;' : '';
+        html += '<tr style="background:' + bg + ';' + fw + '">';
+        html += '<td style="padding:5px 10px;">' + (r.name || '') + '</td>';
+        html += '<td style="padding:5px 10px;text-align:right;">' + (r.presentCycle == null ? '' : r.presentCycle) + '</td>';
+        html += '<td style="padding:5px 10px;text-align:right;">' + (r.upperY2yCycle == null ? '' : r.upperY2yCycle) + '</td>';
+        html += '<td style="padding:5px 10px;text-align:right;">' + (r.y2yProportion || '') + '</td>';
+        html += '<td style="padding:5px 10px;text-align:right;">' + (r.upperM2mCycle == null ? '' : r.upperM2mCycle) + '</td>';
+        html += '<td style="padding:5px 10px;text-align:right;">' + (r.m2mProportion || '') + '</td>';
         html += '</tr>';
     });
 
@@ -325,32 +604,29 @@ function renderSrrTable(rows) {
     container.innerHTML = html;
 }
 
-function renderChart(boxId, chartId, label, dataPairs, reverse = false, type = 'bar') {
-    const box = document.getElementById(boxId);
+function renderChart(boxId, chartId, label, dataPairs, reverse, type) {
+    if (typeof reverse === 'undefined') reverse = false;
+    if (typeof type === 'undefined') type = 'bar';
+
+    var box = document.getElementById(boxId);
     box.classList.add('active');
 
-    const canvas = document.getElementById(chartId);
-    const ctx = canvas.getContext('2d');
+    var canvas = document.getElementById(chartId);
+    var ctx = canvas.getContext('2d');
 
-    // Safely destroy any existing chart on this canvas (handles orphan instances)
-    const existing = Chart.getChart ? Chart.getChart(canvas) : chartsMap[chartId];
-    if (existing) {
-        existing.destroy();
-    }
+    var existing = Chart.getChart ? Chart.getChart(canvas) : chartsMap[chartId];
+    if (existing) existing.destroy();
     chartsMap[chartId] = null;
 
-    // Sort logic passed from backend usually, but JS handles reverse if specified
-    if(reverse) {
-        dataPairs.reverse();
-    }
+    var pairs = (dataPairs || []).slice();
+    if (reverse) pairs.reverse();
 
-    let labels = dataPairs.map(x => x[0]);
-    let values = dataPairs.map(x => x[1]);
+    var labels = pairs.map(function(x) { return x[0]; });
+    var values = pairs.map(function(x) { return x[1]; });
 
-    // Chart.js v3: horizontalBar removed, use indexAxis:'y' instead
-    let isHorizontal = (type === 'horizontalBar');
-    let chartType = isHorizontal ? 'bar' : type;
-    let extraOptions = isHorizontal ? { indexAxis: 'y' } : {};
+    var isHorizontal = type === 'horizontalBar';
+    var chartType = isHorizontal ? 'bar' : type;
+    var extraOptions = isHorizontal ? { indexAxis: 'y' } : {};
 
     chartsMap[chartId] = new Chart(ctx, {
         type: chartType,
@@ -371,143 +647,95 @@ function renderChart(boxId, chartId, label, dataPairs, reverse = false, type = '
                 x: { beginAtZero: true },
                 y: { beginAtZero: true }
             },
-            plugins: {
-                legend: { display: false },
-                // inline datalabels drawn via afterDatasetsDraw plugin below
-            }
-        }, extraOptions),
-        plugins: [{
-            id: 'inlineDatalabels',
-            afterDatasetsDraw(chart) {
-                const ctx = chart.ctx;
-                chart.data.datasets.forEach((dataset, i) => {
-                    const meta = chart.getDatasetMeta(i);
-                    meta.data.forEach((bar, index) => {
-                        const value = dataset.data[index];
-                        if (value === null || value === undefined || value === 0) return;
-                        ctx.save();
-                        ctx.font = 'bold 11px Arial';
-                        ctx.fillStyle = '#333';
-                        if (isHorizontal) {
-                            // horizontal bar: label to the right of bar end
-                            ctx.textAlign = 'left';
-                            ctx.textBaseline = 'middle';
-                            ctx.fillText(value, bar.x + 4, bar.y);
-                        } else {
-                            // vertical bar: label above bar
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'bottom';
-                            ctx.fillText(value, bar.x, bar.y - 3);
-                        }
-                        ctx.restore();
-                    });
-                });
-            }
-        }]
+            plugins: { legend: { display: false } }
+        }, extraOptions)
     });
 }
 
 function doAnalyze() {
-    const formData = collectFormData();
-    const selectedDims = formData.getAll('dimensions[]');
+    var formData = collectFormData();
+    var selectedDims = formData.getAll('dimensions[]');
+
     if (!formData.has('dimensions[]')) {
-        alert("请选择至少一个分析维度");
+        alert('请选择至少一个分析维度');
         return;
     }
     if (!formData.get('newOriCharaSubclassNo')) {
-        alert("请选警情类型(对应无子节点或者为空时不拉取数据)");
+        alert('请选择警情类型（需存在可用子项）');
         return;
     }
 
-    // hide all boxes first
-    document.querySelectorAll('.chart-box').forEach(b => b.classList.remove('active'));
     document.getElementById('loading').style.display = 'inline-block';
 
     fetch('/jingqing_fenxi/analyze', {
         method: 'POST',
         body: formData
     })
-    .then(r => r.json())
-    .then(res => {
-        document.getElementById('loading').style.display = 'none';
-        if (res.code !== 0) {
-            alert("分析失败");
-            return;
-        }
-        
-        const data = res.data;
-        const traceId = res.trace_id || '';
-        
-        if (selectedDims.indexOf('srr') >= 0) {
-            if (data.srr_error) {
-                renderSrrErrorState(data.srr_error, traceId);
-            } else if (data.srr && data.srr.length > 0) {
-                renderSrrTable(data.srr);
-            } else {
-                renderSrrEmptyState();
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            document.getElementById('loading').style.display = 'none';
+            if (res.code !== 0) {
+                alert('分析失败');
+                return;
             }
-        }
-        if (data.time) {
-            // Backend returns descending by count, requirement: "倒序显示", we can keep backend sort or reverse here
-            renderChart('box-time', 'chart-time', '时段报警数', data.time, false, 'bar');
-        }
-        if (data.dept) {
-            renderChart('box-dept', 'chart-dept', '派出所报警数', data.dept, false, 'horizontalBar');
-        }
-        if (data.phone) {
-            renderChart('box-phone', 'chart-phone', '重复手机号报警数', data.phone, false, 'bar');
-        }
-        if (data.cluster) {
-            renderChart('box-cluster', 'chart-cluster', '半径50米内重复地址报警数', data.cluster, false, 'horizontalBar');
-        }
-        
-    }).catch(err => {
-        console.error(err);
-        document.getElementById('loading').style.display = 'none';
-        alert("请求异常");
-    });
+
+            lastAnalyzeState.data = res.data || {};
+            lastAnalyzeState.base = res.analysisBase || {};
+            lastAnalyzeState.dims = selectedDims;
+            lastAnalyzeState.traceId = res.trace_id || '';
+
+            renderFromCurrentState();
+        })
+        .catch(function(err) {
+            console.error(err);
+            document.getElementById('loading').style.display = 'none';
+            alert('请求异常');
+        });
 }
 
 function doExport() {
-    const formData = collectFormData();
+    var formData = collectFormData();
     if (!formData.has('dimensions[]')) {
-        alert("请选择至少一个分析维度");
+        alert('请选择至少一个分析维度');
         return;
     }
     if (!formData.get('newOriCharaSubclassNo')) {
-        alert("请先选择警情类型");
+        alert('请先选择警情类型');
         return;
     }
-    
+
     document.getElementById('loading').style.display = 'inline-block';
-    
+
     fetch('/jingqing_fenxi/export', {
         method: 'POST',
         body: formData
     })
-    .then(response => {
-        document.getElementById('loading').style.display = 'none';
-        if (!response.ok) throw new Error('Network response was not ok');
-        return response.blob();
-    })
-    .then(blob => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = '警情分析报表.xlsx';
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-    })
-    .catch(err => {
-        console.error(err);
-        document.getElementById('loading').style.display = 'none';
-        alert("导出失败");
-    });
+        .then(function(response) {
+            document.getElementById('loading').style.display = 'none';
+            if (!response.ok) throw new Error('Network response was not ok');
+            return response.blob();
+        })
+        .then(function(blob) {
+            var url = window.URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = '警情分析报表.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(function(err) {
+            console.error(err);
+            document.getElementById('loading').style.display = 'none';
+            alert('导出失败');
+        });
 }
 
 window.onload = function() {
+    initCaseTypeMultiSelect();
+    initDimensionMultiSelect();
     initDates();
+    initAnalysisOptions();
     loadTreeData();
 };
