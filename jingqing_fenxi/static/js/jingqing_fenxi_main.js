@@ -230,11 +230,13 @@ function collectFormData() {
     var typeBoxes = document.querySelectorAll('#caseTypeMsDropdown input[type="checkbox"]');
     var names = [];
     var tags = [];
+    var selectedParentIds = [];
     var tagSeen = {};
     var nameSeen = {};
     for (var k = 0; k < typeBoxes.length; k++) {
         if (typeBoxes[k].value === '_all' || !typeBoxes[k].checked) continue;
         var pid = typeBoxes[k].value;
+        selectedParentIds.push(pid);
         var children = treeDataRaw.filter(function(item) { return item.pId === pid; });
         children.forEach(function(c) {
             if (c.tag) {
@@ -252,6 +254,9 @@ function collectFormData() {
 
     form.append('newOriCharaSubclassNo', tags.join(','));
     form.append('newOriCharaSubclass', names.join(','));
+    for (var x = 0; x < selectedParentIds.length; x++) {
+        form.append('caseTypeIds[]', selectedParentIds[x]);
+    }
     
     return form;
 }

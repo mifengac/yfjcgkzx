@@ -590,6 +590,10 @@
     cancelJsxxBtn.addEventListener('click', closeJsxxModal);
     backdrop.addEventListener('click', () => { closeModal(); closeTqwsModal(); closeJsxxModal(); });
 
+    function nvl(value, fallback) {
+        return value == null ? fallback : value;
+    }
+
     function renderResults(results) {
         if (!results || results.length === 0) {
             resultBody.innerHTML = '<tr><td colspan="4" class="muted">暂无数据</td></tr>';
@@ -599,8 +603,8 @@
             <tr>
                 <td>${r.name || ''}</td>
                 <td>${(r.schema || '') + '.' + (r.table || '')}</td>
-                <td>${r.fetched ?? ''}</td>
-                <td>${r.processed ?? ''}</td>
+                <td>${nvl(r.fetched, '')}</td>
+                <td>${nvl(r.processed, '')}</td>
             </tr>
         `).join('');
     }
@@ -616,7 +620,7 @@
         }
         const st = data.data;
         const prog = st.progress || {};
-        statusText.textContent = `${st.state || ''} ${prog.current ?? 0}/${prog.total ?? 0} ${st.message || ''}`;
+        statusText.textContent = `${st.state || ''} ${nvl(prog.current, 0)}/${nvl(prog.total, 0)} ${st.message || ''}`;
         renderResults(st.results || []);
         if (st.state === 'success') {
             okBox.textContent = '任务完成';
@@ -640,7 +644,7 @@
         }
         const st = data.data;
         const prog = st.progress || {};
-        const totalText = (prog.total && prog.total > 0) ? `${prog.current ?? 0}/${prog.total}` : `${prog.current ?? 0}`;
+        const totalText = (prog.total && prog.total > 0) ? `${nvl(prog.current, 0)}/${prog.total}` : `${nvl(prog.current, 0)}`;
         statusText.textContent = `${st.state || ''} ${totalText} ${st.message || ''}`;
         renderResults(st.results || []);
         if (st.state === 'success') {
@@ -665,7 +669,7 @@
         }
         const st = data.data;
         const prog = st.progress || {};
-        statusText.textContent = `${st.state || ''} ${prog.current ?? 0}/${prog.total ?? 0} ${st.message || ''}`;
+        statusText.textContent = `${st.state || ''} ${nvl(prog.current, 0)}/${nvl(prog.total, 0)} ${st.message || ''}`;
         renderResults(st.results || []);
         if (st.state === 'success') {
             okBox.textContent = '任务完成';

@@ -65,8 +65,27 @@ def _normalize_datetime(value):
         return val + ":00"
     return val
 
+def _build_chara_no_from_case_type_ids(case_type_ids):
+    ids = [str(x).strip() for x in (case_type_ids or []) if str(x).strip()]
+    if not ids:
+        return ""
+    id_set = set(ids)
+    tree_data = api_client.get_tree_view_data() or []
+    tags = []
+    seen = set()
+    for node in tree_data:
+        pid = str(node.get("pId") or "").strip()
+        tag = str(node.get("tag") or "").strip()
+        if pid and pid in id_set and tag and tag not in seen:
+            seen.add(tag)
+            tags.append(tag)
+    return ",".join(tags)
+
 def _build_srr_payload(form):
-    chara_no = _normalize_csv(form.get("newOriCharaSubclassNo", ""))
+    selected_ids = form.getlist("caseTypeIds[]")
+    chara_no = _build_chara_no_from_case_type_ids(selected_ids)
+    if not chara_no:
+        chara_no = _normalize_csv(form.get("newOriCharaSubclassNo", ""))
     chara_name = _normalize_csv(form.get("newOriCharaSubclass", ""))
     start_time = _normalize_datetime(form.get("beginDate", ""))
     end_time = _normalize_datetime(form.get("endDate", ""))
@@ -84,7 +103,7 @@ def _build_srr_payload(form):
         "charaNo": chara_no,
         "chara": chara_name,
         "groupField": "duty_dept_no",
-        "charaType": "chara_ok",
+        "charaType": "chara_ori",
         "charaLevel": "1",
         "caseLevel": "",
         "dutyDeptNo": "",
@@ -184,7 +203,7 @@ def debug_srr():
         "caseLevel": "",
         "charaNo": "",
         "chara": "",
-        "charaType": "chara_ok",
+        "charaType": "chara_ori",
         "charaLevel": "1",
         "params[y2yStartTime]": y2y_start,
         "params[y2yEndTime]": y2y_end,
