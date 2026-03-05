@@ -82,10 +82,10 @@
 
   function initDefaultTimes() {
     var now   = new Date();
-    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    var yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
     var start = new Date(now.getFullYear(), 0, 1, 0, 0, 0);  // 今年1月1日
     document.getElementById('cfbjStart').value = fmtDate(start);
-    document.getElementById('cfbjEnd').value   = fmtDate(today);
+    document.getElementById('cfbjEnd').value   = fmtDate(yesterdayEnd);
   }
 
   /* -----------------------------------------------------------------------
@@ -130,7 +130,8 @@
     if (isNaN(startMs) || isNaN(endMs)) return;
     var diffDays = Math.floor((endMs - startMs) / (1000 * 60 * 60 * 24));
     if (diffDays < 0) return;
-    var hbEnd   = new Date(startMs);
+    // 环比结束向前 1 秒，默认落在上一天 23:59:59。
+    var hbEnd   = new Date(startMs - 1000);
     var hbStart = new Date(startMs - diffDays * 24 * 3600 * 1000);
     if (_fpHBEnd)   _fpHBEnd.setDate(hbEnd,   true);
     else document.getElementById('cfbjHBEnd').value   = fmtDate(hbEnd);
@@ -423,6 +424,41 @@
   }
 
   /* -----------------------------------------------------------------------
+   * 更新数据（刷新物化视图）
+   * --------------------------------------------------------------------- */
+
+  function initRefreshButton() {
+    var btn = document.getElementById('cfbjRefreshBtn');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+      setErr('');
+      setStatus('正在刷新数据，请稍候…');
+      btn.disabled = true;
+
+      fetch(window.__MDJ_CFBJ_ENDPOINTS__.refreshData, {
+        method: 'POST'
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          btn.disabled = false;
+          if (!data.success) {
+            setStatus('');
+            setErr(data.message || '更新数据失败');
+            return;
+          }
+          setStatus(data.message || '更新数据成功');
+          doQuery();
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          setStatus('');
+          setErr('更新数据失败：' + err.message);
+        });
+    });
+  }
+
+  /* -----------------------------------------------------------------------
    * 导出
    * --------------------------------------------------------------------- */
 
@@ -487,6 +523,7 @@
     updateHuanbi();
     initFenjuDropdown();
     initDetailSwitch();
+    initRefreshButton();
     initExportDropdown();
     initPagination();
 

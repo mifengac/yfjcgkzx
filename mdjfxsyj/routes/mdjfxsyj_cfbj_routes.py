@@ -137,6 +137,31 @@ def api_detail():
 
 
 # --------------------------------------------------------------------------
+# API：刷新物化视图
+# --------------------------------------------------------------------------
+
+@mdjfxsyj_cfbj_bp.post("/api/refresh_data")
+def refresh_data():
+    view_name = "v_b_jq_xjzd2025"
+    try:
+        conn = get_database_connection()
+        with conn.cursor() as cur:
+            cur.execute(f"REFRESH MATERIALIZED VIEW ywdata.{view_name};")
+        conn.commit()
+        conn.close()
+        return jsonify(
+            {
+                "success": True,
+                "message": f"已刷新 ywdata.{view_name} 物化视图",
+                "view": f"ywdata.{view_name}",
+            }
+        )
+    except Exception as exc:
+        logging.exception("刷新物化视图失败")
+        return jsonify({"success": False, "message": f"刷新失败: {exc}"}), 500
+
+
+# --------------------------------------------------------------------------
 # 导出（统计表 / 明细表 共用，弹出框内导出也走此路由）
 # --------------------------------------------------------------------------
 
