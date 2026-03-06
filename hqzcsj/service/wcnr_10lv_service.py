@@ -31,7 +31,7 @@ COUNT_METRICS: List[Dict[str, str]] = [
 COMPOSITE_METRICS: List[Dict[str, str]] = [
     {
         "key": "zmy_reoff",
-        "label": "专门教育学生结业后再犯数",
+        "label": "专门教育学生结业后犯罪数",
         "rate_label": "专门教育学生结业后再犯率",
         "num_key": "zmy_num",
         "den_key": "zmy_den",
@@ -94,7 +94,7 @@ DETAIL_METRIC_LABEL: Dict[str, str] = {
     "xingshi": "刑事",
     "bqh_case": "案件(被侵害)",
     "wfzf_people": "违法犯罪人员",
-    "zmy_reoff": "专门教育学生结业后再犯数",
+    "zmy_reoff": "专门教育学生结业后犯罪数",
     "zmjz_reoff": "专门(矫治)教育学生结业后再犯数",
     "cs_bqh_case": "案件(场所被侵害)",
     "xingshi_ratio": "刑事占比",
@@ -353,7 +353,7 @@ def build_summary(
         add_composite_metric(
             row,
             code=code,
-            label="专门教育学生结业后再犯数",
+            label="专门教育学生结业后犯罪数",
             rate_label="专门教育学生结业后再犯率",
             num_key="zmy_num",
             den_key="zmy_den",
@@ -478,7 +478,7 @@ def get_display_columns(*, show_hb: bool, show_ratio: bool) -> List[str]:
     add_count("刑事")
     add_count("案件(被侵害)")
     add_count("违法犯罪人员")
-    add_composite("专门教育学生结业后再犯数", "专门教育学生结业后再犯率")
+    add_composite("专门教育学生结业后犯罪数", "专门教育学生结业后再犯率")
     add_composite("专门(矫治)教育学生结业后再犯数", "专门(矫治)教育学生结业后再犯率")
     add_count("案件(场所被侵害)")
     add_composite("刑事占比", "刑事占比率")

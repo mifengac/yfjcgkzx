@@ -8,7 +8,7 @@
         { key: "wfzf_people", label: "违法犯罪人员", type: "count", unit: "人" },
         {
             key: "zmy_reoff",
-            label: "专门教育学生结业后再犯数",
+            label: "专门教育学生结业后犯罪数",
             type: "composite",
             rateLabel: "专门教育学生结业后再犯率",
         },

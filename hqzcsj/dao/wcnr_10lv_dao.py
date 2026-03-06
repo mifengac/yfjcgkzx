@@ -18,7 +18,7 @@ REGION_CODE_NAME: Dict[str, str] = {
 }
 REGION_CODES: Tuple[str, ...] = tuple(REGION_CODE_NAME.keys())
 REGION_NAME_CODE: Dict[str, str] = {v: k for k, v in REGION_CODE_NAME.items()}
-TARGET_CHANGSUO_LABELS = {"重点管控行业", "一般商业"}
+TARGET_CHANGSUO_LABELS = {"重点管控行业"}
 _KEY_INDUSTRY_ADDR_KEYWORDS = (
     "ktv",
     "酒吧",
