@@ -54,6 +54,13 @@
         .module-button:focus {
             background: #125ea3;
         }
+
+        .module-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
@@ -84,9 +91,17 @@
                     {{ module.label }}
                 </button>
                 {% endfor %}
+                <a class="module-button module-link" href="http://68.252.1.92:3000" target="_blank" rel="noopener noreferrer">
+                    治安任务管理系统
+                </a>
             </div>
             {% else %}
-            <p>当前 IP（{{ client_ip }}）未配置显示任何模块，请联系管理员。</p>
+            <div class="module-grid">
+                <a class="module-button module-link" href="http://68.252.1.92:3000" target="_blank" rel="noopener noreferrer">
+                    治安任务管理系统
+                </a>
+            </div>
+            <p style="margin-top:12px;">当前 IP（{{ client_ip }}）未配置显示任何模块，请联系管理员。</p>
             {% endif %}
 
         </section>
