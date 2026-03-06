@@ -7,7 +7,7 @@ from io import BytesIO
 from io import StringIO
 from typing import Any
 
-from flask import Blueprint, abort, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, abort, jsonify, redirect, request, send_file, session, url_for
 from openpyxl import Workbook
 
 from gonggong.config.database import get_database_connection
@@ -38,7 +38,7 @@ def _check_access() -> None:
 
 @wcnr_9lbq_bp.route("/wcnr_9lbq")
 def index() -> str:
-    return render_template("wcnr_9lbq.html")
+    return redirect(url_for("weichengnianren.index", tab="wcnr9lbq"))
 
 
 @wcnr_9lbq_bp.route("/wcnr_9lbq/template")

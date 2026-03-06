@@ -1,0 +1,54 @@
+<section class="filter-form">
+    <div class="filter-row">
+        <div class="filter-group">
+            <label for="fzxxlxxshfStartTime">回访系统登记时间开始</label>
+            <input id="fzxxlxxshfStartTime" type="datetime-local" step="1">
+        </div>
+        <div class="filter-group">
+            <label for="fzxxlxxshfEndTime">回访系统登记时间结束</label>
+            <input id="fzxxlxxshfEndTime" type="datetime-local" step="1">
+        </div>
+        <div class="filter-group">
+            <label>分局</label>
+            <div class="multi-select-box" id="fzxxlxxshfBranchDisplay">全部</div>
+            <div class="multi-select-menu" id="fzxxlxxshfBranchDropdown"></div>
+        </div>
+        <div class="filter-group">
+            <label for="fzxxlxxshfPageSize">每页条数</label>
+            <select id="fzxxlxxshfPageSize">
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <button type="button" class="module-button" id="fzxxlxxshfQueryBtn">查询</button>
+        </div>
+    </div>
+    <div id="fzxxlxxshfErr" class="error-message js-hidden"></div>
+</section>
+
+<div class="results-header">
+    <div class="results-info" id="fzxxlxxshfStatus"></div>
+    <div class="download-menu" id="fzxxlxxshfExportWrap">
+        <button type="button" class="module-button" id="fzxxlxxshfExportBtn">导出</button>
+        <div class="download-menu-content">
+            <button type="button" data-fmt="xlsx">Excel (xlsx)</button>
+            <button type="button" data-fmt="csv">CSV</button>
+        </div>
+    </div>
+</div>
+
+<div class="results-table-container">
+    <table id="fzxxlxxshfTbl" class="module-table"></table>
+</div>
+
+<div class="pagination">
+    <div class="pagination-info" id="fzxxlxxshfPageInfo"></div>
+    <div class="pagination-controls">
+        <button type="button" class="module-button secondary" id="fzxxlxxshfPrevBtn">上一页</button>
+        <span class="current" id="fzxxlxxshfCurrentPage">1</span>
+        <button type="button" class="module-button secondary" id="fzxxlxxshfNextBtn">下一页</button>
+    </div>
+</div>

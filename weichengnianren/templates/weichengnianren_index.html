@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>未成年人</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .page-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .page-head h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #333;
+        }
+        .back-home {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 16px;
+            background: #64748b;
+            color: #fff;
+            border-radius: 4px;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .back-home:hover {
+            background: #475569;
+        }
+        .wcnr-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .wcnr-tab-btn {
+            height: 36px;
+            border: 1px solid #d7dbe7;
+            border-radius: 999px;
+            background: #fff;
+            padding: 0 16px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+        }
+        .wcnr-tab-btn.active {
+            background: #1976d2;
+            color: #fff;
+            border-color: #1976d2;
+        }
+        .wcnr-tab-panel {
+            display: none;
+        }
+        .wcnr-tab-panel.active {
+            display: block;
+        }
+        .card {
+            margin-top: 12px;
+            border: 1px solid #e3e7ef;
+            border-radius: 8px;
+            padding: 12px;
+            background: #fff;
+        }
+        .row {
+            display: flex;
+        }
+        .row label {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 13px;
+            color: #555;
+        }
+        .row input[type="text"],
+        .row input[type="file"],
+        .row select,
+        .filter-group input[type="datetime-local"],
+        .filter-group select {
+            padding: 8px 10px;
+            font-size: 13px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .btn,
+        .module-button {
+            padding: 8px 16px;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .btn.secondary,
+        .module-button.secondary {
+            background: #64748b;
+        }
+        .btn:hover,
+        .module-button:hover {
+            background: #125ea3;
+        }
+        .btn.secondary:hover,
+        .module-button.secondary:hover {
+            background: #475569;
+        }
+        .btn:disabled,
+        .module-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .table-head,
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .table-wrap,
+        .results-table-container {
+            overflow: auto;
+            max-height: 65vh;
+            border: 1px solid #e3e7ef;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: #fff;
+        }
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f6f8fb;
+            border-bottom: 2px solid #e3e7ef;
+            padding: 10px 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            text-align: left;
+            font-size: 13px;
+        }
+        tbody td {
+            border-bottom: 1px solid #eef2f7;
+            padding: 8px 12px;
+            font-size: 12px;
+            vertical-align: top;
+            white-space: normal;
+            word-break: break-all;
+        }
+        tbody tr:hover {
+            background: #fafcff;
+        }
+        .muted,
+        .results-info,
+        .pagination-info {
+            color: #666;
+            font-size: 13px;
+        }
+        .err,
+        .error-message {
+            padding: 10px;
+            background: #fee;
+            color: #c33;
+            border-radius: 4px;
+        }
+        .js-hidden {
+            display: none;
+        }
+        .export-wrap,
+        .download-menu {
+            position: relative;
+            display: inline-block;
+        }
+        .export-menu,
+        .download-menu-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: calc(100% + 4px);
+            min-width: 120px;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+            z-index: 20;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        .export-menu.show,
+        .download-menu.open .download-menu-content {
+            display: block;
+        }
+        .export-menu .btn,
+        .download-menu-content button {
+            display: block;
+            width: 100%;
+            margin: 0 0 6px 0;
+            text-align: left;
+        }
+        .export-menu .btn:last-child,
+        .download-menu-content button:last-child {
+            margin-bottom: 0;
+        }
+        .filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 6px;
+        }
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 200px;
+            position: relative;
+        }
+        .filter-group label {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .multi-select-box {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px 10px;
+            font-size: 13px;
+            background-color: #fff;
+            cursor: pointer;
+            min-height: 34px;
+            display: flex;
+            align-items: center;
+        }
+        .multi-select-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 2px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            z-index: 20;
+            padding: 8px;
+            min-width: 200px;
+        }
+        .multi-select-menu.show {
+            display: block;
+        }
+        .multi-select-menu label {
+            display: block;
+            padding: 5px 0;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .pagination {
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+        }
+        .pagination-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .pagination-controls .current {
+            padding: 6px 10px;
+            border: 1px solid #1976d2;
+            background: #1976d2;
+            color: #fff;
+            border-radius: 4px;
+            min-width: 36px;
+            text-align: center;
+        }
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="weichengnianrenApp" data-active-tab="{{ active_tab }}">
+        <div class="page-head">
+            <h1>未成年人</h1>
+            <a class="back-home" href="{{ url_for('main') }}">返回首页</a>
+        </div>
+
+        <div class="wcnr-tabs" id="wcnrTabs">
+            <button class="wcnr-tab-btn {% if active_tab == 'wcnr9lbq' %}active{% endif %}" data-tab="wcnr9lbq">未成年人9类标签碰撞</button>
+            <button class="wcnr-tab-btn {% if active_tab == 'fzxxlxxshf' %}active{% endif %}" data-tab="fzxxlxxshf">方正学校离校学生回访</button>
+        </div>
+
+        <div class="wcnr-tab-panel {% if active_tab == 'wcnr9lbq' %}active{% endif %}" id="tab-wcnr9lbq">
+            {% include "wcnr_9lbq.html" %}
+        </div>
+
+        <div class="wcnr-tab-panel {% if active_tab == 'fzxxlxxshf' %}active{% endif %}" id="tab-fzxxlxxshf">
+            {% include "fzxxlxxshf_tab.html" %}
+        </div>
+    </div>
+
+    <script>
+        window.__WCNR_9LBQ_ENDPOINTS__ = {
+            query: "{{ url_for('wcnr_9lbq.api_query') }}",
+            export: "{{ url_for('wcnr_9lbq.export_query_result') }}",
+            template: "{{ url_for('wcnr_9lbq.download_template') }}"
+        };
+        window.__WCNR_FZXXLXXSHF_ENDPOINTS__ = {
+            defaults: "{{ url_for('weichengnianren.api_fzxxlxxshf_defaults') }}",
+            query: "{{ url_for('weichengnianren.api_fzxxlxxshf_query') }}",
+            download: "{{ url_for('weichengnianren.download_fzxxlxxshf') }}"
+        };
+    </script>
+    <script src="{{ url_for('weichengnianren.static', filename='js/wcnr_tabs.js') }}"></script>
+    <script src="{{ url_for('weichengnianren.static', filename='js/wcnr_9lbq_tab.js') }}"></script>
+    <script src="{{ url_for('weichengnianren.static', filename='js/fzxxlxxshf_tab.js') }}"></script>
+</body>
+</html>
