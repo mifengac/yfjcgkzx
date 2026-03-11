@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from flask import Blueprint, abort, redirect, render_template, request, session, url_for
 
 from gonggong.config.database import get_database_connection
@@ -19,19 +21,23 @@ VALID_TABS = {"wcnr9lbq", "fzxxlxxshf"}
 def _check_access() -> None:
     if not session.get("username"):
         return redirect(url_for("login"))
+    conn = None
     try:
         conn = get_database_connection()
         with conn.cursor() as cur:
             cur.execute(
-                'SELECT 1 FROM "ywdata"."jcgkzx_permission" WHERE username=%s AND module=%s',
-                (session["username"], "鏈垚骞翠汉"),
+                'SELECT 1 FROM "ywdata"."jcgkzx_permission" WHERE username=%s AND module IN (%s, %s)',
+                (session["username"], "未成年人", "鏈垚骞翠汉"),
             )
             row = cur.fetchone()
-        conn.close()
         if not row:
             abort(403)
     except Exception:
+        logging.exception("weichengnianren access check failed")
         abort(500)
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 @weichengnianren_bp.route("/")
