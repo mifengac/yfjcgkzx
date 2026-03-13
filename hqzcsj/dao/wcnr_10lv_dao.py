@@ -19,6 +19,21 @@ REGION_CODE_NAME: Dict[str, str] = {
 REGION_CODES: Tuple[str, ...] = tuple(REGION_CODE_NAME.keys())
 REGION_NAME_CODE: Dict[str, str] = {v: k for k, v in REGION_CODE_NAME.items()}
 TARGET_CHANGSUO_LABELS = {"重点管控行业"}
+_CHANGSUO_JYAQ_KEYWORDS: Tuple[Tuple[str, str], ...] = (
+    ("ktv", "KTV"),
+    ("酒吧", "酒吧"),
+    ("夜总会", "夜总会"),
+    ("迪厅", "迪厅"),
+    ("网吧", "网吧"),
+    ("清吧", "清吧"),
+    ("台球", "台球"),
+    ("桌球", "桌球"),
+    ("俱乐部", "俱乐部"),
+    ("棋牌", "棋牌"),
+    ("麻将", "麻将"),
+    ("打牌", "打牌"),
+    ("打扑克", "打扑克"),
+)
 _KEY_INDUSTRY_ADDR_KEYWORDS = (
     "ktv",
     "酒吧",
@@ -282,6 +297,20 @@ def normalize_rows_for_output(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, 
         item: Dict[str, Any] = {}
         for k, v in row.items():
             item[str(k)] = _normalize_value_for_output(v)
+        out.append(item)
+    return out
+
+
+def _filter_changsuo_bqh_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        text = str(row.get("简要案情") or row.get("案情") or row.get("ajxx_jyaq") or "").strip()
+        lowered = text.lower()
+        hits = [label for keyword, label in _CHANGSUO_JYAQ_KEYWORDS if keyword in lowered]
+        if not hits:
+            continue
+        item = dict(row)
+        item["匹配关键词"] = "、".join(hits)
         out.append(item)
     return out
 
@@ -1463,9 +1492,7 @@ def fetch_metric_detail_rows(
         bqh_rows = _attach_region_fields(bqh_base_rows)
         if metric == "bqh_case":
             return normalize_rows_for_output(bqh_rows)
-        classified_rows, _ = _classify_bqh_rows(bqh_rows)
-        cs_rows = [r for r in classified_rows
-                   if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
+        cs_rows = _filter_changsuo_bqh_rows(bqh_rows)
         return normalize_rows_for_output(cs_rows)
 
     # ── 6. 违法犯罪人员（v_wcnr_wfry_jbxx，按录入时间/案由筛选）──────────
@@ -1651,10 +1678,7 @@ def fetch_period_data(
             )
             bqh_rows = _attach_region_fields(bqh_base_rows)
             counts["bqh_case"] = _count_rows_by_region(bqh_rows)
-
-            classified_rows, degraded = _classify_bqh_rows(bqh_rows)
-            flags["addr_model_degraded"] = degraded
-            cs_bqh_rows = [r for r in classified_rows if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
+            cs_bqh_rows = _filter_changsuo_bqh_rows(bqh_rows)
             counts["cs_bqh_case"] = _count_rows_by_region(cs_bqh_rows)
             _mark("bqh_and_changsuo_detail_ms", t)
         else:
@@ -1666,18 +1690,14 @@ def fetch_period_data(
                 patterns=patterns,
             )
             counts["bqh_case"] = _normalize_count_map(bqh_counts)
-
-            bqh_addr_rows = _attach_region_fields(
-                _fetch_bqh_addr_rows(
-                    conn,
-                    start_time=start_time,
-                    end_time=end_time,
-                    patterns=patterns,
-                )
+            cs_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                patterns=patterns,
+                diqu=None,
             )
-            classified_rows, degraded = _classify_bqh_rows(bqh_addr_rows)
-            flags["addr_model_degraded"] = degraded
-            cs_rows = [r for r in classified_rows if str(r.get("分类结果") or "").strip() in TARGET_CHANGSUO_LABELS]
+            cs_rows = _filter_changsuo_bqh_rows(_attach_region_fields(cs_base_rows))
             counts["cs_bqh_case"] = _count_rows_by_region(cs_rows)
             _mark("bqh_and_changsuo_summary_ms", t)
 

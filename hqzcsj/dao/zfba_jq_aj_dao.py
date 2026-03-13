@@ -170,6 +170,7 @@ def count_ajxx_by_diqu_and_ajlx(conn, *, start_time: str, end_time: str, pattern
     ajlx_expr = _text("aj", "ajxx_ajlx", has_data=has_data)
     aymc_expr = _text("aj", "ajxx_aymc", has_data=has_data)
     time_expr = _ts("aj", "ajxx_lasj", has_data=has_data)
+    cbdw_expr = _text("aj", "ajxx_cbdw_mc", has_data=has_data)
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=aymc_expr)
 
     q = (
@@ -178,8 +179,9 @@ def count_ajxx_by_diqu_and_ajlx(conn, *, start_time: str, end_time: str, pattern
             "FROM {schema}.zq_zfba_ajxx aj "
             "WHERE {t} BETWEEN %s AND %s "
             "AND {ajlx} IN ('行政','刑事') "
+            "AND COALESCE({cbdw}, '') !~ '交通' "
             "AND 1=1 "
-        ).format(diqu=diqu_expr, ajlx=ajlx_expr, schema=sql.Identifier(SCHEMA), t=time_expr)
+        ).format(diqu=diqu_expr, ajlx=ajlx_expr, schema=sql.Identifier(SCHEMA), t=time_expr, cbdw=cbdw_expr)
         + pat_sql
         + sql.SQL(" GROUP BY diqu, ajlx")
     )
@@ -632,6 +634,7 @@ def fetch_detail_rows(
                     FROM "ywdata"."zq_zfba_ajxx"
                     WHERE ajxx_lasj BETWEEN %s AND %s
                     AND ajxx_ajlx = %s
+                    AND COALESCE(ajxx_cbdw_mc, '') !~ '交通'
                     AND 1=1
                     """
                 )

@@ -229,12 +229,45 @@
         return `${DETAIL_PAGE}?${usp.toString()}`;
     }
 
+    function escapeHtml(text) {
+        return String(text || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function escapeAttr(text) {
+        return escapeHtml(text)
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;")
+            .replace(/\n/g, "&#10;");
+    }
+
+    function getHeaderLogic(colName) {
+        const raw = String(colName || "").replace(/^同比/, "").replace(/^环比/, "");
+        const logicMap = C.METRIC_LOGIC_BY_LABEL || {};
+        if (logicMap[raw]) return logicMap[raw];
+        for (const metric of C.METRICS || []) {
+            if ((metric.rateLabel && raw === metric.rateLabel) || raw === `${metric.label}比例`) {
+                return logicMap[metric.label] || "";
+            }
+        }
+        return "";
+    }
+
+    function renderHeaderCell(colName) {
+        const logic = getHeaderLogic(colName);
+        const label = escapeHtml(colName);
+        if (!logic) return `<th>${label}</th>`;
+        return `<th><span class="metric-tip-text" title="${escapeAttr(`计算逻辑:\n${logic}`)}">${label}</span></th>`;
+    }
+
     function renderTable(rows, meta) {
         const showHb = !!(showHbEl && showHbEl.checked);
         const showRatio = !!(showRatioEl && showRatioEl.checked);
         const cols = H.getDisplayColumns(C.METRICS || [], showHb, showRatio);
 
-        const head = `<thead><tr>${cols.map((c) => `<th>${c}</th>`).join("")}</tr></thead>`;
+        const head = `<thead><tr>${cols.map((c) => renderHeaderCell(c)).join("")}</tr></thead>`;
         const body = (rows || []).map((r) => {
             const diquName = r["地区"] || "";
             const diquCode = r["地区代码"] || "__ALL__";
