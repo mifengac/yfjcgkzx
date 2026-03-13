@@ -1531,7 +1531,8 @@ def fetch_metric_detail_rows(
             end_time=end_time,
             leixing_list=leixing,
         )
-        rows = yzbl_rows if part == "denominator" else [r for r in yzbl_rows if _is_yes(r.get("是否开具矫治文书"))]
+        den_rows = [r for r in yzbl_rows if _is_yes(r.get("是否应采取矫治教育措施"))]
+        rows = den_rows if part == "denominator" else [r for r in den_rows if _is_yes(r.get("是否开具矫治文书"))]
         return normalize_rows_for_output(rows)
 
     if metric == "zmjz_ratio":
@@ -1773,6 +1774,7 @@ def fetch_period_data(
         end_time=end_time,
         leixing_list=leixing,
     )
+    yzbl_den_rows = [r for r in yzbl_den_rows if _is_yes(r.get("是否应采取矫治教育措施"))]
     yzbl_num_rows = [r for r in yzbl_den_rows if _is_yes(r.get("是否开具矫治文书"))]
     counts["yzbl_num"] = _count_rows_by_region(yzbl_num_rows)
     counts["yzbl_den"] = _count_rows_by_region(yzbl_den_rows)

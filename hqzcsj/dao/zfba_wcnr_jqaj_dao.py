@@ -987,6 +987,7 @@ def fetch_detail_rows(
                       xz.xzcfjds_id AS "处罚决定书ID",
                       xz.ajxx_ajbh AS "案件编号",
                       xz.xzcfjds_rybh AS "人员编号",
+                      aj.ajxx_aymc AS "案由",
                       xyr.xyrxx_sfzh AS "证件号码",
                       xyr.xyrxx_xm AS "姓名",
                       xz.xzcfjds_cfzl AS "处罚种类",
