@@ -176,14 +176,7 @@ def _is_yzbl_num(row: Dict[str, Any]) -> bool:
 
 
 def _is_zmjz_cover_num(row: Dict[str, Any]) -> bool:
-    age = _to_int_or_none(row.get("年龄"))
-    if age is None or age <= 12:
-        return False
-    return (
-        _is_yes(row.get("是否送校"))
-        or _is_yes(row.get("是否刑拘"))
-        or (_is_yes(row.get("治拘大于4天")) and _is_no(row.get("是否治拘不送")))
-    )
+    return _is_zmjz_cover_den(row) and _is_yes(row.get("是否开具专门教育申请书"))
 
 
 def _is_zmjz_cover_den(row: Dict[str, Any]) -> bool:
@@ -1086,6 +1079,12 @@ def _fetch_jzqk_compact_rows(
             END AS is_jiaozhi_wenshu,
             CASE
                 WHEN EXISTS (
+                    SELECT 1 FROM "ywdata"."zq_zfba_tqzmjy" t
+                    WHERE t.ajbh = bd.案件编号 AND t.xgry_xm = bd.姓名
+                ) THEN 1 ELSE 0
+            END AS is_zhuanmen_shenqingshu,
+            CASE
+                WHEN EXISTS (
                     SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
                     WHERE s.sfzhm = bd.身份证号
                       AND TO_CHAR(s.rx_time, 'YYYY-MM-DD') >= TO_CHAR(bd.立案时间, 'YYYY-MM-DD')
@@ -1750,6 +1749,7 @@ def fetch_period_data(
                         "3次及以上违法": "是" if int(row.get("is_third_plus") or 0) == 1 else "否",
                         "是否刑拘": "是" if int(row.get("is_xingju") or 0) == 1 else "否",
                         "是否开具矫治文书": "是" if int(row.get("is_jiaozhi_wenshu") or 0) == 1 else "否",
+                        "是否开具专门教育申请书": "是" if int(row.get("is_zhuanmen_shenqingshu") or 0) == 1 else "否",
                         "是否送校": "是" if int(row.get("is_songxiao") or 0) == 1 else "否",
                     }
                 )
