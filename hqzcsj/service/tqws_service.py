@@ -5,12 +5,21 @@ import json
 import threading
 import time
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
 from gonggong.config.database import DB_CONFIG, get_database_connection
-from hqzcsj.dao.zongcha_dao import ensure_schema, ensure_table_and_columns, infer_col_types, upsert_rows
+from hqzcsj.dao.zongcha_dao import (
+    delete_stale_sync_batch,
+    ensure_schema,
+    ensure_table_and_columns,
+    infer_col_types,
+    table_exists,
+    truncate_table,
+    upsert_rows,
+)
 
 
 DEFAULT_URL = "http://68.26.7.47:1999/com/api/v1/com/model/getQueryPageData"
@@ -171,6 +180,7 @@ TQWS_SOURCE_REGISTRY: Dict[str, Dict[str, Any]] = {
         "key": "tqws",
         "name": "提请文书",
         "table": "zq_zfba_tqzmjy",
+        "sync_strategy": "truncate",
         "where": {
             "rules": [
                 {"field": "AJBH", "op": "like", "value": "", "type": "string", "format": ""},
@@ -200,6 +210,7 @@ TQWS_SOURCE_REGISTRY: Dict[str, Dict[str, Any]] = {
         "key": "xjs2",
         "name": "训诫书（未成年人）",
         "table": "zq_zfba_xjs2",
+        "sync_strategy": "truncate",
         "where": {
             "rules": [
                 {"field": "AJBH", "op": "like", "value": "", "type": "string", "format": ""},
@@ -229,6 +240,7 @@ TQWS_SOURCE_REGISTRY: Dict[str, Dict[str, Any]] = {
         "key": "jtjyzdtzs2",
         "name": "加强监督教育/责令接受家庭教育指导通知书(新)",
         "table": "zq_zfba_jtjyzdtzs2",
+        "sync_strategy": "truncate",
         "where": {
             "rules": [
                 {"field": "AJBH", "op": "like", "value": "", "type": "string", "format": ""},
@@ -261,6 +273,7 @@ TQWS_SOURCE_REGISTRY: Dict[str, Dict[str, Any]] = {
         "key": "wenshu",
         "name": "已审核文书（全量）",
         "table": "zq_zfba_wenshu",
+        "sync_strategy": "sync_batch",
         "time_mode": "kjsj",
         "where": {
             "rules": [
@@ -371,6 +384,7 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                     raise RuntimeError(f"未知数据源: {raw_source}")
                 source_name = str(cfg["name"])
                 table = str(cfg["table"])
+                sync_strategy = str(cfg.get("sync_strategy") or "upsert")
                 where_obj = copy.deepcopy(cfg["where"])
                 if not isinstance(where_obj, dict):
                     raise RuntimeError(f"数据源 where 配置非法: {raw_source}")
@@ -384,6 +398,19 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                 extra_form = cfg.get("extra_form")
                 if extra_form is not None and not isinstance(extra_form, dict):
                     raise RuntimeError(f"数据源 extra_form 配置非法: {raw_source}")
+
+                # ── 同步策略：小表先清空 ──
+                if sync_strategy == "truncate" and table_exists(conn, schema, table):
+                    _update_status(
+                        key,
+                        message=f"[{idx}/{len(srcs)}] {source_name}：清空旧数据",
+                    )
+                    truncate_table(conn, schema, table)
+
+                # ── 同步策略：大表生成批次号 ──
+                batch_id = ""
+                if sync_strategy == "sync_batch":
+                    batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
                 fetched_total = 0
                 processed_total = 0
@@ -404,10 +431,14 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                 total = _extract_total(first_payload)
                 first_rows = _extract_rows(first_payload)
 
-                def ingest(rows: List[Dict[str, Any]]) -> None:
+                def ingest(rows: List[Dict[str, Any]], _batch_id: str = batch_id) -> None:
                     nonlocal fetched_total, processed_total, inferred, col_types, overall_fetched, overall_processed
                     if not rows:
                         return
+                    # sync_batch 策略：为每行打上批次号
+                    if _batch_id:
+                        for row in rows:
+                            row["sync_batch"] = _batch_id
                     fetched_total += len(rows)
                     overall_fetched += len(rows)
                     inferred = {**inferred, **infer_col_types(rows)}
@@ -464,6 +495,15 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                         table_comment=table,
                     )
 
+                # ── 同步策略：大表抓完后清理旧批次 ──
+                deleted_stale = 0
+                if sync_strategy == "sync_batch" and batch_id and fetched_total > 0:
+                    _update_status(
+                        key,
+                        message=f"[{idx}/{len(srcs)}] {source_name}：清理旧批次数据",
+                    )
+                    deleted_stale = delete_stale_sync_batch(conn, schema, table, batch_id)
+
                 results.append(
                     {
                         "name": source_name,
@@ -471,6 +511,7 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                         "table": table,
                         "fetched": fetched_total,
                         "processed": processed_total,
+                        "deleted_stale": deleted_stale,
                     }
                 )
                 _update_status(

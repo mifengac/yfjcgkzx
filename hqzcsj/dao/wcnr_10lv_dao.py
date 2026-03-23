@@ -667,51 +667,9 @@ def _fetch_zljiaqjh_detail_rows(
     end_time: str,
     leixing_list: Sequence[str],
 ) -> List[Dict[str, Any]]:
-    type_condition, type_params = _build_ay_similar_filter('x."ajxx_join_ajxx_ay"', leixing_list)
+    type_condition, type_params = _build_ay_similar_filter('"ajxx_join_ajxx_ay"', leixing_list)
     q = f"""
-        WITH xyrxx_valid AS MATERIALIZED (
-            SELECT
-                x."xyrxx_sfzh",
-                x."xyrxx_xm",
-                x."xyrxx_lrsj",
-                x."ajxx_join_ajxx_ajbh",
-                x."ajxx_join_ajxx_ajlx",
-                x."ajxx_join_ajxx_ajmc",
-                x."ajxx_join_ajxx_ay",
-                x."ajxx_join_ajxx_cbdw_bh",
-                x."ajxx_join_ajxx_cbdw_bh_dm",
-                x."ajxx_join_ajxx_lasj",
-                CASE
-                    WHEN SUBSTRING(x."xyrxx_sfzh", 7, 8) ~ '^\d{{4}}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$'
-                    THEN TO_DATE(SUBSTRING(x."xyrxx_sfzh", 7, 8), 'YYYYMMDD')
-                    ELSE NULL
-                END AS birthday
-            FROM "ywdata"."zq_zfba_xyrxx" x
-            WHERE x."ajxx_join_ajxx_isdel_dm" = '0'
-              AND x."xyrxx_sfzh" IS NOT NULL
-              AND LENGTH(x."xyrxx_sfzh") = 18
-              AND x."xyrxx_sfzh" ~ '^\d{{17}}[\dXx]$'
-              AND x."xyrxx_lrsj" BETWEEN %s AND %s
-              {type_condition}
-        ),
-        wcnr_minor AS MATERIALIZED (
-            SELECT
-                x."xyrxx_sfzh",
-                x."xyrxx_lrsj",
-                x."ajxx_join_ajxx_ajbh",
-                x."ajxx_join_ajxx_ajlx",
-                x."ajxx_join_ajxx_ajmc",
-                x."ajxx_join_ajxx_ay",
-                x."ajxx_join_ajxx_cbdw_bh",
-                x."ajxx_join_ajxx_cbdw_bh_dm",
-                x."ajxx_join_ajxx_lasj"
-            FROM xyrxx_valid x
-            JOIN "ywdata"."zq_zfba_ajxx" aj
-              ON x."ajxx_join_ajxx_ajbh" = aj."ajxx_ajbh"
-            WHERE x.birthday IS NOT NULL
-              AND DATE_PART('year', AGE(aj."ajxx_fasj"::DATE, x.birthday)) < 18
-        ),
-        minor_agg AS MATERIALIZED (
+        WITH minor_agg AS MATERIALIZED (
             SELECT
                 "ajxx_join_ajxx_ajbh" AS ajbh,
                 MAX("xyrxx_lrsj") AS lrsj,
@@ -722,15 +680,16 @@ def _fetch_zljiaqjh_detail_rows(
                 MAX("ajxx_join_ajxx_cbdw_bh_dm") AS cbdw_bh_dm,
                 MAX("ajxx_join_ajxx_lasj") AS lasj,
                 COUNT(DISTINCT "xyrxx_sfzh") AS yzt_count
-            FROM wcnr_minor
+            FROM "ywdata"."v_wcnr_wfry_jbxx_base"
+            WHERE "xyrxx_lrsj" BETWEEN %s AND %s
+              {type_condition}
             GROUP BY "ajxx_join_ajxx_ajbh"
         ),
         jgh_agg AS MATERIALIZED (
             SELECT
                 ajbh,
-                COUNT(DISTINCT xgry_xm) AS yzt_done
-            FROM "ywdata"."zq_zfba_wenshu"
-            WHERE wsmc ~ '加强监督'
+                COUNT(*) AS yzt_done
+            FROM "ywdata"."zq_zfba_jtjyzdtzs2"
             GROUP BY ajbh
         )
         SELECT
@@ -1217,7 +1176,6 @@ def _fetch_sx_songjiao_rows(
     require_songjiao: bool,
 ) -> List[Dict[str, Any]]:
     leixing = _normalize_leixing_list(leixing_list)
-    # 时间和类型过滤直接放到 sx_minor WHERE 子句，避免 HAVING 引用 SELECT 别名的问题
     params: List[Any] = [start_time, end_time]
     type_filter = ""
     if leixing:
@@ -1229,7 +1187,6 @@ def _fetch_sx_songjiao_rows(
                     AND COALESCE(x."ajxx_join_ajxx_ay", '') SIMILAR TO ctc."ay_pattern"
               )"""
         params.append(list(leixing))
-    # 分子：只保留组内有送校记录的人；分母无此限制
     having_condition = "HAVING BOOL_OR(is_songxue)" if require_songjiao else ""
     q = f"""
         WITH sx_minor AS MATERIALIZED (
@@ -1251,6 +1208,7 @@ def _fetch_sx_songjiao_rows(
               AND x."xyrxx_sfzh" IS NOT NULL
               AND LENGTH(x."xyrxx_sfzh") = 18
               AND x."xyrxx_sfzh" ~ '^\d{{17}}[\dXx]$'
+              AND SUBSTRING(x."xyrxx_sfzh", 7, 8) ~ '^\d{{4}}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$'
               AND x."xyrxx_lrsj" BETWEEN %s AND %s{type_filter}
         ),
         sx_age16 AS MATERIALIZED (
@@ -1263,7 +1221,7 @@ def _fetch_sx_songjiao_rows(
         ws_pre AS MATERIALIZED (
             SELECT ajbh, xgry_xm, wsmc
             FROM "ywdata"."zq_zfba_wenshu"
-            WHERE wsmc ~ '不予立案通知书|撤销案件决定书|终止侦查决定书|不予行政处罚决定书|提请专门'
+            WHERE wsmc ~ '不予立案通知书|撤销案件决定书|不予行政处罚决定书|提请专门'
         ),
         ws_a AS MATERIALIZED (
             SELECT DISTINCT ajbh
@@ -1273,7 +1231,7 @@ def _fetch_sx_songjiao_rows(
         ws_b AS MATERIALIZED (
             SELECT DISTINCT ajbh, xgry_xm
             FROM ws_pre
-            WHERE wsmc ~ '终止侦查决定书|不予行政处罚决定书'
+            WHERE wsmc ~ '不予行政处罚决定书'
         ),
         ws_sx AS MATERIALIZED (
             SELECT DISTINCT ajbh, xgry_xm
@@ -1288,13 +1246,14 @@ def _fetch_sx_songjiao_rows(
                 m."xyrxx_hjdxzqh_dm",
                 m."xyrxx_xzdxz",
                 m."xyrxx_lrsj",
+                m."ajxx_join_ajxx_ajbh",
                 m."ajxx_join_ajxx_lasj",
                 m."ajxx_join_ajxx_ay",
                 m."ajxx_join_ajxx_cbdw_bh_dm",
                 EXISTS (
                     SELECT 1
                     FROM ws_sx s
-                    WHERE s.ajbh = m."ajxx_join_ajxx_ajbh"
+                    WHERE s.ajbh    = m."ajxx_join_ajxx_ajbh"
                       AND s.xgry_xm = m."xyrxx_xm"
                 ) AS is_songxue
             FROM sx_age16 m
@@ -1304,51 +1263,51 @@ def _fetch_sx_songjiao_rows(
                   )
                OR EXISTS (
                       SELECT 1 FROM ws_b b
-                      WHERE b.ajbh = m."ajxx_join_ajxx_ajbh"
+                      WHERE b.ajbh    = m."ajxx_join_ajxx_ajbh"
                         AND b.xgry_xm = m."xyrxx_xm"
                   )
+        ),
+        sx_wsmc AS MATERIALIZED (
+            SELECT
+                l."xyrxx_sfzh",
+                STRING_AGG(DISTINCT p.wsmc, ';' ORDER BY p.wsmc) AS ksws_mc
+            FROM sx_labeled l
+            JOIN ws_pre p ON (
+                (p.wsmc ~ '不予立案通知书|撤销案件决定书'
+                    AND p.ajbh = l."ajxx_join_ajxx_ajbh")
+                OR (p.wsmc ~ '不予行政处罚决定书'
+                    AND p.ajbh    = l."ajxx_join_ajxx_ajbh"
+                    AND p.xgry_xm = l."xyrxx_xm")
+                OR (p.wsmc ~ '提请专门'
+                    AND p.ajbh    = l."ajxx_join_ajxx_ajbh"
+                    AND p.xgry_xm = l."xyrxx_xm")
+            )
+            GROUP BY l."xyrxx_sfzh"
         )
         SELECT
-            MAX("xyrxx_xm") AS "姓名",
-            "xyrxx_sfzh" AS "身份证号",
-            MAX("xyrxx_hjdxzqh") AS "户籍区域",
+            MAX("xyrxx_xm")  AS "姓名",
+            "xyrxx_sfzh"     AS "身份证号",
+            MAX("xyrxx_hjdxzqh")    AS "户籍区域",
             MAX("xyrxx_hjdxzqh_dm") AS "户籍区域代码",
-            MAX("xyrxx_xzdxz") AS "现住地",
-            MAX("xyrxx_lrsj") AS "录入时间",
-            (array_agg("ajxx_join_ajxx_ay" ORDER BY "ajxx_join_ajxx_lasj" DESC NULLS LAST))[1] AS "案由",
-            (array_agg("ajxx_join_ajxx_cbdw_bh_dm" ORDER BY "ajxx_join_ajxx_lasj" DESC NULLS LAST))[1] AS "办案部门编码",
+            MAX("xyrxx_xzdxz")      AS "现住地",
+            MAX("xyrxx_lrsj")       AS "录入时间",
+            (array_agg("ajxx_join_ajxx_ay"          ORDER BY "ajxx_join_ajxx_lasj" DESC NULLS LAST))[1] AS "案由",
+            (array_agg("ajxx_join_ajxx_cbdw_bh_dm"  ORDER BY "ajxx_join_ajxx_lasj" DESC NULLS LAST))[1] AS "办案部门编码",
             LEFT(COALESCE((array_agg("ajxx_join_ajxx_cbdw_bh_dm" ORDER BY "ajxx_join_ajxx_lasj" DESC NULLS LAST))[1], ''), 6) AS "地区代码",
+            MAX(w.ksws_mc)   AS "开具文书名",
             CASE WHEN BOOL_OR(is_songxue) THEN '是' ELSE '否' END AS "是否送校"
         FROM sx_labeled
+        LEFT JOIN sx_wsmc w USING ("xyrxx_sfzh")
         GROUP BY "xyrxx_sfzh"
         {having_condition}
         ORDER BY "是否送校" DESC, "录入时间" DESC NULLS LAST, "身份证号"
     """
 
     with conn.cursor() as cur:
-        # ── 临时调试日志，排查完毕后删除 ──
-        try:
-            debug_sql = cur.mogrify(q, params) if hasattr(cur, 'mogrify') else q
-            logging.warning("[SX_DEBUG] SQL: %s", debug_sql)
-        except Exception:
-            logging.warning("[SX_DEBUG] SQL (raw): %s | params: %s", q, params)
-        # ─────────────────────────────────
         cur.execute(q, params)
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-    logging.warning(
-        "[SX_DEBUG] require_songjiao=%s  rows_count=%d  start=%s  end=%s  leixing=%s",
-        require_songjiao, len(rows), start_time, end_time, leixing,
-    )
-    if rows:
-        logging.warning("[SX_DEBUG] first_row=%s", rows[0])
-    result = _attach_region_fields(rows)
-    region_counts: dict = {}
-    for r in result:
-        rc = r.get("地区代码", "")
-        region_counts[rc] = region_counts.get(rc, 0) + 1
-    logging.warning("[SX_DEBUG] region_counts=%s", region_counts)
-    return result
+    return _attach_region_fields(rows)
 
 
 def _fetch_sx_songjiao_den_rows(

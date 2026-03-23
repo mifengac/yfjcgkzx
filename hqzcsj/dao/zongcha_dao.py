@@ -17,6 +17,38 @@ def ensure_schema(conn, schema: str) -> None:
     conn.commit()
 
 
+def truncate_table(conn, schema: str, table: str) -> None:
+    """清空指定表（如果表存在）。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("TRUNCATE TABLE {}.{}")
+            .format(sql.Identifier(schema), sql.Identifier(table))
+        )
+    conn.commit()
+
+
+def table_exists(conn, schema: str, table: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = %s AND table_name = %s LIMIT 1",
+            (schema, table),
+        )
+        return cur.fetchone() is not None
+
+
+def delete_stale_sync_batch(conn, schema: str, table: str, batch_id: str) -> int:
+    """删除 sync_batch 不等于 batch_id 的行，返回删除行数。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            sql.SQL("DELETE FROM {}.{} WHERE sync_batch IS DISTINCT FROM %s")
+            .format(sql.Identifier(schema), sql.Identifier(table)),
+            (batch_id,),
+        )
+        deleted = cur.rowcount
+    conn.commit()
+    return deleted
+
+
 def infer_col_types(rows: Sequence[Dict[str, Any]]) -> Dict[str, str]:
     """
     轻量推断列类型（避免把所有值收集到 bucket 里导致内存/耗时过大）。
