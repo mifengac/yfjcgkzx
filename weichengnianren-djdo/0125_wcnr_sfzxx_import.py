@@ -168,7 +168,7 @@ class RowData:
     bz: Optional[str]
 
 
-def read_xls_rows(xls_path: Path, sheet_name: str) -> list[RowData]:
+def read_xls_rows(xls_path: Path, sheet_name: str, header_row_index: int = HEADER_ROW_INDEX) -> list[RowData]:
     try:
         import pandas as pd  # type: ignore
     except Exception as exc:
@@ -187,10 +187,10 @@ def read_xls_rows(xls_path: Path, sheet_name: str) -> list[RowData]:
     if df is None or getattr(df, "empty", False):
         return []
 
-    if len(df.index) < HEADER_ROW_INDEX:
-        raise RuntimeError(f"xls 行数不足，无法读取第{HEADER_ROW_INDEX}行表头")
+    if len(df.index) < header_row_index:
+        raise RuntimeError(f"xls 行数不足，无法读取第{header_row_index}行表头")
 
-    header_row = df.iloc[HEADER_ROW_INDEX - 1].tolist()
+    header_row = df.iloc[header_row_index - 1].tolist()
     header_values = [_norm_header(v) for v in header_row]
 
     header_to_index: dict[str, int] = {}
@@ -203,7 +203,7 @@ def read_xls_rows(xls_path: Path, sheet_name: str) -> list[RowData]:
         raise RuntimeError(
             "Excel 表头不匹配，缺少列: "
             + ", ".join(missing)
-            + f"；第{HEADER_ROW_INDEX}行读取到的列名为: {header_values}"
+            + f"；第{header_row_index}行读取到的列名为: {header_values}"
         )
 
     def cell_value(row_values: list[Any], header: str) -> Any:
@@ -219,7 +219,7 @@ def read_xls_rows(xls_path: Path, sheet_name: str) -> list[RowData]:
         return val
 
     results: list[RowData] = []
-    for _, series in df.iloc[HEADER_ROW_INDEX:].iterrows():
+    for _, series in df.iloc[header_row_index:].iterrows():
         row_values = series.tolist()
         if all(v is None or (isinstance(v, str) and v.strip() == "") for v in row_values):
             continue
@@ -252,7 +252,7 @@ def read_xls_rows(xls_path: Path, sheet_name: str) -> list[RowData]:
     return results
 
 
-def read_xlsx_rows(xlsx_path: Path, sheet_name: str) -> list[RowData]:
+def read_xlsx_rows(xlsx_path: Path, sheet_name: str, header_row_index: int = HEADER_ROW_INDEX) -> list[RowData]:
     try:
         from openpyxl import load_workbook  # type: ignore
     except Exception as exc:
@@ -266,7 +266,7 @@ def read_xlsx_rows(xlsx_path: Path, sheet_name: str) -> list[RowData]:
         worksheet = workbook[sheet_name]
         header_row = next(
             worksheet.iter_rows(
-                min_row=HEADER_ROW_INDEX, max_row=HEADER_ROW_INDEX, values_only=True
+                min_row=header_row_index, max_row=header_row_index, values_only=True
             )
         )
         header_values = [_norm_header(v) for v in header_row]
@@ -280,14 +280,14 @@ def read_xlsx_rows(xlsx_path: Path, sheet_name: str) -> list[RowData]:
             raise RuntimeError(
                 "Excel 表头不匹配，缺少列: "
                 + ", ".join(missing)
-                + f"；第{HEADER_ROW_INDEX}行读取到的列名为: {header_values}"
+                + f"；第{header_row_index}行读取到的列名为: {header_values}"
             )
 
         def cell_value(row: tuple[Any, ...], header: str) -> Any:
             return row[header_to_index[_norm_header(header)]]
 
         results: list[RowData] = []
-        for row in worksheet.iter_rows(min_row=HEADER_ROW_INDEX + 1, values_only=True):
+        for row in worksheet.iter_rows(min_row=header_row_index + 1, values_only=True):
             if row is None:
                 continue
             if all(v is None or (isinstance(v, str) and v.strip() == "") for v in row):
@@ -326,20 +326,20 @@ def read_xlsx_rows(xlsx_path: Path, sheet_name: str) -> list[RowData]:
             pass
 
 
-def read_excel_rows(excel_path: Path, sheet_name: str) -> list[RowData]:
+def read_excel_rows(excel_path: Path, sheet_name: str, header_row_index: int = HEADER_ROW_INDEX) -> list[RowData]:
     suffix = excel_path.suffix.lower()
     if suffix == ".xlsx":
-        return read_xlsx_rows(excel_path, sheet_name)
+        return read_xlsx_rows(excel_path, sheet_name, header_row_index)
     if suffix == ".xls":
-        return read_xls_rows(excel_path, sheet_name)
+        return read_xls_rows(excel_path, sheet_name, header_row_index)
     raise RuntimeError(f"不支持的文件类型: {excel_path.suffix}（仅支持 .xls/.xlsx）")
 
 
-def ensure_table(cursor) -> None:
-    cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{DB_SCHEMA}";')
+def ensure_table(cursor, *, db_schema: str = DB_SCHEMA, db_table: str = DB_TABLE) -> None:
+    cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{db_schema}";')
     cursor.execute(
         f"""
-        CREATE TABLE IF NOT EXISTS "{DB_SCHEMA}"."{DB_TABLE}" (
+        CREATE TABLE IF NOT EXISTS "{db_schema}"."{db_table}" (
             id SERIAL,
             xh INTEGER,
             bh VARCHAR(100) NOT NULL,
@@ -385,18 +385,18 @@ def ensure_table(cursor) -> None:
               FROM pg_constraint c
               JOIN pg_class t ON t.oid = c.conrelid
               JOIN pg_namespace n ON n.oid = t.relnamespace
-             WHERE n.nspname = '{DB_SCHEMA}'
-               AND t.relname = '{DB_TABLE}'
+             WHERE n.nspname = '{db_schema}'
+               AND t.relname = '{db_table}'
                AND c.contype = 'p'
              LIMIT 1;
 
             -- 如果当前主键不是 (bh)，则移除后再添加 bh 主键
             IF pk_name IS NOT NULL AND (pk_cols IS NULL OR pk_cols <> ARRAY['bh']) THEN
-                EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', '{DB_SCHEMA}', '{DB_TABLE}', pk_name);
+                EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', '{db_schema}', '{db_table}', pk_name);
             END IF;
 
             -- 确保 bh 不为空
-            EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN bh SET NOT NULL', '{DB_SCHEMA}', '{DB_TABLE}');
+            EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN bh SET NOT NULL', '{db_schema}', '{db_table}');
 
             -- 如果当前没有主键，则添加 bh 主键
             IF NOT EXISTS (
@@ -404,38 +404,38 @@ def ensure_table(cursor) -> None:
                   FROM pg_constraint c2
                   JOIN pg_class t2 ON t2.oid = c2.conrelid
                   JOIN pg_namespace n2 ON n2.oid = t2.relnamespace
-                 WHERE n2.nspname = '{DB_SCHEMA}'
-                   AND t2.relname = '{DB_TABLE}'
+                 WHERE n2.nspname = '{db_schema}'
+                   AND t2.relname = '{db_table}'
                    AND c2.contype = 'p'
             ) THEN
-                EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY (bh)', '{DB_SCHEMA}', '{DB_TABLE}', '{DB_TABLE}_pkey');
+                EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY (bh)', '{db_schema}', '{db_table}', '{db_table}_pkey');
             END IF;
 
             -- 矫治时间改为月数整数；旧 DATE 数据语义不兼容，统一置空
             SELECT c.udt_name
               INTO jz_time_udt
               FROM information_schema.columns c
-             WHERE c.table_schema = '{DB_SCHEMA}'
-               AND c.table_name = '{DB_TABLE}'
+             WHERE c.table_schema = '{db_schema}'
+               AND c.table_name = '{db_table}'
                AND c.column_name = 'jz_time'
              LIMIT 1;
 
             IF jz_time_udt IS NOT NULL AND jz_time_udt <> 'int4' THEN
-                EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN jz_time TYPE INTEGER USING NULL', '{DB_SCHEMA}', '{DB_TABLE}');
+                EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN jz_time TYPE INTEGER USING NULL', '{db_schema}', '{db_table}');
             END IF;
         END $$;
         """
     )
 
 
-def insert_rows(cursor, rows: Iterable[RowData], truncate: bool) -> dict:
+def insert_rows(cursor, rows: Iterable[RowData], truncate: bool, *, db_schema: str = DB_SCHEMA, db_table: str = DB_TABLE) -> dict:
     try:
         from psycopg2.extras import execute_values  # type: ignore
     except Exception as exc:
         raise RuntimeError(f"缺少依赖 psycopg2，无法批量写入数据库：{exc}") from exc
 
     if truncate:
-        cursor.execute(f'TRUNCATE TABLE "{DB_SCHEMA}"."{DB_TABLE}";')
+        cursor.execute(f'TRUNCATE TABLE "{db_schema}"."{db_table}";')
 
     # 主键为 bh（编号）：空编号跳过；同一批次重复编号保留最后一条，避免 ON CONFLICT 同批次重复报错
     rows_list = list(rows)
@@ -474,7 +474,7 @@ def insert_rows(cursor, rows: Iterable[RowData], truncate: bool) -> dict:
         "bz",
     ]
     sql = (
-        f'INSERT INTO "{DB_SCHEMA}"."{DB_TABLE}" ('
+        f'INSERT INTO "{db_schema}"."{db_table}" ('
         + ", ".join(f'"{c}"' for c in cols)
         + ') VALUES %s ON CONFLICT ("bh") DO UPDATE SET '
         + ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in cols if c != "bh")
@@ -521,13 +521,21 @@ def insert_rows(cursor, rows: Iterable[RowData], truncate: bool) -> dict:
     }
 
 
-def import_sfzxx_file(excel_path: Path, sheet_name: str = SHEET_NAME_DEFAULT, truncate: bool = False) -> dict:
+def import_sfzxx_file(
+    excel_path: Path,
+    sheet_name: str = SHEET_NAME_DEFAULT,
+    truncate: bool = False,
+    *,
+    db_schema: str = DB_SCHEMA,
+    db_table: str = DB_TABLE,
+    header_row_index: int = HEADER_ROW_INDEX,
+) -> dict:
     """
-    复用本脚本逻辑：读取 xls/xlsx 并导入到 ywdata.zq_wcnr_sfzxx。
-    - 会校验 sheet 与第3行表头
+    复用本脚本逻辑：读取 xls/xlsx 并导入到指定表（默认 ywdata.zq_wcnr_sfzxx）。
+    - 会校验 sheet 与指定行表头（默认第3行）
     - bh(编号) 为主键：重复则更新，不重复则新增
     """
-    rows = read_excel_rows(excel_path=excel_path, sheet_name=sheet_name)
+    rows = read_excel_rows(excel_path=excel_path, sheet_name=sheet_name, header_row_index=header_row_index)
 
     connection = None
     cursor = None
@@ -536,8 +544,8 @@ def import_sfzxx_file(excel_path: Path, sheet_name: str = SHEET_NAME_DEFAULT, tr
 
         connection = get_database_connection()
         cursor = connection.cursor()
-        ensure_table(cursor)
-        stats = insert_rows(cursor, rows, truncate=truncate)
+        ensure_table(cursor, db_schema=db_schema, db_table=db_table)
+        stats = insert_rows(cursor, rows, truncate=truncate, db_schema=db_schema, db_table=db_table)
         connection.commit()
         stats.update(
             {

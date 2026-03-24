@@ -327,3 +327,97 @@ def jsxx_sources() -> Any:
         return guard_resp
 
     return jsonify({"success": True, "data": get_jsxx_sources()})
+
+
+@hqzcsj_bp.route("/zongcha/api/import/sx_xls", methods=["POST"])
+def zongcha_import_sx_xls() -> Any:
+    """
+    导入送校数据：
+    - sheet1（累计招生）→ ywdata.zq_zfba_wcnr_sfzxx
+    - sheet3（离校）    → ywdata.zq_zfba_wcnr_sfzxx_lxxx
+    """
+    import sys
+    import tempfile
+    import types
+    from pathlib import Path as _Path
+
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"success": False, "message": "未选择文件"}), 400
+    filename = str(file.filename or "")
+    if not filename.lower().endswith(".xls"):
+        return jsonify({"success": False, "message": "仅支持 xls 格式文件"}), 400
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xls") as tmp:
+            tmp.write(file.read())
+            tmp_path = _Path(tmp.name)
+
+        # 动态加载 import_sfzxx_file（直接编译源码，绕过 pyc 缓存）
+        import types
+        script_path = _Path(__file__).resolve().parents[2] / "weichengnianren-djdo" / "0125_wcnr_sfzxx_import.py"
+        mod_name = "hqzcsj.wcnr_sfzxx_import"
+        source = script_path.read_text(encoding="utf-8")
+        code = compile(source, str(script_path), "exec")
+        mod = types.ModuleType(mod_name)
+        mod.__file__ = str(script_path)
+        sys.modules[mod_name] = mod
+        try:
+            exec(code, mod.__dict__)
+        except Exception:
+            sys.modules.pop(mod_name, None)
+            raise
+
+        import_func = getattr(mod, "import_sfzxx_file", None)
+        if import_func is None:
+            raise RuntimeError("导入脚本缺少 import_sfzxx_file()")
+
+        stats_lj = import_func(
+            tmp_path,
+            sheet_name="累计招生",
+            truncate=False,
+            db_schema="ywdata",
+            db_table="zq_zfba_wcnr_sfzxx",
+        )
+        stats_lx = import_func(
+            tmp_path,
+            sheet_name="离校",
+            truncate=False,
+            db_schema="ywdata",
+            db_table="zq_zfba_wcnr_sfzxx_lxxx",
+            header_row_index=2,
+        )
+        return jsonify({
+            "success": True,
+            "message": "导入成功",
+            "stats": {
+                "累计招生（zq_zfba_wcnr_sfzxx）": stats_lj,
+                "离校（zq_zfba_wcnr_sfzxx_lxxx）": stats_lx,
+            },
+        })
+    except UnicodeEncodeError as exc:
+        bad = ""
+        try:
+            if isinstance(exc.object, str):
+                bad = exc.object[exc.start: exc.end]
+        except Exception:
+            bad = ""
+        codepoints = " ".join(f"U+{ord(ch):04X}" for ch in bad) if bad else ""
+        msg = "导入失败：存在数据库编码无法写入的字符"
+        if bad:
+            msg += f" {bad!r}({codepoints})"
+        msg += "。请将数据库客户端编码调整为 GB18030/UTF8，或先在 Excel 中清洗该字符后再导入。"
+        import logging
+        logging.exception("import sx xls failed (unicode encode)")
+        return jsonify({"success": False, "message": msg}), 500
+    except Exception as exc:
+        import logging
+        logging.exception("import sx xls failed")
+        return jsonify({"success": False, "message": str(exc)}), 500
+    finally:
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass

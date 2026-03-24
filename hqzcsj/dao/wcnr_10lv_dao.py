@@ -8,6 +8,9 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 from hqzcsj.dao import zfba_jq_aj_dao, zfba_wcnr_jqaj_dao
 
 
+GRADUATE_SOURCE_TABLE_SQL = '"ywdata"."zq_zfba_wcnr_sfzxx_lxxx"'
+
+
 REGION_CODE_NAME: Dict[str, str] = {
     "445300": "市局",
     "445302": "云城",
@@ -407,7 +410,7 @@ def _fetch_graduates(
                 zws."nj" AS "年级",
                 zws."yxx" AS "学校",
                 zws."lxdh" AS "联系电话"
-            FROM "ywdata"."zq_wcnr_sfzxx" zws
+                        FROM {GRADUATE_SOURCE_TABLE_SQL} zws
             WHERE zws."lx_time" BETWEEN %s AND %s
               AND NULLIF(BTRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
               {jz_cond}
@@ -471,7 +474,7 @@ def _count_graduates_by_region(
                 zws."sfzhm" AS "证件号码",
                 zws."lx_time" AS "离校时间_raw",
                 LEFT(COALESCE(zws."hjdq", ''), 6) AS "地区代码"
-            FROM "ywdata"."zq_wcnr_sfzxx" zws
+                        FROM {GRADUATE_SOURCE_TABLE_SQL} zws
             WHERE zws."lx_time" BETWEEN %s AND %s
               AND NULLIF(BTRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
               {jz_cond}
@@ -541,7 +544,7 @@ def _fetch_graduate_reoffend(
                 zws."hjdz" AS "户籍地址",
                 zws."yxx" AS "学校",
                 zws."lxdh" AS "联系电话"
-            FROM "ywdata"."zq_wcnr_sfzxx" zws
+                        FROM {GRADUATE_SOURCE_TABLE_SQL} zws
             WHERE zws."lx_time" BETWEEN %s AND %s
               AND NULLIF(BTRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
               {jz_cond}
@@ -626,7 +629,7 @@ def _count_graduate_reoffend_by_region(
                 zws."sfzhm" AS "证件号码",
                 zws."lx_time" AS "离校时间_raw",
                 LEFT(COALESCE(zws."hjdq", ''), 6) AS "地区代码"
-            FROM "ywdata"."zq_wcnr_sfzxx" zws
+                        FROM {GRADUATE_SOURCE_TABLE_SQL} zws
             WHERE zws."lx_time" BETWEEN %s AND %s
               AND NULLIF(BTRIM(COALESCE(zws."sfzhm", '')), '') IS NOT NULL
               {jz_cond}

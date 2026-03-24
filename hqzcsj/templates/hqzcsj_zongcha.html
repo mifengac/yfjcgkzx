@@ -80,6 +80,10 @@
                 <div class="row">
                     <button class="btn" id="openModalBtn">获取数据</button>
                     <button class="btn" id="openJsxxModalBtn" style="background:#0f766e;">获取监所数据</button>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <span class="btn" style="background:#b45309; pointer-events:none;">导入送校数据</span>
+                        <input id="fileImportSx" type="file" accept=".xls" style="display:none" />
+                    </label>
                     <label style="display:flex; align-items:center; gap:8px;">
                         <span class="muted">数据源</span>
                         <div class="multi-select" id="sourceMs">
@@ -788,6 +792,37 @@
             startJsxxBtn.disabled = false;
         }
     });
+
+    // 导入送校数据
+    (function() {
+        const input = document.getElementById('fileImportSx');
+        if (!input) return;
+        input.addEventListener('change', async function(ev) {
+            const file = ev.target.files && ev.target.files[0];
+            if (!file) return;
+            if (!file.name.toLowerCase().endsWith('.xls')) {
+                alert('仅支持 xls 格式文件');
+                ev.target.value = '';
+                return;
+            }
+            const form = new FormData();
+            form.append('file', file);
+            try {
+                const res = await fetch("{{ url_for('hqzcsj.zongcha_import_sx_xls') }}", {
+                    method: 'POST',
+                    body: form,
+                    credentials: 'same-origin',
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.message || '导入失败');
+                alert('导入成功：\n' + JSON.stringify(data.stats || {}, null, 2));
+            } catch (e) {
+                alert(e.message || String(e));
+            } finally {
+                ev.target.value = '';
+            }
+        });
+    })();
 
     // Tabs
     (function() {
