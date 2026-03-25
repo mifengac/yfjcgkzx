@@ -1531,6 +1531,8 @@ def _fetch_zmjz_ratio_rows(
             WHERE b.ajxx_join_ajxx_ajlx = '行政'
               AND COALESCE(xz."xzcfjds_cfzl", '') ~ '拘留'
               AND COALESCE(xz."xzcfjds_zxqk_text", '') ~ '不执行|不送'
+              AND NULLIF(TRIM(xz."xzcfjds_tj_jlts"), '') IS NOT NULL
+              AND CAST(xz."xzcfjds_tj_jlts" AS INTEGER) > 4
         ),
         admin_history AS MATERIALIZED (
             SELECT

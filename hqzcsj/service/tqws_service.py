@@ -273,7 +273,7 @@ TQWS_SOURCE_REGISTRY: Dict[str, Dict[str, Any]] = {
         "key": "wenshu",
         "name": "已审核文书（全量）",
         "table": "zq_zfba_wenshu",
-        "sync_strategy": "sync_batch",
+        "sync_strategy": "upsert_batch",
         "time_mode": "kjsj",
         "where": {
             "rules": [
@@ -409,7 +409,7 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
 
                 # ── 同步策略：大表生成批次号 ──
                 batch_id = ""
-                if sync_strategy == "sync_batch":
+                if sync_strategy in ("sync_batch", "upsert_batch"):
                     batch_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
                 fetched_total = 0
@@ -495,7 +495,7 @@ def _run_job(*, username: str, job_id: str, access_token: str, sources: List[str
                         table_comment=table,
                     )
 
-                # ── 同步策略：大表抓完后清理旧批次 ──
+                # ── 同步策略：大表抓完后清理旧批次（upsert_batch 不删旧数据）──
                 deleted_stale = 0
                 if sync_strategy == "sync_batch" and batch_id and fetched_total > 0:
                     _update_status(
