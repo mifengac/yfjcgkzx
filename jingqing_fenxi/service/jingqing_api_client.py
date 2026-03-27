@@ -184,9 +184,32 @@ class JingQingApiClient:
 
     def get_case_list(self, payload):
         """Get case detail list."""
+        page_num = (payload or {}).get("pageNum")
+        page_size = (payload or {}).get("pageSize")
+        begin_date = (payload or {}).get("beginDate")
+        end_date = (payload or {}).get("endDate")
         res = self.request_with_retry("POST", "/dsjfx/case/list", data=payload, timeout=20)
         if res and res.status_code == 200:
-            return res.json()
+            result = res.json()
+            logger.info(
+                "case/list pageNum=%s pageSize=%s begin=%s end=%s code=%s total=%s rows=%s",
+                page_num,
+                page_size,
+                begin_date,
+                end_date,
+                result.get("code"),
+                result.get("total"),
+                len(result.get("rows", [])),
+            )
+            return result
+        logger.warning(
+            "case/list request failed pageNum=%s pageSize=%s begin=%s end=%s status=%s",
+            page_num,
+            page_size,
+            begin_date,
+            end_date,
+            res.status_code if res else "None",
+        )
         return {"total": 0, "rows": [], "code": -1}
 
 

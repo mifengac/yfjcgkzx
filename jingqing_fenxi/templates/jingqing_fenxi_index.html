@@ -7,6 +7,24 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <style>
+        body {
+            margin: 0;
+            background: #f3f6fb;
+        }
+        .page-shell {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .page-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
+        }
+        .page-card-body {
+            padding: 20px;
+        }
         .multi-select { position: relative; display: inline-block; }
         .multi-select-display {
             height: 30px;
@@ -70,6 +88,34 @@
             padding: 5px;
             border: 1px solid #ccc;
             border-radius: 4px;
+        }
+        .tab-nav {
+            display: flex;
+            gap: 10px;
+            padding: 18px 20px 0;
+            border-bottom: 1px solid #e5e7eb;
+            background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        }
+        .tab-btn {
+            border: none;
+            background: #e8eef7;
+            color: #334155;
+            padding: 10px 18px;
+            border-radius: 999px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .tab-btn.active {
+            background: #1976d2;
+            color: #fff;
+            box-shadow: 0 8px 18px rgba(25, 118, 210, 0.24);
+        }
+        .tab-panel {
+            display: none;
+        }
+        .tab-panel.active {
+            display: block;
         }
 
         .charts-container {
@@ -139,134 +185,268 @@
             color: #ff9800;
             font-weight: bold;
         }
+        .filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 6px;
+        }
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 200px;
+            position: relative;
+        }
+        .filter-group label {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .filter-group input[type="datetime-local"],
+        .filter-group select {
+            padding: 8px 10px;
+            font-size: 13px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .multi-select-box {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px 10px;
+            font-size: 13px;
+            background-color: #fff;
+            cursor: pointer;
+            min-height: 34px;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .multi-select-box span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+        }
+        .multi-select-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 2px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 20;
+            padding: 8px;
+            min-width: 200px;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .multi-select-menu.show {
+            display: block;
+        }
+        .multi-select-menu label {
+            display: block;
+            padding: 5px 0;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .multi-select-menu input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        .module-button {
+            padding: 8px 16px;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .module-button:hover {
+            background: #125ea3;
+        }
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .results-info {
+            font-size: 13px;
+            color: #666;
+        }
+        .download-menu {
+            position: relative;
+            display: inline-block;
+        }
+        .download-menu-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 110%;
+            background-color: #fff;
+            min-width: 120px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 10;
+            border-radius: 4px;
+            padding: 4px 0;
+        }
+        .download-menu-content.show {
+            display: block;
+        }
+        .download-menu-content button {
+            width: 100%;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            text-align: left;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .download-menu-content button:hover {
+            background: #f5f5f5;
+        }
+        .results-table-container {
+            overflow: auto;
+            max-height: 65vh;
+            border: 1px solid #e3e7ef;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .special-case-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: #fff;
+        }
+        .special-case-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f6f8fb;
+            border-bottom: 2px solid #e3e7ef;
+            padding: 10px 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            text-align: left;
+            font-size: 13px;
+        }
+        .special-case-table tbody td {
+            border-bottom: 1px solid #eef2f7;
+            padding: 8px 12px;
+            font-size: 12px;
+            vertical-align: top;
+        }
+        .special-case-table tbody tr:hover {
+            background: #fafcff;
+        }
+        .pagination {
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .pagination-meta {
+            color: #64748b;
+        }
+        .pagination-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .pagination-controls button {
+            padding: 6px 12px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            color: #1e293b;
+        }
+        .pagination-controls button:disabled {
+            cursor: not-allowed;
+            color: #94a3b8;
+            background: #f8fafc;
+        }
+        .error-message {
+            padding: 10px;
+            background: #fee;
+            color: #c33;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .special-case-hidden {
+            display: none;
+        }
+        .special-case-actions {
+            justify-content: flex-end;
+        }
+        @media (max-width: 900px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+            .tab-nav {
+                overflow-x: auto;
+                padding-bottom: 12px;
+            }
+        }
     </style>
 </head>
 <body>
-<header class="header">
-    <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
-        <div><h1>警情分析</h1></div>
-        <div>
-            <a href="/" style="background:#1976d2; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none; margin-right:10px;">返回首页</a>
-            <a href="{{ url_for('logout') }}" style="background:#e53935; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">退出登录</a>
-        </div>
-    </div>
-</header>
-
-<div class="fenxi-container">
-    <h2>警情分析</h2>
-
-    <div class="query-area">
-        <div class="query-item">
-            <label>开始时间:</label>
-            <input type="datetime-local" step="1" id="beginDate">
-        </div>
-        <div class="query-item">
-            <label>结束时间:</label>
-            <input type="datetime-local" step="1" id="endDate">
-        </div>
-
-        <div class="query-item">
-            <label>环比开始:</label>
-            <input type="datetime-local" step="1" id="m2mStartTime">
-        </div>
-        <div class="query-item">
-            <label>环比结束:</label>
-            <input type="datetime-local" step="1" id="m2mEndTime">
-        </div>
-
-        <div class="query-item" style="display:none;">
-            <input type="datetime-local" step="1" id="y2yStartTime">
-            <input type="datetime-local" step="1" id="y2yEndTime">
-        </div>
-
-        <div class="query-item">
-            <label>警情类型:</label>
-            <div class="multi-select" id="caseTypeMs">
-                <div class="multi-select-display" id="caseTypeMsDisplay">加载中...</div>
-                <div class="multi-select-dropdown" id="caseTypeMsDropdown"></div>
-            </div>
-        </div>
-
-        <div class="query-item">
-            <label>分析维度:</label>
-            <div class="multi-select" id="dimMs">
-                <div class="multi-select-display" id="dimMsDisplay">请选择维度</div>
-                <div class="multi-select-dropdown" id="dimMsDropdown">
-                    <label class="multi-select-option" style="border-bottom:1px solid #eee;font-weight:bold;"><input type="checkbox" value="_all"> 全选</label>
-                    <label class="multi-select-option"><input type="checkbox" value="srr"> 各地同环比</label>
-                    <label class="multi-select-option"><input type="checkbox" value="time"> 时段</label>
-                    <label class="multi-select-option"><input type="checkbox" value="dept"> 派出所</label>
-                    <label class="multi-select-option"><input type="checkbox" value="phone"> 重复报警电话</label>
-                    <label class="multi-select-option"><input type="checkbox" value="cluster"> 重复报警地址</label>
+<div class="page-shell">
+    <div class="page-card">
+        <header class="header">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:20px 20px 0; gap:12px; flex-wrap:wrap;">
+                <div><h1 style="margin:0;">警情分析</h1></div>
+                <div>
+                    <a href="/" style="background:#1976d2; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none; margin-right:10px;">返回首页</a>
+                    <a href="{{ url_for('logout') }}" style="background:#e53935; color:#fff; padding:10px 14px; border-radius:6px; text-decoration:none;">退出登录</a>
                 </div>
             </div>
+        </header>
+
+        <div class="tab-nav">
+            <button type="button" class="tab-btn active" data-tab-target="analysis">警情分析</button>
+            <button type="button" class="tab-btn" data-tab-target="wander">流浪/乞讨警情</button>
+            <button type="button" class="tab-btn" data-tab-target="rental">出租屋警情</button>
         </div>
 
-        <div class="query-item">
-            <button class="btn" onclick="doAnalyze()">分析</button>
-            <button class="btn" style="background:#28a745" onclick="doExport()">导出报表</button>
-            <span id="loading">正在处理中，请稍候...</span>
-        </div>
-    </div>
-
-    <div class="charts-container">
-        <div class="chart-box" id="box-srr" style="grid-column: 1 / -1;">
-            <div id="table-srr"></div>
-        </div>
-
-        <div class="chart-box" id="box-time">
-            <div class="chart-head">
-                <h3 id="title-time">时段</h3>
-                <div class="chart-opt" id="opt-time">
-                    <label>分组:</label>
-                    <input type="range" id="optTimeBucketIndex" min="0" max="6" step="1" value="2">
-                    <span class="opt-value" id="optTimeBucketLabel">3小时</span>
-                    <span class="opt-tip">仅支持可整除24小时: 1/2/3/4/6/8/12</span>
-                </div>
+        <div class="page-card-body">
+            <div class="tab-panel active" data-tab-panel="analysis">
+                {% include "analysis_tab.html" %}
             </div>
-            <canvas id="chart-time"></canvas>
-        </div>
 
-        <div class="chart-box" id="box-dept">
-            <div class="chart-head">
-                <h3 id="title-dept">派出所</h3>
-                <div class="chart-opt" id="opt-dept">
-                    <label><input type="checkbox" id="optDeptAll" checked> 全部</label>
-                    <input type="range" id="optDeptTopN" min="1" max="100" step="1" value="20" disabled>
-                    <span class="opt-value" id="optDeptTopNLabel">全部</span>
-                </div>
+            <div class="tab-panel" data-tab-panel="wander">
+                {% include "wander_case_tab.html" %}
             </div>
-            <canvas id="chart-dept"></canvas>
-        </div>
 
-        <div class="chart-box" id="box-phone">
-            <div class="chart-head">
-                <h3 id="title-phone">重复报警电话</h3>
-                <div class="chart-opt" id="opt-phone">
-                    <label>阈值:</label>
-                    <input type="range" id="optPhoneMinCount" min="2" max="10" step="1" value="2">
-                    <span class="opt-value" id="optPhoneMinCountLabel">>=2次</span>
-                    <span class="opt-tip">自动过滤 00000000</span>
-                </div>
+            <div class="tab-panel" data-tab-panel="rental">
+                {% include "rental_case_tab.html" %}
             </div>
-            <canvas id="chart-phone"></canvas>
-        </div>
-
-        <div class="chart-box" id="box-cluster">
-            <div class="chart-head">
-                <h3 id="title-cluster">重复报警地址</h3>
-                <div class="chart-opt" id="opt-cluster">
-                    <label>半径:</label>
-                    <input type="range" id="optClusterRadius" min="50" max="500" step="50" value="50">
-                    <span class="opt-value" id="optClusterRadiusLabel">50米</span>
-                </div>
-            </div>
-            <canvas id="chart-cluster"></canvas>
         </div>
     </div>
 </div>
 
 <script src="/jingqing_fenxi/static/js/chart.min.js"></script>
-<script src="/jingqing_fenxi/static/js/jingqing_fenxi_main.js"></script>
+<script src="/jingqing_fenxi/static/js/analysis_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/wander_case_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/rental_case_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/jingqing_fenxi_tabs.js"></script>
 </body>
 </html>

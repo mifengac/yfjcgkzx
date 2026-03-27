@@ -25,7 +25,11 @@ def haversine_distance(lng1, lat1, lng2, lat2):
 def fetch_all_case_list(base_payload):
     """Paginate through the case list API and fetch all rows."""
     all_rows = []
-    page_size = 100
+    try:
+        page_size = int(base_payload.get("pageSize", 100))
+    except Exception:
+        page_size = 100
+    page_size = max(1, min(page_size, 2000))
     current_page = 1
 
     payload = base_payload.copy()

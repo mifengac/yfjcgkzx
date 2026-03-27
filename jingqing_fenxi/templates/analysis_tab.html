@@ -1,0 +1,111 @@
+<div class="fenxi-container">
+    <div class="query-area">
+        <div class="query-item">
+            <label>开始时间:</label>
+            <input type="datetime-local" step="1" id="beginDate">
+        </div>
+        <div class="query-item">
+            <label>结束时间:</label>
+            <input type="datetime-local" step="1" id="endDate">
+        </div>
+
+        <div class="query-item">
+            <label>环比开始:</label>
+            <input type="datetime-local" step="1" id="m2mStartTime">
+        </div>
+        <div class="query-item">
+            <label>环比结束:</label>
+            <input type="datetime-local" step="1" id="m2mEndTime">
+        </div>
+
+        <div class="query-item" style="display:none;">
+            <input type="datetime-local" step="1" id="y2yStartTime">
+            <input type="datetime-local" step="1" id="y2yEndTime">
+        </div>
+
+        <div class="query-item">
+            <label>警情类型:</label>
+            <div class="multi-select" id="caseTypeMs">
+                <div class="multi-select-display" id="caseTypeMsDisplay">加载中...</div>
+                <div class="multi-select-dropdown" id="caseTypeMsDropdown"></div>
+            </div>
+        </div>
+
+        <div class="query-item">
+            <label>分析维度:</label>
+            <div class="multi-select" id="dimMs">
+                <div class="multi-select-display" id="dimMsDisplay">请选择维度</div>
+                <div class="multi-select-dropdown" id="dimMsDropdown">
+                    <label class="multi-select-option" style="border-bottom:1px solid #eee;font-weight:bold;"><input type="checkbox" value="_all"> 全选</label>
+                    <label class="multi-select-option"><input type="checkbox" value="srr"> 各地同环比</label>
+                    <label class="multi-select-option"><input type="checkbox" value="time"> 时段</label>
+                    <label class="multi-select-option"><input type="checkbox" value="dept"> 派出所</label>
+                    <label class="multi-select-option"><input type="checkbox" value="phone"> 重复报警电话</label>
+                    <label class="multi-select-option"><input type="checkbox" value="cluster"> 重复报警地址</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="query-item">
+            <button class="btn" id="analysisDoAnalyzeBtn">分析</button>
+            <button class="btn" id="analysisDoExportBtn" style="background:#28a745">导出报表</button>
+            <span id="loading">正在处理中，请稍候...</span>
+        </div>
+    </div>
+
+    <div class="charts-container">
+        <div class="chart-box" id="box-srr" style="grid-column: 1 / -1;">
+            <div id="table-srr"></div>
+        </div>
+
+        <div class="chart-box" id="box-time">
+            <div class="chart-head">
+                <h3 id="title-time">时段</h3>
+                <div class="chart-opt" id="opt-time">
+                    <label>分组:</label>
+                    <input type="range" id="optTimeBucketIndex" min="0" max="6" step="1" value="2">
+                    <span class="opt-value" id="optTimeBucketLabel">3小时</span>
+                    <span class="opt-tip">仅支持可整除24小时: 1/2/3/4/6/8/12</span>
+                </div>
+            </div>
+            <canvas id="chart-time"></canvas>
+        </div>
+
+        <div class="chart-box" id="box-dept">
+            <div class="chart-head">
+                <h3 id="title-dept">派出所</h3>
+                <div class="chart-opt" id="opt-dept">
+                    <label><input type="checkbox" id="optDeptAll" checked> 全部</label>
+                    <input type="range" id="optDeptTopN" min="1" max="100" step="1" value="20" disabled>
+                    <span class="opt-value" id="optDeptTopNLabel">全部</span>
+                </div>
+            </div>
+            <canvas id="chart-dept"></canvas>
+        </div>
+
+        <div class="chart-box" id="box-phone">
+            <div class="chart-head">
+                <h3 id="title-phone">重复报警电话</h3>
+                <div class="chart-opt" id="opt-phone">
+                    <label>阈值:</label>
+                    <input type="range" id="optPhoneMinCount" min="2" max="10" step="1" value="2">
+                    <span class="opt-value" id="optPhoneMinCountLabel">&gt;=2次</span>
+                    <span class="opt-tip">自动过滤 00000000</span>
+                </div>
+            </div>
+            <canvas id="chart-phone"></canvas>
+        </div>
+
+        <div class="chart-box" id="box-cluster">
+            <div class="chart-head">
+                <h3 id="title-cluster">重复报警地址</h3>
+                <div class="chart-opt" id="opt-cluster">
+                    <label>半径:</label>
+                    <input type="range" id="optClusterRadius" min="50" max="500" step="50" value="50">
+                    <span class="opt-value" id="optClusterRadiusLabel">50米</span>
+                </div>
+            </div>
+            <canvas id="chart-cluster"></canvas>
+        </div>
+    </div>
+</div>

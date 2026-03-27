@@ -1,0 +1,40 @@
+<section class="filter-form special-case-form" data-special-case-type="rental">
+    <div class="filter-row">
+        <div class="filter-group">
+            <label for="rentalStartTime">报警时间开始</label>
+            <input id="rentalStartTime" type="datetime-local" step="1">
+        </div>
+        <div class="filter-group">
+            <label for="rentalEndTime">报警时间结束</label>
+            <input id="rentalEndTime" type="datetime-local" step="1">
+        </div>
+        <div class="filter-group">
+            <label>分局</label>
+            <div class="multi-select-box special-branch-display" id="rentalBranchDisplay">
+                <span>全部</span>
+            </div>
+            <div class="multi-select-menu special-branch-dropdown" id="rentalBranchDropdown"></div>
+        </div>
+        <div class="filter-group special-case-actions">
+            <button type="button" class="module-button" data-action="query">查询</button>
+        </div>
+    </div>
+    <div id="rentalErr" class="error-message special-case-hidden"></div>
+</section>
+
+<div class="results-header">
+    <div class="results-info" id="rentalStatus"></div>
+    <div class="download-menu" id="rentalDownloadMenu">
+        <button type="button" class="module-button" data-action="toggle-export">导出</button>
+        <div class="download-menu-content">
+            <button type="button" data-action="export" data-format="xlsx">Excel (xlsx)</button>
+            <button type="button" data-action="export" data-format="csv">CSV</button>
+        </div>
+    </div>
+</div>
+
+<div class="results-table-container">
+    <table id="rentalTable" class="special-case-table"></table>
+</div>
+
+<div class="pagination special-case-pagination" id="rentalPagination"></div>
