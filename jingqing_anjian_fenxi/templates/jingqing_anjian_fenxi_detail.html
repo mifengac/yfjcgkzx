@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ group_name }} - {{ metric_label }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { margin: 0; background: #f8fafc; }
+        .header { background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%); border-bottom: 1px solid #e5e7eb; }
+        .header-inner { max-width: 1280px; margin: 0 auto; padding: 18px 20px; }
+        .header h1 { margin: 0; font-size: 20px; color: #0f172a; }
+        .header p { margin: 8px 0 0; color: #64748b; font-size: 13px; }
+        .container { max-width: 1280px; margin: 0 auto; padding: 20px; }
+        .card { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow:0 6px 22px rgba(18,38,63,.06); border:1px solid #e6e8ef; }
+        .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+        .btn { height:36px; border:0; border-radius:8px; background:#1976d2; color:#fff; padding:0 16px; font-weight:700; cursor:pointer; }
+        .dropdown { position:relative; display:inline-block; }
+        .dropdown-menu { display:none; position:absolute; right:0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; min-width:140px; box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index:20; }
+        .dropdown-menu a { display:block; padding:10px 12px; color:#111; text-decoration:none; font-size:13px; }
+        .dropdown-menu a:hover { background:#f3f5fb; }
+        .dropdown.open .dropdown-menu { display:block; }
+        .muted { color:#64748b; font-size:12px; }
+        .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+        table { border-collapse: collapse; width:100%; }
+        th, td { border-bottom:1px solid #eef0f6; padding:10px 12px; font-size:13px; white-space:nowrap; text-align:left; }
+        th { position:sticky; top:0; background:#fbfcff; z-index:2; }
+    </style>
+</head>
+<body>
+<header class="header">
+    <div class="header-inner">
+        <h1>{{ group_name }} - {{ metric_label }}</h1>
+        <p>统计维度：{{ group_mode_label }}，时间范围：{{ start_time }} ~ {{ end_time }}</p>
+    </div>
+</header>
+
+<main class="container">
+    {% if truncated %}
+    <div class="card">
+        <div class="muted">提示：页面最多展示 5000 条，导出可获取全量数据。</div>
+    </div>
+    {% endif %}
+
+    <section class="card">
+        <div class="row" style="justify-content:space-between; margin-bottom:10px;">
+            <div class="muted">
+                当前分组：{{ group_name }}{% if group_code not in ("", "__ALL__", "全市") %}（{{ group_code }}）{% endif %}
+            </div>
+            <div class="dropdown" id="detailExportDd">
+                <button class="btn" id="detailExportBtn" type="button">导出</button>
+                <div class="dropdown-menu">
+                    <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                    <a href="#" data-fmt="csv">导出 csv</a>
+                </div>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    {% if rows and rows[0] %}
+                        {% for key in rows[0].keys() %}
+                        <th>{{ key }}</th>
+                        {% endfor %}
+                    {% else %}
+                        <th>无数据</th>
+                    {% endif %}
+                </tr>
+                </thead>
+                <tbody>
+                {% if rows %}
+                    {% for row in rows %}
+                    <tr>
+                        {% for value in row.values() %}
+                        <td>{{ value }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td class="muted">无数据</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script>
+    (function() {
+        const dd = document.getElementById("detailExportDd");
+        const btn = document.getElementById("detailExportBtn");
+        if (!dd || !btn) return;
+
+        btn.addEventListener("click", function(e) {
+            e.preventDefault();
+            dd.classList.toggle("open");
+        });
+
+        dd.querySelectorAll(".dropdown-menu a").forEach(function(link) {
+            link.addEventListener("click", function(e) {
+                e.preventDefault();
+                const fmt = link.getAttribute("data-fmt") || "xlsx";
+                const usp = new URLSearchParams();
+                usp.set("fmt", fmt);
+                usp.set("metric", "{{ metric }}");
+                usp.set("group_code", "{{ group_code }}");
+                usp.set("group_name", "{{ group_name }}");
+                usp.set("group_mode", "{{ group_mode }}");
+                usp.set("start_time", "{{ start_time }}");
+                usp.set("end_time", "{{ end_time }}");
+                {% for value in leixing_list %}
+                usp.append("leixing", "{{ value }}");
+                {% endfor %}
+                {% for value in ssfjdm_list %}
+                usp.append("ssfjdm", "{{ value }}");
+                {% endfor %}
+                window.location.href = "{{ url_for('jingqing_anjian_fenxi.detail_export') }}?" + usp.toString();
+                dd.classList.remove("open");
+            });
+        });
+
+        document.addEventListener("click", function(e) {
+            if (!dd.contains(e.target)) {
+                dd.classList.remove("open");
+            }
+        });
+    })();
+</script>
+</body>
+</html>

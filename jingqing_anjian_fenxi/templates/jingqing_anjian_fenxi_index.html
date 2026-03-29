@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>警情案件分析</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body { margin: 0; background: #f3f6fb; }
+        .page-shell { max-width: 1440px; margin: 0 auto; padding: 20px; }
+        .page-card { background: #fff; border-radius: 12px; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); overflow: hidden; }
+        .page-head { padding: 18px 20px; border-bottom: 1px solid #e5e7eb; background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%); }
+        .page-head h1 { margin: 0; font-size: 20px; color: #0f172a; }
+        .page-head p { margin: 6px 0 0; color: #64748b; font-size: 13px; }
+        .page-body { padding: 20px; }
+        .card { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow:0 6px 22px rgba(18,38,63,.06); border:1px solid #e6e8ef; }
+        .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+        .query-grid { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+        .query-item { display:flex; flex-direction:column; gap:6px; min-width:180px; position:relative; }
+        .query-item label { font-size:13px; color:#475569; font-weight:600; }
+        .query-item input[type="datetime-local"] { height:36px; border:1px solid #d5dae3; border-radius:8px; padding:0 10px; background:#fff; font-size:13px; }
+        .btn { height:36px; border:0; border-radius:8px; background:#1976d2; color:#fff; padding:0 16px; font-weight:700; cursor:pointer; }
+        .btn.secondary { background:#475569; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-menu { display:none; position:absolute; right:0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; min-width:140px; box-shadow:0 8px 18px rgba(18,38,63,.12); overflow:hidden; z-index: 20; }
+        .dropdown-menu a { display:block; padding:10px 12px; color:#111; text-decoration:none; font-size:13px; }
+        .dropdown-menu a:hover { background:#f3f5fb; }
+        .dropdown.open .dropdown-menu { display:block; }
+        .multi-select { position: relative; display: inline-block; }
+        .multi-select-display { height:36px; border:1px solid #d5dae3; border-radius:8px; padding:0 10px; font-size:13px; background:#fff; cursor:pointer; display:flex; align-items:center; min-width:180px; user-select:none; color:#0f172a; }
+        .multi-select-dropdown { display:none; position:absolute; top:40px; left:0; background:#fff; border:1px solid #d5dae3; border-radius:10px; box-shadow:0 8px 18px rgba(18,38,63,.12); z-index:100; padding:6px; max-height:260px; overflow-y:auto; min-width:100%; }
+        .multi-select-dropdown.open { display:block; }
+        .multi-select-option { display:flex; align-items:center; padding:6px 8px; font-size:13px; cursor:pointer; white-space:nowrap; border-radius:6px; }
+        .multi-select-option:hover { background:#f8fafc; }
+        .multi-select-option input { margin-right:6px; }
+        .mode-switch { display:inline-flex; align-items:center; gap:10px; user-select:none; }
+        .mode-switch input { position:absolute; opacity:0; width:0; height:0; }
+        .mode-slider { width:46px; height:24px; border-radius:999px; background:#cbd5e1; position:relative; transition:background .2s ease; }
+        .mode-slider::after { content:""; position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.22); transition:transform .2s ease; }
+        .mode-switch input:checked + .mode-slider { background:#1976d2; }
+        .mode-switch input:checked + .mode-slider::after { transform:translateX(22px); }
+        .muted { color:#64748b; font-size:12px; }
+        .err { color:#c62828; font-size:13px; }
+        .table-wrap { overflow:auto; border:1px solid #e6e8ef; border-radius:12px; }
+        table { border-collapse: collapse; width:100%; }
+        th, td { border-bottom:1px solid #eef0f6; padding:10px 12px; font-size:13px; white-space:nowrap; }
+        th { position:sticky; top:0; background:#fbfcff; z-index:2; text-align:center; }
+        td { text-align:center; }
+        td.text-left { text-align:left; }
+        td.clickable-cell { cursor:pointer; color:#1976d2; font-weight:700; }
+        .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:80; align-items:center; justify-content:center; padding:16px; }
+        .modal-content { width:min(1280px, 96vw); height:min(860px, 92vh); background:#fff; border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.18); border:1px solid #e6e8ef; overflow:hidden; display:flex; flex-direction:column; }
+        .modal-header { padding:12px 14px; border-bottom:1px solid #eef0f6; display:flex; justify-content:space-between; align-items:center; }
+        .modal-body { flex:1; }
+        .busy-mask { position:fixed; inset:0; display:none; z-index:2000; background:rgba(15, 23, 42, 0.45); align-items:center; justify-content:center; pointer-events:all; }
+        .busy-mask.active { display:flex; }
+        .busy-card { min-width:280px; padding:18px 20px; border-radius:12px; background:#fff; box-shadow:0 12px 30px rgba(0,0,0,.2); display:flex; align-items:center; gap:10px; font-size:14px; font-weight:700; color:#1f2937; }
+        .busy-dot { width:12px; height:12px; border-radius:50%; background:#1976d2; animation:pulse 1s ease-in-out infinite; }
+        @keyframes pulse {
+            0%, 100% { transform:scale(0.75); opacity:0.55; }
+            50% { transform:scale(1); opacity:1; }
+        }
+    </style>
+</head>
+<body>
+<div class="page-shell">
+    <div class="page-card">
+        <div class="page-head">
+            <h1>警情案件分析</h1>
+            <p>按 {{ start_time }} 至 {{ end_time }} 的立案时间口径统计，支持县市区 / 派出所两种维度。</p>
+        </div>
+        <div class="page-body">
+            <section class="card">
+                <div class="row" style="justify-content:space-between; align-items:flex-end;">
+                    <div class="query-grid">
+                        <div class="query-item">
+                            <label for="jqajfxStart">立案开始时间</label>
+                            <input type="datetime-local" id="jqajfxStart" step="1">
+                        </div>
+                        <div class="query-item">
+                            <label for="jqajfxEnd">立案结束时间</label>
+                            <input type="datetime-local" id="jqajfxEnd" step="1">
+                        </div>
+                        <div class="query-item">
+                            <label>分局</label>
+                            <div class="multi-select" id="jqajfxFenjuMs">
+                                <div class="multi-select-display" id="jqajfxFenjuDisplay">加载中...</div>
+                                <div class="multi-select-dropdown" id="jqajfxFenjuDropdown"></div>
+                            </div>
+                        </div>
+                        <div class="query-item">
+                            <label>类型</label>
+                            <div class="multi-select" id="jqajfxTypeMs">
+                                <div class="multi-select-display" id="jqajfxTypeDisplay">加载中...</div>
+                                <div class="multi-select-dropdown" id="jqajfxTypeDropdown"></div>
+                            </div>
+                        </div>
+                        <button class="btn" id="jqajfxQueryBtn" type="button">查询</button>
+                    </div>
+                    <div class="row">
+                        <label class="mode-switch" title="打开后按派出所统计">
+                            <span class="muted" id="jqajfxModeText">统计维度：县市区</span>
+                            <input type="checkbox" id="jqajfxModeToggle">
+                            <span class="mode-slider"></span>
+                        </label>
+                        <div class="dropdown" id="jqajfxExportDd">
+                            <button class="btn" id="jqajfxExportBtn" type="button">导出</button>
+                            <div class="dropdown-menu">
+                                <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                                <a href="#" data-fmt="csv">导出 csv</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="muted" id="jqajfxStatus" style="margin-top:10px;"></div>
+                <div class="err" id="jqajfxErr" style="margin-top:10px;"></div>
+            </section>
+
+            <section class="card">
+                <div class="table-wrap">
+                    <table id="jqajfxTable"></table>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<div id="jqajfxDetailModal" class="modal" onclick="jingqingAnjianFenxiCloseModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div style="font-weight:800;">明细数据</div>
+            <button type="button" class="btn secondary" onclick="jingqingAnjianFenxiCloseModal()">关闭</button>
+        </div>
+        <div class="modal-body">
+            <iframe id="jqajfxDetailFrame" title="明细数据" style="width:100%; height:100%; border:0;"></iframe>
+        </div>
+    </div>
+</div>
+
+<div id="jqajfxBusyMask" class="busy-mask" aria-live="polite" aria-busy="true">
+    <div class="busy-card">
+        <span class="busy-dot"></span>
+        <span id="jqajfxBusyText">处理中，请稍候...</span>
+    </div>
+</div>
+
+<script>
+    window.JQAJFX_ENDPOINTS = {
+        apiFenju: "{{ url_for('jingqing_anjian_fenxi.api_fenju') }}",
+        apiLeixing: "{{ url_for('jingqing_anjian_fenxi.api_leixing') }}",
+        apiSummary: "{{ url_for('jingqing_anjian_fenxi.api_summary') }}",
+        detailPage: "{{ url_for('jingqing_anjian_fenxi.detail_page') }}",
+        detailExport: "{{ url_for('jingqing_anjian_fenxi.detail_export') }}",
+        exportSummary: "{{ url_for('jingqing_anjian_fenxi.export_summary') }}",
+    };
+</script>
+<script src="{{ url_for('jingqing_anjian_fenxi.static', filename='js/jingqing_anjian_fenxi.constants.js') }}"></script>
+<script src="{{ url_for('jingqing_anjian_fenxi.static', filename='js/jingqing_anjian_fenxi.helpers.js') }}"></script>
+<script src="{{ url_for('jingqing_anjian_fenxi.static', filename='js/jingqing_anjian_fenxi.app.js') }}"></script>
+</body>
+</html>

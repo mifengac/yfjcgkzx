@@ -5,6 +5,8 @@
 
 CREATE SCHEMA IF NOT EXISTS "ywdata";
 
+-- 新增模块：警情案件分析
+
 CREATE TABLE IF NOT EXISTS "ywdata"."jcgkzx_permission" (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) NOT NULL,
