@@ -36,6 +36,14 @@ def _parse_page_size(val: Any) -> Optional[int]:
     return n
 
 
+def _as_bool(val: Any, default: bool = False) -> bool:
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    return str(val).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 @xunfang_bp.route("/jiemiansanlei/case_types", methods=["GET"])
 @handle_errors("获取警情性质")
 def jiemiansanlei_case_types() -> Response:
@@ -52,6 +60,8 @@ def jiemiansanlei_query() -> Response:
     source_list = _as_list(payload.get("yuanshiquerenList"))
     page = int(payload.get("page") or 1)
     page_size = _parse_page_size(payload.get("pageSize"))
+    street_only = _as_bool(payload.get("streetOnly"), default=False)
+    minor_only = _as_bool(payload.get("minorOnly"), default=False)
 
     if not start_time or not end_time:
         return jsonify({"success": False, "message": "开始时间和结束时间不能为空"}), 400
@@ -68,6 +78,8 @@ def jiemiansanlei_query() -> Response:
             source_list=source_list,  # type: ignore[arg-type]
             page=page,
             page_size=page_size,
+            street_only=street_only,
+            minor_only=minor_only,
         )
         return jsonify({"success": True, "data": data})
     except Exception as exc:  # noqa: BLE001
@@ -87,6 +99,8 @@ def jiemiansanlei_export() -> Response:
     end_time = str(payload.get("endTime") or "").strip()
     leixing_list = _as_list(payload.get("leixingList"))
     source_list = _as_list(payload.get("yuanshiquerenList"))
+    street_only = _as_bool(payload.get("streetOnly"), default=False)
+    minor_only = _as_bool(payload.get("minorOnly"), default=False)
 
     if not start_time or not end_time:
         return jsonify({"success": False, "message": "开始时间和结束时间不能为空"}), 400
@@ -101,6 +115,8 @@ def jiemiansanlei_export() -> Response:
         leixing_list=leixing_list,
         source_list=source_list,  # type: ignore[arg-type]
         fmt=fmt,  # type: ignore[arg-type]
+        street_only=street_only,
+        minor_only=minor_only,
     )
 
     bio = BytesIO(file_bytes)
@@ -116,6 +132,7 @@ def jiemiansanlei_export_report() -> Response:
     end_time = str(payload.get("endTime") or "").strip()
     hb_start_time = str(payload.get("hbStartTime") or "").strip()
     hb_end_time = str(payload.get("hbEndTime") or "").strip()
+    minor_only = _as_bool(payload.get("minorOnly"), default=False)
 
     if not start_time or not end_time:
         return jsonify({"success": False, "message": "开始时间和结束时间不能为空"}), 400
@@ -128,6 +145,7 @@ def jiemiansanlei_export_report() -> Response:
             end_time=end_time,
             hb_start_time=hb_start_time,
             hb_end_time=hb_end_time,
+            minor_only=minor_only,
         )
     except Exception as exc:  # noqa: BLE001
         log_error(f"街面三类警情导出报表失败: {exc}")

@@ -45,3 +45,11 @@
 ### 数据展示区:
     1. 不管是县市区还是派出所分组,最后都要加一行汇总行,显示为"全市"
     2. 初始化显示的是分组平均值,单击分组值可弹出详细页面,显示详细数据,详细页面的数据同样支持导出为xlsx或csv
+---
+
+1. 数据展示区列名乱码了
+2. 警情性质的控件有点窄,点击警情性质后,部分值右侧被挡住了,需要拖动
+3. 修改查询及导出的数据源,现在改为不需要从数据库获取数据,而是从68.253.2.111/dsjfx/case/list获取
+    - 1. 初始化警情性质口径为'原始'时:警情性质通过ywdata.case_type_config.newcharasubclass_list值与接口中`newOriCharaSubclassNo`匹配,其中newcharasubclass_list是{1xxx,2xxx}格式,`newOriCharaSubclassNo`是:1xxx,2xxx格式
+    - 2. 初始化警情性质口径为'确认'时:警情性质通过ywdata.case_type_config.newcharasubclass_list值与接口中`newCharaSubclassNo`匹配,其中newcharasubclass_list是{1xxx,2xxx}格式,`newCharaSubclassNo`是:1xxx,2xxx格式
+4. 当勾选未成年独立复选框时:接口参数`caseMarkNo`增加值'01020201,0102020101,0102020102,0102020103'4个值

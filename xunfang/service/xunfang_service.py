@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import logging
 from xunfang.dao.xunfang_dao import get_cross_day_data
+from gonggong.config.upstream_zhksh import build_zhksh_url
 from gonggong.service.session_manager import session_manager
 from gonggong.config.database import DB_CONFIG, execute_query
 import psycopg2
@@ -432,9 +433,9 @@ def calculate_xunfang_for_date_range(start_time: str, end_time: str) -> Dict[str
         raise ValueError('开始时间不能晚于结束时间')
     
     # 跨天数据接口URL
-    cross_day_url = "http://68.253.2.107/zhksh/dutySchedule/crossDayList"
+    cross_day_url = build_zhksh_url("/zhksh/dutySchedule/crossDayList")
     # 更新接口URL
-    update_url = "http://68.253.2.107/zhksh/dutySchedule/updateDutyScheduleInfo"
+    update_url = build_zhksh_url("/zhksh/dutySchedule/updateDutyScheduleInfo")
 
     # 一次性获取整个时间范围的数据
     try:
@@ -546,7 +547,7 @@ def export_online_rate_for_date_range(start_time: str, end_time: str):
         raise ValueError('开始时间不能晚于结束时间')
     
     # 跨天数据接口URL
-    cross_day_url = "http://68.253.2.107/zhksh/dutySchedule/crossDayList"
+    cross_day_url = build_zhksh_url("/zhksh/dutySchedule/crossDayList")
 
     # 一次性获取整个时间范围的数据
     all_data = []
@@ -1306,7 +1307,7 @@ def export_quadrant_chart_for_date_range_excel(start_time: str, end_time: str):
     
     # 2. 获取巡防投入数据
     logging.info("获取巡防投入数据...")
-    cross_day_url = "http://68.253.2.107/zhksh/dutySchedule/crossDayList"
+    cross_day_url = build_zhksh_url("/zhksh/dutySchedule/crossDayList")
     
     # 计算需要处理的日期列表
     current_date = start_date
@@ -1521,7 +1522,7 @@ def export_police_force_for_date_range(start_time: str, end_time: str):
         raise ValueError('开始时间不能晚于结束时间')
 
     # 跨天数据接口URL
-    cross_day_url = "http://68.253.2.107/zhksh/dutySchedule/crossDayList"
+    cross_day_url = build_zhksh_url("/zhksh/dutySchedule/crossDayList")
 
     # 一次性获取整个时间范围的数据
     all_data = []

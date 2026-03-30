@@ -4,9 +4,9 @@
 
     <div class="date-range-container">
         <div class="date-inputs" style="flex-wrap: wrap;">
-            <div style="min-width: 320px;">
+            <div style="min-width: 460px;">
                 <label for="jiemiansanleiCaseTypes">警情性质:</label>
-                <div id="jiemiansanleiCaseTypesMs" class="ms">
+                <div id="jiemiansanleiCaseTypesMs" class="ms ms-wide">
                     <button type="button" class="ms-btn" disabled>加载中...</button>
                 </div>
             </div>
@@ -25,6 +25,17 @@
                 <div id="jiemiansanleiSourcesMs" class="ms">
                     <button type="button" class="ms-btn" disabled>加载中...</button>
                 </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:12px; padding-top: 22px;">
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                    <input type="checkbox" id="jiemiansanleiStreetOnly" checked>
+                    <span>街面</span>
+                </label>
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                    <input type="checkbox" id="jiemiansanleiMinorOnly">
+                    <span>未成年</span>
+                </label>
             </div>
 
             <div style="display:flex; align-items:center; gap:10px;">
@@ -51,20 +62,6 @@
                 <label for="jiemiansanleiHbEndTime">环比结束:</label>
                 <input type="datetime-local" step="1" id="jiemiansanleiHbEndTime" name="jiemiansanleiHbEndTime" value="">
             </div>
-            <div>
-                <label for="jiemiansanleiPageSize">每页:</label>
-                <select id="jiemiansanleiPageSize" onchange="jiemiansanleiQuery(1)">
-                    <option value="20" selected>20</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                    <option value="all">全部</option>
-                </select>
-            </div>
-            <div id="jiemiansanleiPager" style="display:flex; gap:8px; align-items:center;">
-                <button class="calculate-btn" onclick="jiemiansanleiPrevPage()" style="background:#757575;">上一页</button>
-                <span id="jiemiansanleiPageInfo">第 1 页</span>
-                <button class="calculate-btn" onclick="jiemiansanleiNextPage()" style="background:#757575;">下一页</button>
-            </div>
         </div>
     </div>
 
@@ -81,5 +78,21 @@
     <div class="result-container" id="jiemiansanleiResultContainer" style="display: none;">
         <h4>查询结果</h4>
         <div id="jiemiansanleiResultTable"></div>
+        <div id="jiemiansanleiResultControls" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
+            <div>
+                <label for="jiemiansanleiPageSize">每页:</label>
+                <select id="jiemiansanleiPageSize" onchange="jiemiansanleiQuery(1)">
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="all">全部</option>
+                </select>
+            </div>
+            <div id="jiemiansanleiPager" style="display:flex; gap:8px; align-items:center;">
+                <button class="calculate-btn" onclick="jiemiansanleiPrevPage()" style="background:#757575;">上一页</button>
+                <span id="jiemiansanleiPageInfo">第 1 / 1 页</span>
+                <button class="calculate-btn" onclick="jiemiansanleiNextPage()" style="background:#757575;">下一页</button>
+            </div>
+        </div>
     </div>
 </div>

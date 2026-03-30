@@ -1,322 +1,278 @@
-"""
-全局会话管理器
-处理统一的登录和会话管理功能
-"""
-import requests
+from __future__ import annotations
+
+import logging
 import threading
 from datetime import datetime, timedelta
-import logging
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
+import requests
+
+from gonggong.config.upstream_zhksh import UPSTREAM_ZHKSH_CONFIG, build_zhksh_url
+
+
+logger = logging.getLogger(__name__)
+
 
 def _decode_response_text(content: bytes, preferred: Optional[str] = None) -> Tuple[str, str]:
-    """
-    兼容部分内网系统返回 GBK/GB18030 但声明为 UTF-8 的情况，避免 response.text 直接抛 UnicodeDecodeError。
-    返回 (text, encoding_used)。
-    """
     candidates = []
     if preferred:
         candidates.append(preferred)
     candidates.extend(["utf-8", "gb18030", "gbk"])
 
     last_error: Optional[Exception] = None
-    for enc in candidates:
+    for encoding in candidates:
         try:
-            return content.decode(enc), enc
-        except Exception as exc:
+            return content.decode(encoding), encoding
+        except Exception as exc:  # noqa: BLE001
             last_error = exc
-            continue
 
-    logging.warning("响应内容解码失败，将使用 utf-8 replace 兜底: %s", last_error)
+    logger.warning("Failed to decode response body, fallback to utf-8 replace: %s", last_error)
     return content.decode("utf-8", errors="replace"), "utf-8(replace)"
 
+
 class SessionManager:
-    """
-    全局会话管理器类
-    """
-    def __init__(self):
-        self.session = None
-        self.last_login_time = None
-        self.lock = threading.Lock()  # 确保线程安全
-        self.login_url = "http://68.253.2.107/zhksh/login"
-        self.username = "270378"
-        self.password = "jpx8hLPMyV7EDVX1p9d89Q=="
-        self.target_host = "68.253.2.107"
-        # 添加登录失败计数器和冷却时间
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self._login_lock = threading.Lock()
+        self.session: Optional[requests.Session] = None
+        self.last_login_time: Optional[datetime] = None
         self.login_failure_count = 0
-        self.last_login_failure_time = None
-        self.login_failure_cooldown = timedelta(minutes=1)  # 1分钟冷却时间
-    
-    def get_session(self):
-        """
-        获取当前会话，如果会话不存在或已过期则重新登录
-        """
-        with self.lock:
-            if self.session is None or self._is_session_expired():
-                logging.info("会话不存在或已过期，正在重新登录...")
-                self._login()
-            return self.session
-    
-    def _is_session_expired(self):
-        """
-        判断会话是否过期
-        优化验证逻辑，减少网络请求频率
-        """
-        if self.last_login_time is None:
-            return True
+        self.last_login_failure_time: Optional[datetime] = None
+        self.login_failure_cooldown = timedelta(minutes=1)
+        self._load_config()
 
-        # 会话有效期延长至4小时，减少验证频率
-        if datetime.now() - self.last_login_time > timedelta(hours=4):
-            return True
+    def _load_config(self) -> None:
+        config = UPSTREAM_ZHKSH_CONFIG
+        self.base_url = str(config.get("base_url") or "").rstrip("/")
+        self.username = str(config.get("username") or "")
+        self.password = str(config.get("password") or "")
+        self.login_path = str(config.get("login_path") or "/zhksh/login")
+        self.validate_path = str(config.get("validate_path") or "/zhksh/system/user/getInfo")
+        self.login_url = build_zhksh_url(self.login_path)
+        self.validate_url = build_zhksh_url(self.validate_path)
+        self.target_host = urlparse(self.base_url).netloc
+        self.session_ttl = timedelta(hours=int(config.get("session_ttl_hours") or 4))
+        self.validate_leeway = timedelta(minutes=int(config.get("validate_leeway_minutes") or 30))
+        self.request_timeout = int(config.get("request_timeout_seconds") or 180)
+        self.validation_timeout = (
+            float(config.get("validation_connect_timeout_seconds") or 3),
+            float(config.get("validation_read_timeout_seconds") or 10),
+        )
 
-        # 只在会话接近过期时才进行网络验证（剩余30分钟时）
-        time_until_expiry = timedelta(hours=4) - (datetime.now() - self.last_login_time)
-        if time_until_expiry > timedelta(minutes=30):
-            # 会话仍然有效，不需要网络验证
-            return False
-
-        # 只有在会话即将过期时才进行网络验证
-        try:
-            test_session = self._create_session_with_cookie()
-            # 尝试访问一个接口来验证会话
-            test_response = test_session.get(f"http://{self.target_host}/zhksh/system/user/getInfo",
-                                          timeout=(3.05, 10))  # 连接超时3.05秒，读取超时10秒
-            if test_response.status_code != 200:
-                logging.info("会话已失效，需要重新登录")
-                return True
-            else:
-                # 会话仍然有效，更新登录时间
-                self.last_login_time = datetime.now()
-                return False
-        except requests.exceptions.Timeout:
-            logging.warning("验证会话有效性时超时，认为会话失效")
-            return True
-        except Exception as e:
-            logging.warning(f"验证会话有效性时发生错误: {e}")
-            return True
-
-    def _create_session_with_cookie(self):
-        """
-        创建一个新的会话并设置Cookie
-        """ 
+    def _create_session(self) -> requests.Session:
         session = requests.Session()
-        session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.146 Safari/537.36",
-            "X-Requested-With": "XMLHttpRequest"
-        })
+        session.headers.update(
+            {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "X-Requested-With": "XMLHttpRequest",
+            }
+        )
         return session
 
-    def _login(self):
-        """
-        执行登录操作，包含失败处理和重试限制
-        """
-        # 检查是否在冷却期内
-        if (self.last_login_failure_time and
-            datetime.now() - self.last_login_failure_time < self.login_failure_cooldown):
-            time_remaining = self.login_failure_cooldown - (datetime.now() - self.last_login_failure_time)
-            logging.warning(f"登录失败后冷却期，还需等待 {time_remaining.total_seconds():.1f} 秒")
-            raise Exception(f"登录失败后冷却期，请稍后再试")
+    def _clear_session(self) -> None:
+        self.session = None
+        self.last_login_time = None
+
+    def _is_target_url(self, url: str) -> bool:
+        return bool(self.target_host and self.target_host in str(url or ""))
+
+    def _looks_like_login_page(self, response: requests.Response) -> bool:
+        if response.status_code == 401:
+            return True
+
+        response_url = str(getattr(response, "url", "") or "").lower()
+        if "/login" in response_url and "zhksh" in response_url:
+            return True
+
+        content_type = str(response.headers.get("Content-Type", "") or "").lower()
+        if "html" not in content_type:
+            return False
+
+        sample = str(getattr(response, "text", "") or "")[:3000]
+        markers = ["/zhksh/login", 'name="username"', 'name="password"', "rememberMe", "login"]
+        return any(marker in sample for marker in markers)
+
+    def _is_session_expired(self) -> bool:
+        if self.session is None or self.last_login_time is None:
+            return True
+
+        elapsed = datetime.now() - self.last_login_time
+        if elapsed >= self.session_ttl:
+            return True
+
+        if self.session_ttl - elapsed > self.validate_leeway:
+            return False
 
         try:
-            # 创建新的会话
-            session = self._create_session_with_cookie()
+            response = self.session.get(self.validate_url, timeout=self.validation_timeout)
+            if response.status_code != 200 or self._looks_like_login_page(response):
+                logger.info("Existing zhksh session is no longer valid, will relogin.")
+                return True
 
-            # 准备登录数据
-            login_data = {
-                'username': self.username,
-                'password': self.password,
-                'rememberMe': True,
-                'isPkiLogin': False,
-                'isAccLogin': True,
-                'isSmsLogin': False
-            }
+            self.last_login_time = datetime.now()
+            return False
+        except requests.exceptions.Timeout:
+            logger.warning("Timed out while validating zhksh session, treat as expired.")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to validate zhksh session: %s", exc)
+            return True
 
-            # 执行登录请求
-            response = session.post(self.login_url, data=login_data, timeout=180)
-            # 移除 response.raise_for_status()，因为我们将在下面手动处理状态码
+    def get_session(self, force: bool = False) -> Optional[requests.Session]:
+        with self.lock:
+            if force:
+                self._clear_session()
+            if self.session is None or self._is_session_expired():
+                logger.info("zhksh session missing or expired, logging in on demand.")
+                self._login(force=True)
+            return self.session
 
-            # 验证登录是否成功（检查响应内容）
-            logging.info(f"登录响应状态码: {response.status_code}")
-            logging.info(f"登录响应头: {dict(response.headers)}")
+    def _login(self, force: bool = False) -> None:
+        if not force and self.session is not None and not self._is_session_expired():
+            return
 
-            # 尝试获取响应内容用于调试
-            preferred = None
+        if (
+            self.last_login_failure_time
+            and datetime.now() - self.last_login_failure_time < self.login_failure_cooldown
+        ):
+            remaining = self.login_failure_cooldown - (datetime.now() - self.last_login_failure_time)
+            raise Exception(f"Login cooldown active, retry after {remaining.total_seconds():.1f}s")
+
+        with self._login_lock:
+            if not force and self.session is not None and not self._is_session_expired():
+                return
+
             try:
-                preferred = response.apparent_encoding
-            except Exception:
+                session = self._create_session()
+                login_data = {
+                    "username": self.username,
+                    "password": self.password,
+                    "rememberMe": True,
+                    "isPkiLogin": False,
+                    "isAccLogin": True,
+                    "isSmsLogin": False,
+                }
+                response = session.post(self.login_url, data=login_data, timeout=self.request_timeout)
                 preferred = None
-            response_text, used_encoding = _decode_response_text(response.content, preferred=preferred)
-            # 让后续 response.json()/response.text 使用同一编码（如对方声明错误，这里会覆盖）
-            if used_encoding and not used_encoding.endswith("(replace)"):
-                response.encoding = used_encoding
-            logging.info(f"登录响应内容前200字符: {response_text[:200]}")
+                try:
+                    preferred = response.apparent_encoding
+                except Exception:  # noqa: BLE001
+                    preferred = None
+                response_text, used_encoding = _decode_response_text(response.content, preferred=preferred)
+                if used_encoding and not used_encoding.endswith("(replace)"):
+                    response.encoding = used_encoding
 
-            login_success = False
-            error_msg = "登录失败"
+                login_success = self._is_login_success(response, response_text)
+                if not login_success:
+                    raise Exception(self._extract_login_error(response, response_text))
 
-            # 方法1：检查响应内容是否包含成功标识
-            if response_text and ("操作成功" in response_text or "登录成功" in response_text):
-                login_success = True
-                logging.info("登录成功（响应内容包含成功标识）")
-
-            # 方法2：尝试解析JSON响应
-            try:
-                response_data = response.json()
-                logging.info(f"解析JSON响应成功: {response_data}")
-
-                # 检查多种成功标识
-                if (response_data.get('code') == 200 or
-                    response_data.get('code') == 0 or
-                    response_data.get('success') is True or
-                    response_data.get('msg') == "操作成功" or
-                    response_data.get('message') == "操作成功"):
-                    login_success = True
-                    logging.info("登录成功（JSON响应验证通过）")
-                else:
-                    error_msg = response_data.get('msg') or response_data.get('message') or "登录失败"
-                    logging.warning(f"JSON响应显示登录失败: {error_msg}")
-
-            except (ValueError, KeyError) as e:
-                logging.warning(f"JSON解析失败: {e}")
-                # 如果JSON解析失败，检查状态码
-                if response.status_code == 200:
-                    login_success = True
-                    logging.info("登录成功（基于状态码200）")
-                else:
-                    error_msg = f"响应解析失败，状态码: {response.status_code}"
-
-            # 方法3：检查状态码
-            if not login_success and response.status_code == 200:
-                login_success = True
-                logging.info("登录成功（最终基于状态码200）")
-
-            # 根据验证结果处理
-            if login_success:
                 self.session = session
                 self.last_login_time = datetime.now()
-                # 重置失败计数器
                 self.login_failure_count = 0
                 self.last_login_failure_time = None
-                logging.info("登录会话已建立")
-            else:
-                raise Exception(error_msg)
+                self.login_failure_cooldown = timedelta(minutes=1)
+                logger.info("zhksh login succeeded, session is ready.")
+            except requests.exceptions.Timeout as exc:
+                self._record_login_failure()
+                raise Exception("Login request timed out") from exc
+            except Exception:
+                self._record_login_failure()
+                raise
 
-        except requests.exceptions.Timeout:
-            error_msg = f"登录请求超时"
-            logging.error(error_msg)
-            self._record_login_failure()
-            raise Exception(error_msg)
-        except Exception as e:
-            error_msg = f"登录过程中发生错误: {e}"
-            logging.error(error_msg)
-            self._record_login_failure()
-            raise Exception(error_msg)
+    def _is_login_success(self, response: requests.Response, response_text: str) -> bool:
+        text = str(response_text or "")
+        if text and ("操作成功" in text or "登录成功" in text):
+            return True
 
-    def _record_login_failure(self):
-        """
-        记录登录失败信息
-        """
+        try:
+            payload = response.json()
+        except Exception:  # noqa: BLE001
+            payload = None
+
+        if isinstance(payload, dict):
+            if (
+                payload.get("code") in {0, 200}
+                or payload.get("success") is True
+                or payload.get("msg") == "操作成功"
+                or payload.get("message") == "操作成功"
+            ):
+                return True
+
+        return response.status_code == 200 and not self._looks_like_login_page(response)
+
+    def _extract_login_error(self, response: requests.Response, response_text: str) -> str:
+        try:
+            payload = response.json()
+        except Exception:  # noqa: BLE001
+            payload = None
+
+        if isinstance(payload, dict):
+            for key in ("msg", "message", "error"):
+                if payload.get(key):
+                    return str(payload[key])
+
+        text = str(response_text or "").strip()
+        if text:
+            return text[:200]
+        return f"Login failed with status {response.status_code}"
+
+    def _record_login_failure(self) -> None:
         self.login_failure_count += 1
         self.last_login_failure_time = datetime.now()
 
-        # 如果失败次数过多，延长冷却时间
-        if self.login_failure_count > 3:
-            self.login_failure_cooldown = timedelta(minutes=5)  # 5次失败后冷却5分钟
-        elif self.login_failure_count > 5:
-            self.login_failure_cooldown = timedelta(minutes=15)  # 6次失败后冷却15分钟
+        if self.login_failure_count > 5:
+            self.login_failure_cooldown = timedelta(minutes=15)
+        elif self.login_failure_count > 3:
+            self.login_failure_cooldown = timedelta(minutes=5)
+        else:
+            self.login_failure_cooldown = timedelta(minutes=1)
 
-        logging.warning(f"登录失败次数: {self.login_failure_count}，冷却时间: {self.login_failure_cooldown.total_seconds():.1f}秒")
+        logger.warning(
+            "zhksh login failed count=%s cooldown=%ss",
+            self.login_failure_count,
+            self.login_failure_cooldown.total_seconds(),
+        )
 
-    def test_login(self):
-        """
-        测试登录功能，用于调试
-        """
+    def test_login(self) -> bool:
         try:
-            logging.info("开始测试登录功能...")
-            # 强制清除当前会话
-            self.session = None
-            # 尝试登录
-            self._login()
-            # 验证会话
-            if self.session:
-                logging.info("登录测试成功！")
-                return True
-            else:
-                logging.error("登录测试失败：没有建立会话")
-                return False
-        except Exception as e:
-            logging.error(f"登录测试失败: {e}")
+            self._clear_session()
+            self._login(force=True)
+            return self.session is not None
+        except Exception as exc:  # noqa: BLE001
+            logger.error("zhksh login test failed: %s", exc)
             return False
 
-    def make_request(self, method, url, **kwargs):
-        """
-        使用全局会话发起请求
-        如果请求失败，会自动重新登录并重试
-        """
-        session = self.get_session()
-        
-        try:
-            # 检查URL是否是目标主机
-            if self.target_host in url:
-                # 为所有请求添加超时设置，优先使用kwargs中的超时，否则使用180秒
-                if 'timeout' not in kwargs:
-                    kwargs['timeout'] = 180
+    def make_request(self, method: str, url: str, **kwargs) -> requests.Response:
+        if not self._is_target_url(url):
+            kwargs.setdefault("timeout", self.request_timeout)
+            return requests.request(method, url, **kwargs)
 
-                response = session.request(method, url, **kwargs)
-
-                # 检查响应是否表明会话已失效（比如返回登录页面或401状态码）
-                if response.status_code == 401 or "login" in response.url.lower():
-                    logging.info("请求失败，会话可能已失效，正在重新登录...")
-                    # 强制清除当前会话
-                    self.session = None
-                    self._login()  # 重新登录
-                    session = self.get_session()  # 获取新的会话
-                    # 重试时也添加超时设置
-                    if 'timeout' not in kwargs:
-                        kwargs['timeout'] = 180
-                    # 只重试一次，避免无限重试
-                    try:
-                        response = session.request(method, url, **kwargs)  # 重新请求
-                    except Exception as retry_error:
-                        logging.error(f"重新登录后重试失败: {retry_error}")
-                        raise Exception(f"会话失效且重试失败: {retry_error}")
-
-                return response
-            else:
-                # 如果不是目标主机的请求，直接发起原生请求
-                if 'timeout' not in kwargs:
-                    kwargs['timeout'] = 180
-                return requests.request(method, url, **kwargs)
-
-        except requests.exceptions.Timeout:
-            logging.error(f"请求超时: {url}")
-            raise
-        except Exception as e:
-            logging.error(f"请求失败: {e}")
-
-            # 如果请求失败，尝试重新登录后重试（仅限一次）
-            logging.warning(f"请求失败，尝试重新登录后重试: {url}")
+        last_error: Optional[Exception] = None
+        for attempt in range(2):
             try:
-                # 强制清除当前会话
-                self.session = None
-                self._login()
-                session = self.get_session()
-                # 重试时也添加超时设置
-                if 'timeout' not in kwargs:
-                    kwargs['timeout'] = 180
+                session = self.get_session(force=attempt > 0)
+                kwargs.setdefault("timeout", self.request_timeout)
                 response = session.request(method, url, **kwargs)
-                return response
+                if not self._looks_like_login_page(response):
+                    return response
+
+                logger.info("zhksh request hit login page, forcing relogin: %s", url)
+                self._clear_session()
+                last_error = Exception("Session expired and redirected to login page")
             except requests.exceptions.Timeout:
-                logging.error(f"重新登录后请求仍然超时: {url}")
-                raise Exception(f"请求超时且重试失败: {url}")
-            except Exception as retry_error:
-                logging.error(f"重新登录后请求仍然失败: {retry_error}")
-                raise Exception(f"请求失败且重试失败: {retry_error}")
+                logger.error("zhksh request timed out: %s", url)
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.error("zhksh request failed on attempt %s: %s", attempt + 1, exc)
+                self._clear_session()
+                last_error = exc
+
+        raise Exception(f"Request failed after relogin: {last_error}")
 
 
-# 全局会话管理器实例
 session_manager = SessionManager()

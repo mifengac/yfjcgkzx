@@ -18,7 +18,6 @@ from io import BytesIO, StringIO
 from typing import Any, Dict, List, Tuple
 from urllib.parse import parse_qs, unquote_plus, urlparse
 
-import requests
 from flask import (
     Blueprint,
     Response,
@@ -207,8 +206,6 @@ def request_data() -> Response:
     if not url:
         return jsonify({"success": False, "message": "请求链接不能为空"}), 400
 
-    session = session_manager.get_session() or requests.Session()
-
     default_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/122.0 Safari/537.36",
@@ -236,7 +233,7 @@ def request_data() -> Response:
     )
 
     try:
-        response = session.request(
+        response = session_manager.make_request(
             method=method,
             url=url,
             headers=default_headers,
@@ -430,8 +427,6 @@ def download_result_v2() -> Response:
     if not url:
         return jsonify({"success": False, "message": "è¯·æ±‚é“¾æŽ¥ä¸èƒ½ä¸ºç©º"}), 400
 
-    session = session_manager.get_session() or requests.Session()
-
     default_headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -458,7 +453,7 @@ def download_result_v2() -> Response:
     log_info(f"ä¸‹è½½å¯¼å‡ºï¼šä»£ç†è¯·æ±‚ {method} {url}, params={parsed_params}")
 
     try:
-        response = session.request(
+        response = session_manager.make_request(
             method=method,
             url=url,
             headers=default_headers,

@@ -5,7 +5,7 @@ from collections import defaultdict
 import openpyxl
 from openpyxl import Workbook
 
-from .jingqing_api_client import api_client
+from gonggong.service.upstream_jingqing_client import api_client
 
 
 def haversine_distance(lng1, lat1, lng2, lat2):

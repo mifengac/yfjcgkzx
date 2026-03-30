@@ -1,9 +1,8 @@
-// 街面三类警情：地址分类（前端逻辑）
-
 let _jiemiansanleiState = {
   page: 1,
   pageSize: 20,
   total: 0,
+  filterKey: "",
 };
 
 let _jiemiansanleiInited = false;
@@ -24,16 +23,19 @@ function jiemiansanleiInit() {
   document.addEventListener("click", function (e) {
     const menu = document.getElementById("jiemiansanleiExportMenu");
     const btn = e.target && e.target.closest ? e.target.closest("button") : null;
-    if (!menu) return;
-    if (btn && btn.innerText === "导出") return;
-    if (menu.contains(e.target)) return;
-    menu.style.display = "none";
+    if (menu) {
+      if (btn && btn.innerText === "导出") {
+        return;
+      }
+      if (!menu.contains(e.target)) {
+        menu.style.display = "none";
+      }
+    }
 
-    // 点击空白处关闭下拉多选
-    document.querySelectorAll(".ms-panel").forEach((p) => {
-      const root = p.closest(".ms");
+    document.querySelectorAll(".ms-panel").forEach((panel) => {
+      const root = panel.closest(".ms");
       if (root && root.contains(e.target)) return;
-      p.style.display = "none";
+      panel.style.display = "none";
     });
   });
 }
@@ -70,11 +72,9 @@ function jiemiansanleiSetDefaultHbTimeRange() {
   const endEl = document.getElementById("jiemiansanleiEndTime");
   if (!hbStartEl || !hbEndEl) return;
 
-  let baseEnd;
+  let baseEnd = new Date();
   if (endEl && endEl.value) {
     baseEnd = new Date(endEl.value);
-  } else {
-    baseEnd = new Date();
   }
   baseEnd.setHours(0, 0, 0, 0);
 
@@ -142,8 +142,8 @@ function initMultiSelect(containerId, options) {
   panel.id = containerId + "-panel";
 
   btn.addEventListener("click", function () {
-    document.querySelectorAll(".ms-panel").forEach((p) => {
-      if (p.id !== panel.id) p.style.display = "none";
+    document.querySelectorAll(".ms-panel").forEach((other) => {
+      if (other.id !== panel.id) other.style.display = "none";
     });
     panel.style.display = panel.style.display === "block" ? "none" : "block";
   });
@@ -185,14 +185,14 @@ function setMultiSelectOptions(containerId, options) {
 function getMultiSelectValues(containerId) {
   const panel = document.getElementById(containerId + "-panel");
   if (!panel) return [];
-  return Array.from(panel.querySelectorAll("input[type='checkbox']:checked")).map((x) => x.value);
+  return Array.from(panel.querySelectorAll("input[type='checkbox']:checked")).map((item) => item.value);
 }
 
 function updateMultiSelectText(containerId) {
   const textEl = document.getElementById(containerId + "-text");
   if (!textEl) return;
   const values = getMultiSelectValues(containerId);
-  textEl.textContent = values.length ? values.join("，") : "请选择";
+  textEl.textContent = values.length ? values.join("、") : "请选择";
 }
 
 function showJiemiansanleiMessage(message, type) {
@@ -205,7 +205,7 @@ function showJiemiansanleiMessage(message, type) {
 
 function jiemiansanleiLoadCaseTypes() {
   fetch("/xunfang/jiemiansanlei/case_types")
-    .then((r) => r.json())
+    .then((response) => response.json())
     .then((data) => {
       if (!data || !data.success) {
         showJiemiansanleiMessage((data && data.message) || "加载警情性质失败", "error");
@@ -213,10 +213,10 @@ function jiemiansanleiLoadCaseTypes() {
       }
       setMultiSelectOptions(
         "jiemiansanleiCaseTypesMs",
-        (data.data || []).map((t) => ({ value: t, label: t, checked: false }))
+        (data.data || []).map((item) => ({ value: item, label: item, checked: false }))
       );
     })
-    .catch((e) => showJiemiansanleiMessage("加载警情性质失败: " + e, "error"));
+    .catch((error) => showJiemiansanleiMessage("加载警情性质失败: " + error, "error"));
 }
 
 function toggleJiemiansanleiExportMenu() {
@@ -225,32 +225,73 @@ function toggleJiemiansanleiExportMenu() {
   menu.style.display = menu.style.display === "none" ? "block" : "none";
 }
 
-function jiemiansanleiQuery(page) {
-  const startTime = document.getElementById("jiemiansanleiStartTime").value;
-  const endTime = document.getElementById("jiemiansanleiEndTime").value;
-  const leixingList = getMultiSelectValues("jiemiansanleiCaseTypesMs");
-  const yuanshiquerenList = getMultiSelectValues("jiemiansanleiSourcesMs");
-  const pageSizeRaw = document.getElementById("jiemiansanleiPageSize").value || "20";
+function _getJiemiansanleiPageSizeRaw() {
+  const el = document.getElementById("jiemiansanleiPageSize");
+  return (el && el.value) || "20";
+}
 
-  if (!startTime || !endTime) {
+function _getJiemiansanleiFilters() {
+  return {
+    startTime: document.getElementById("jiemiansanleiStartTime").value,
+    endTime: document.getElementById("jiemiansanleiEndTime").value,
+    hbStartTime: document.getElementById("jiemiansanleiHbStartTime").value,
+    hbEndTime: document.getElementById("jiemiansanleiHbEndTime").value,
+    leixingList: getMultiSelectValues("jiemiansanleiCaseTypesMs"),
+    yuanshiquerenList: getMultiSelectValues("jiemiansanleiSourcesMs"),
+    streetOnly: !!(document.getElementById("jiemiansanleiStreetOnly") || {}).checked,
+    minorOnly: !!(document.getElementById("jiemiansanleiMinorOnly") || {}).checked,
+    pageSizeRaw: _getJiemiansanleiPageSizeRaw(),
+  };
+}
+
+function _buildJiemiansanleiFilterKey(filters) {
+  return JSON.stringify({
+    startTime: filters.startTime,
+    endTime: filters.endTime,
+    leixingList: filters.leixingList.slice().sort(),
+    yuanshiquerenList: filters.yuanshiquerenList.slice().sort(),
+    streetOnly: filters.streetOnly,
+    minorOnly: filters.minorOnly,
+    pageSizeRaw: filters.pageSizeRaw,
+  });
+}
+
+function _validateJiemiansanleiQueryFilters(filters) {
+  if (!filters.startTime || !filters.endTime) {
     showJiemiansanleiMessage("请填写完整的时间范围", "error");
-    return;
+    return false;
   }
-  if (new Date(startTime) > new Date(endTime)) {
+  if (new Date(filters.startTime) > new Date(filters.endTime)) {
     showJiemiansanleiMessage("开始时间不能晚于结束时间", "error");
-    return;
+    return false;
   }
-  if (!leixingList.length) {
+  if (!filters.leixingList.length) {
     showJiemiansanleiMessage("请至少选择一个警情性质", "error");
-    return;
+    return false;
   }
-  if (!yuanshiquerenList.length) {
-    showJiemiansanleiMessage("请至少选择一个 yuanshiqueren（原始/确认）", "error");
+  if (!filters.yuanshiquerenList.length) {
+    showJiemiansanleiMessage("请至少选择一个警情性质口径", "error");
+    return false;
+  }
+  return true;
+}
+
+function jiemiansanleiQuery(page) {
+  const filters = _getJiemiansanleiFilters();
+  if (!_validateJiemiansanleiQueryFilters(filters)) {
     return;
   }
 
-  const pageSize = pageSizeRaw === "all" ? "all" : parseInt(pageSizeRaw, 10);
-  _jiemiansanleiState.page = page ? parseInt(page, 10) : 1;
+  const pageSize = filters.pageSizeRaw === "all" ? "all" : parseInt(filters.pageSizeRaw, 10);
+  const filterKey = _buildJiemiansanleiFilterKey(filters);
+
+  if (typeof page === "number") {
+    _jiemiansanleiState.page = Math.max(1, parseInt(page, 10));
+  } else if (_jiemiansanleiState.filterKey !== filterKey) {
+    _jiemiansanleiState.page = 1;
+  }
+
+  _jiemiansanleiState.filterKey = filterKey;
   _jiemiansanleiState.pageSize = pageSize;
 
   document.getElementById("jiemiansanleiProgressContainer").style.display = "block";
@@ -261,21 +302,24 @@ function jiemiansanleiQuery(page) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      startTime: jiemiansanleiFormatDateTime(startTime),
-      endTime: jiemiansanleiFormatDateTime(endTime),
-      leixingList: leixingList,
-      yuanshiquerenList: yuanshiquerenList,
+      startTime: jiemiansanleiFormatDateTime(filters.startTime),
+      endTime: jiemiansanleiFormatDateTime(filters.endTime),
+      leixingList: filters.leixingList,
+      yuanshiquerenList: filters.yuanshiquerenList,
       page: _jiemiansanleiState.page,
       pageSize: pageSize,
+      streetOnly: filters.streetOnly,
+      minorOnly: filters.minorOnly,
     }),
   })
-    .then((r) => r.json())
+    .then((response) => response.json())
     .then((resp) => {
       document.getElementById("jiemiansanleiProgressContainer").style.display = "none";
       if (!resp || !resp.success) {
         showJiemiansanleiMessage((resp && resp.message) || "查询失败", "error");
         return;
       }
+
       const data = resp.data || {};
       _jiemiansanleiState.total = data.total || 0;
       _jiemiansanleiState.page = data.page || 1;
@@ -283,37 +327,40 @@ function jiemiansanleiQuery(page) {
       updateJiemiansanleiPager();
       showJiemiansanleiMessage("查询完成，共 " + _jiemiansanleiState.total + " 条", "success");
     })
-    .catch((e) => {
+    .catch((error) => {
       document.getElementById("jiemiansanleiProgressContainer").style.display = "none";
-      showJiemiansanleiMessage("查询失败: " + e, "error");
+      showJiemiansanleiMessage("查询失败: " + error, "error");
     });
 }
 
 function renderJiemiansanleiTable(rows) {
   const container = document.getElementById("jiemiansanleiResultTable");
-  if (!container) return;
+  const resultContainer = document.getElementById("jiemiansanleiResultContainer");
+  if (!container || !resultContainer) return;
 
   if (!rows.length) {
     container.innerHTML = "<p>暂无数据</p>";
-    document.getElementById("jiemiansanleiResultContainer").style.display = "block";
+    resultContainer.style.display = "block";
     return;
   }
 
   const headers = Object.keys(rows[0]);
-  let html = '<table><thead><tr>';
-  headers.forEach((h) => (html += "<th>" + h + "</th>"));
+  let html = "<table><thead><tr>";
+  headers.forEach((header) => {
+    html += "<th>" + escapeHtml(header) + "</th>";
+  });
   html += "</tr></thead><tbody>";
-  rows.forEach((r) => {
+  rows.forEach((row) => {
     html += "<tr>";
-    headers.forEach((h) => {
-      const v = r[h] == null ? "" : String(r[h]);
-      html += "<td>" + escapeHtml(v) + "</td>";
+    headers.forEach((header) => {
+      const value = row[header] == null ? "" : String(row[header]);
+      html += "<td>" + escapeHtml(value) + "</td>";
     });
     html += "</tr>";
   });
   html += "</tbody></table>";
   container.innerHTML = html;
-  document.getElementById("jiemiansanleiResultContainer").style.display = "block";
+  resultContainer.style.display = "block";
 }
 
 function escapeHtml(unsafe) {
@@ -321,7 +368,7 @@ function escapeHtml(unsafe) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
 
@@ -335,8 +382,8 @@ function updateJiemiansanleiPager() {
     pageInfo.innerText = "全部";
     return;
   }
-  pager.style.display = "flex";
 
+  pager.style.display = "flex";
   const size = _jiemiansanleiState.pageSize || 20;
   const totalPages = Math.max(1, Math.ceil((_jiemiansanleiState.total || 0) / size));
   pageInfo.innerText = "第 " + _jiemiansanleiState.page + " / " + totalPages + " 页";
@@ -344,30 +391,21 @@ function updateJiemiansanleiPager() {
 
 function jiemiansanleiPrevPage() {
   if (_jiemiansanleiState.pageSize === "all") return;
-  const p = Math.max(1, (_jiemiansanleiState.page || 1) - 1);
-  jiemiansanleiQuery(p);
+  const page = Math.max(1, (_jiemiansanleiState.page || 1) - 1);
+  jiemiansanleiQuery(page);
 }
 
 function jiemiansanleiNextPage() {
   if (_jiemiansanleiState.pageSize === "all") return;
   const size = _jiemiansanleiState.pageSize || 20;
   const totalPages = Math.max(1, Math.ceil((_jiemiansanleiState.total || 0) / size));
-  const p = Math.min(totalPages, (_jiemiansanleiState.page || 1) + 1);
-  jiemiansanleiQuery(p);
+  const page = Math.min(totalPages, (_jiemiansanleiState.page || 1) + 1);
+  jiemiansanleiQuery(page);
 }
 
 function jiemiansanleiExport(fmt) {
-  const startTime = document.getElementById("jiemiansanleiStartTime").value;
-  const endTime = document.getElementById("jiemiansanleiEndTime").value;
-  const leixingList = getMultiSelectValues("jiemiansanleiCaseTypesMs");
-  const yuanshiquerenList = getMultiSelectValues("jiemiansanleiSourcesMs");
-
-  if (!startTime || !endTime) {
-    showJiemiansanleiMessage("请填写完整的时间范围", "error");
-    return;
-  }
-  if (!leixingList.length || !yuanshiquerenList.length) {
-    showJiemiansanleiMessage("请先选择警情性质与 yuanshiqueren", "error");
+  const filters = _getJiemiansanleiFilters();
+  if (!_validateJiemiansanleiQueryFilters(filters)) {
     return;
   }
 
@@ -378,66 +416,65 @@ function jiemiansanleiExport(fmt) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      startTime: jiemiansanleiFormatDateTime(startTime),
-      endTime: jiemiansanleiFormatDateTime(endTime),
-      leixingList: leixingList,
-      yuanshiquerenList: yuanshiquerenList,
+      startTime: jiemiansanleiFormatDateTime(filters.startTime),
+      endTime: jiemiansanleiFormatDateTime(filters.endTime),
+      leixingList: filters.leixingList,
+      yuanshiquerenList: filters.yuanshiquerenList,
       format: fmt,
+      streetOnly: filters.streetOnly,
+      minorOnly: filters.minorOnly,
     }),
   })
     .then((resp) => {
       if (!resp.ok) {
-        return resp.json().then((j) => {
-          throw new Error((j && j.message) || "导出失败");
+        return resp.json().then((payload) => {
+          throw new Error((payload && payload.message) || "导出失败");
         });
       }
-      const cd = resp.headers.get("content-disposition") || "";
-      return resp.blob().then((blob) => ({ blob, cd }));
+      const contentDisposition = resp.headers.get("content-disposition") || "";
+      return resp.blob().then((blob) => ({ blob, contentDisposition }));
     })
-    .then(({ blob, cd }) => {
-      const a = document.createElement("a");
+    .then(({ blob, contentDisposition }) => {
+      const link = document.createElement("a");
       const url = window.URL.createObjectURL(blob);
-      a.href = url;
-      a.download = parseFilenameFromContentDisposition(cd) || ("街面三类警情地址分类." + fmt);
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      link.href = url;
+      link.download =
+        parseFilenameFromContentDisposition(contentDisposition) || ("街面三类警情地址分类." + fmt);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       window.URL.revokeObjectURL(url);
       showJiemiansanleiMessage("导出完成", "success");
     })
-    .catch((e) => showJiemiansanleiMessage("导出失败: " + e.message, "error"));
+    .catch((error) => showJiemiansanleiMessage("导出失败: " + error.message, "error"));
 }
 
-function parseFilenameFromContentDisposition(cd) {
-  if (!cd) return "";
-  const m = cd.match(/filename\\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i);
-  const name = (m && (m[1] || m[2])) || "";
+function parseFilenameFromContentDisposition(contentDisposition) {
+  if (!contentDisposition) return "";
+  const matched = contentDisposition.match(/filename\\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+  const filename = (matched && (matched[1] || matched[2])) || "";
   try {
-    return decodeURIComponent(name);
-  } catch (e) {
-    return name;
+    return decodeURIComponent(filename);
+  } catch (error) {
+    return filename;
   }
 }
 
 function jiemiansanleiExportReport() {
-  const startTime = document.getElementById("jiemiansanleiStartTime").value;
-  const endTime = document.getElementById("jiemiansanleiEndTime").value;
-  const hbStartTime = document.getElementById("jiemiansanleiHbStartTime").value;
-  const hbEndTime = document.getElementById("jiemiansanleiHbEndTime").value;
-
-  if (!startTime || !endTime) {
+  const filters = _getJiemiansanleiFilters();
+  if (!filters.startTime || !filters.endTime) {
     showJiemiansanleiMessage("请填写完整的时间范围", "error");
     return;
   }
-  if (!hbStartTime || !hbEndTime) {
+  if (!filters.hbStartTime || !filters.hbEndTime) {
     showJiemiansanleiMessage("请填写完整的环比时间范围", "error");
     return;
   }
-  if (new Date(startTime) > new Date(endTime)) {
+  if (new Date(filters.startTime) > new Date(filters.endTime)) {
     showJiemiansanleiMessage("开始时间不能晚于结束时间", "error");
     return;
   }
-  if (new Date(hbStartTime) > new Date(hbEndTime)) {
+  if (new Date(filters.hbStartTime) > new Date(filters.hbEndTime)) {
     showJiemiansanleiMessage("环比开始不能晚于环比结束", "error");
     return;
   }
@@ -448,40 +485,40 @@ function jiemiansanleiExportReport() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      startTime: jiemiansanleiFormatDateTime(startTime),
-      endTime: jiemiansanleiFormatDateTime(endTime),
-      hbStartTime: jiemiansanleiFormatDateTime(hbStartTime),
-      hbEndTime: jiemiansanleiFormatDateTime(hbEndTime),
+      startTime: jiemiansanleiFormatDateTime(filters.startTime),
+      endTime: jiemiansanleiFormatDateTime(filters.endTime),
+      hbStartTime: jiemiansanleiFormatDateTime(filters.hbStartTime),
+      hbEndTime: jiemiansanleiFormatDateTime(filters.hbEndTime),
+      minorOnly: filters.minorOnly,
     }),
   })
     .then((resp) => {
       if (!resp.ok) {
-        return resp.json().then((j) => {
-          throw new Error((j && j.message) || "导出报表失败");
+        return resp.json().then((payload) => {
+          throw new Error((payload && payload.message) || "导出报表失败");
         });
       }
-      const cd = resp.headers.get("content-disposition") || "";
-      return resp.blob().then((blob) => ({ blob, cd }));
+      const contentDisposition = resp.headers.get("content-disposition") || "";
+      return resp.blob().then((blob) => ({ blob, contentDisposition }));
     })
-    .then(({ blob, cd }) => {
-      const a = document.createElement("a");
+    .then(({ blob, contentDisposition }) => {
+      const link = document.createElement("a");
       const url = window.URL.createObjectURL(blob);
-      a.href = url;
+      link.href = url;
       const fallbackName = (
-        jiemiansanleiFormatDateTime(startTime) +
+        jiemiansanleiFormatDateTime(filters.startTime) +
         "-" +
-        jiemiansanleiFormatDateTime(endTime) +
+        jiemiansanleiFormatDateTime(filters.endTime) +
         "_街面三类警情统计表.xlsx"
       )
         .replace(/[:\\/]/g, "-")
         .replace(/\s+/g, "_");
-      a.download =
-        parseFilenameFromContentDisposition(cd) || fallbackName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      link.download = parseFilenameFromContentDisposition(contentDisposition) || fallbackName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       window.URL.revokeObjectURL(url);
       showJiemiansanleiMessage("导出报表完成", "success");
     })
-    .catch((e) => showJiemiansanleiMessage("导出报表失败: " + e.message, "error"));
+    .catch((error) => showJiemiansanleiMessage("导出报表失败: " + error.message, "error"));
 }

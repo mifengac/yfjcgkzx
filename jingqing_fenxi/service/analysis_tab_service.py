@@ -2,7 +2,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-from jingqing_fenxi.service.jingqing_api_client import api_client
+from gonggong.service.upstream_jingqing_client import api_client
 from jingqing_fenxi.service.jingqing_fenxi_service import (
     calc_duty_dept,
     calc_repeat_address,

@@ -145,6 +145,10 @@
             min-width: 220px;
         }
 
+        .ms-wide {
+            min-width: 420px;
+        }
+
         .ms-btn {
             width: 100%;
             padding: 8px;
@@ -160,14 +164,18 @@
             position: absolute;
             top: 40px;
             left: 0;
-            right: 0;
+            min-width: 100%;
+            width: max-content;
+            max-width: 620px;
             background: white;
             border: 1px solid #ddd;
             border-radius: 4px;
             max-height: 220px;
-            overflow: auto;
+            overflow-x: auto;
+            overflow-y: auto;
             z-index: 20;
             padding: 6px 8px;
+            box-sizing: border-box;
         }
 
         .ms-option {

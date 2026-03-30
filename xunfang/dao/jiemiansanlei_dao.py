@@ -1,13 +1,7 @@
-"""
-街面三类警情（地址分类）数据访问层。
-
-从人大金仓（PostgreSQL 协议）读取警情数据与警情性质配置。
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 
 from gonggong.config.database import get_database_connection
 
@@ -15,29 +9,79 @@ SourceType = Literal["原始", "确认"]
 
 
 @dataclass(frozen=True)
-class JiemianSanleiQuery:
+class JiemianSanleiDbQuery:
     start_time: str
     end_time: str
     leixing_list: Sequence[str]
     source_list: Sequence[SourceType]
+    minor_only: bool = False
     limit: Optional[int] = None
     offset: int = 0
 
 
 def list_case_types() -> List[str]:
-    """
-    获取警情性质下拉列表（case_type_config.leixing）。
-    """
     conn = get_database_connection()
     try:
         with conn.cursor() as cur:
             cur.execute('SELECT DISTINCT leixing FROM "ywdata"."case_type_config" ORDER BY leixing')
-            return [row[0] for row in cur.fetchall() if row and row[0] is not None]
+            return [str(row[0]).strip() for row in cur.fetchall() if row and str(row[0]).strip()]
     finally:
         conn.close()
 
 
-def count_jingqings(query: JiemianSanleiQuery) -> int:
+def get_case_type_code_map(leixing_list: Optional[Sequence[str]] = None) -> Dict[str, List[str]]:
+    sql = 'SELECT leixing, newcharasubclass_list FROM "ywdata"."case_type_config"'
+    params: List[object] = []
+
+    normalized_leixing = [str(item).strip() for item in (leixing_list or []) if str(item).strip()]
+    if normalized_leixing:
+        sql += " WHERE leixing = ANY(%s)"
+        params.append(normalized_leixing)
+    sql += " ORDER BY leixing"
+
+    conn = get_database_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    result: Dict[str, List[str]] = {}
+    for leixing, raw_codes in rows:
+        key = str(leixing or "").strip()
+        if not key:
+            continue
+        result[key] = _normalize_code_list(raw_codes)
+    return result
+
+
+def _normalize_code_list(value: object) -> List[str]:
+    if value is None:
+        return []
+
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{") and text.endswith("}"):
+            text = text[1:-1]
+        raw_items: Iterable[object] = text.split(",") if text else []
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = value
+    else:
+        raw_items = [value]
+
+    codes: List[str] = []
+    seen = set()
+    for item in raw_items:
+        code = str(item or "").strip().strip('"').strip("'")
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        codes.append(code)
+    return codes
+
+
+def count_db_jingqings(query: JiemianSanleiDbQuery) -> int:
     sql, params = _build_union_sql(query, count_only=True)
     conn = get_database_connection()
     try:
@@ -49,7 +93,7 @@ def count_jingqings(query: JiemianSanleiQuery) -> int:
         conn.close()
 
 
-def fetch_jingqings(query: JiemianSanleiQuery) -> List[Dict[str, Any]]:
+def fetch_db_jingqings(query: JiemianSanleiDbQuery) -> List[Dict[str, Any]]:
     sql, params = _build_union_sql(query, count_only=False)
     conn = get_database_connection()
     try:
@@ -62,31 +106,28 @@ def fetch_jingqings(query: JiemianSanleiQuery) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def fetch_jingqings_for_export(
+def fetch_db_jingqings_for_export(
     *,
     start_time: str,
     end_time: str,
     leixing: str,
     source: SourceType,
+    minor_only: bool = False,
 ) -> List[Dict[str, Any]]:
-    query = JiemianSanleiQuery(
-        start_time=start_time,
-        end_time=end_time,
-        leixing_list=[leixing],
-        source_list=[source],
-        limit=None,
-        offset=0,
+    return fetch_db_jingqings(
+        JiemianSanleiDbQuery(
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=[leixing],
+            source_list=[source],
+            minor_only=minor_only,
+            limit=None,
+            offset=0,
+        )
     )
-    return fetch_jingqings(query)
 
 
-def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[str, List[Any]]:
-    """
-    构造 union 查询：
-    - 支持 source 多选（原始/确认）
-    - 支持 leixing 多选
-    - 支持 limit/offset（分页）
-    """
+def _build_union_sql(query: JiemianSanleiDbQuery, *, count_only: bool) -> Tuple[str, List[Any]]:
     selects: List[str] = []
     params: List[Any] = []
 
@@ -113,6 +154,18 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
             subclass_col = "newcharasubclass"
             type_name_col = "newcharasubcategoryname"
 
+        branch_where = [
+            "ctc.leixing = ANY(%s)",
+            "jq.calltime BETWEEN %s AND %s",
+        ]
+        branch_params: List[Any] = [source, leixing_list, query.start_time, query.end_time]
+
+        if query.minor_only:
+            branch_where.append(
+                "(COALESCE(jq.casemark, '') ~ %s OR COALESCE(jq.casemarkok, '') ~ %s)"
+            )
+            branch_params.extend(["未成年", "未成年"])
+
         selects.append(
             f"""
             SELECT
@@ -133,11 +186,10 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
             JOIN LATERAL UNNEST(ctc.newcharasubclass_list) AS subclass(code) ON TRUE
             JOIN "ywdata"."zq_kshddpt_dsjfx_jq" jq
               ON jq.{subclass_col} = subclass.code
-            WHERE ctc.leixing = ANY(%s)
-              AND jq.calltime BETWEEN %s AND %s
+            WHERE {' AND '.join(branch_where)}
             """
         )
-        params.extend([source, leixing_list, query.start_time, query.end_time])
+        params.extend(branch_params)
 
     union_sql = "\nUNION ALL\n".join(selects)
 
@@ -152,5 +204,4 @@ def _build_union_sql(query: JiemianSanleiQuery, *, count_only: bool) -> Tuple[st
     if query.limit is not None:
         final_sql += " LIMIT %s OFFSET %s"
         params.extend([query.limit, query.offset])
-
     return final_sql, params
