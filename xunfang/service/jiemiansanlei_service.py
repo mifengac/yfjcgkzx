@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import threading
 from dataclasses import dataclass
@@ -31,7 +30,6 @@ _PAGE_SIZE = 5000
 
 _MODEL_LOCK = threading.Lock()
 _MODEL_BUNDLE: Optional["ModelBundle"] = None
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -57,17 +55,6 @@ def query_classified(
     street_only: bool = False,
     minor_only: bool = False,
 ) -> Dict[str, Any]:
-    logger.info(
-        "[anchor:jssl-query-start] begin=%s end=%s leixing=%s sources=%s page=%s pageSize=%s streetOnly=%s minorOnly=%s",
-        start_time,
-        end_time,
-        list(leixing_list or []),
-        list(source_list or []),
-        page,
-        page_size,
-        street_only,
-        minor_only,
-    )
     rows = _fetch_rows_for_filters(
         start_time=start_time,
         end_time=end_time,
@@ -76,22 +63,13 @@ def query_classified(
         minor_only=minor_only,
     )
     _append_predictions(rows)
-    logger.info("[anchor:jssl-query-after-predict] fetchedRows=%s", len(rows))
 
     if street_only:
         rows = _filter_street_rows(rows)
-        logger.info("[anchor:jssl-query-after-street-filter] filteredRows=%s", len(rows))
 
     total = len(rows)
     current_page = 1 if page_size is None else max(1, int(page or 1))
     page_rows = _paginate_rows(rows, page=current_page, page_size=page_size)
-    logger.info(
-        "[anchor:jssl-query-finish] total=%s currentPage=%s pageSize=%s pageRows=%s",
-        total,
-        current_page,
-        page_size,
-        len(page_rows),
-    )
     return {
         "total": total,
         "page": current_page,
@@ -110,16 +88,6 @@ def export_classified(
     street_only: bool = False,
     minor_only: bool = False,
 ) -> Tuple[bytes, str, str]:
-    logger.info(
-        "[anchor:jssl-export-start] begin=%s end=%s leixing=%s sources=%s fmt=%s streetOnly=%s minorOnly=%s",
-        start_time,
-        end_time,
-        list(leixing_list or []),
-        list(source_list or []),
-        fmt,
-        street_only,
-        minor_only,
-    )
     rows = _fetch_rows_for_filters(
         start_time=start_time,
         end_time=end_time,
@@ -130,7 +98,6 @@ def export_classified(
     _append_predictions(rows)
     if street_only:
         rows = _filter_street_rows(rows)
-    logger.info("[anchor:jssl-export-after-filter] rows=%s", len(rows))
 
     grouped_rows: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for row in rows:
@@ -166,7 +133,6 @@ def export_report(
     end_time: str,
     hb_start_time: str,
     hb_end_time: str,
-    minor_only: bool = False,
 ) -> Tuple[bytes, str, str]:
     try:
         from openpyxl import load_workbook  # type: ignore
@@ -198,44 +164,37 @@ def export_report(
     last_year_window_start = yoy_ytd_start
     last_year_window_end = yoy_ytd_end
 
-    logger.info(
-        "[anchor:jssl-report-start] begin=%s end=%s hbBegin=%s hbEnd=%s minorOnly=%s",
-        start_time,
-        end_time,
-        hb_start_time,
-        hb_end_time,
-        minor_only,
-    )
-    rows_year = fetch_db_jingqings(
-        JiemianSanleiDbQuery(
-            start_time=_format_dt(year_window_start),
-            end_time=_format_dt(year_window_end),
-            leixing_list=REPORT_LEIXING_LIST,
-            source_list=["原始", "确认"],
-            minor_only=minor_only,
-            limit=None,
-            offset=0,
+    rows_year = [
+        _normalize_db_report_row(row)
+        for row in fetch_db_jingqings(
+            JiemianSanleiDbQuery(
+                start_time=_format_dt(year_window_start),
+                end_time=_format_dt(year_window_end),
+                leixing_list=REPORT_LEIXING_LIST,
+                source_list=["原始", "确认"],
+                minor_only=False,
+                limit=None,
+                offset=0,
+            )
         )
-    )
+    ]
     _append_predictions(rows_year)
 
-    rows_last_year = fetch_db_jingqings(
-        JiemianSanleiDbQuery(
-            start_time=_format_dt(last_year_window_start),
-            end_time=_format_dt(last_year_window_end),
-            leixing_list=REPORT_LEIXING_LIST,
-            source_list=["原始", "确认"],
-            minor_only=minor_only,
-            limit=None,
-            offset=0,
+    rows_last_year = [
+        _normalize_db_report_row(row)
+        for row in fetch_db_jingqings(
+            JiemianSanleiDbQuery(
+                start_time=_format_dt(last_year_window_start),
+                end_time=_format_dt(last_year_window_end),
+                leixing_list=REPORT_LEIXING_LIST,
+                source_list=["原始", "确认"],
+                minor_only=False,
+                limit=None,
+                offset=0,
+            )
         )
-    )
+    ]
     _append_predictions(rows_last_year)
-    logger.info(
-        "[anchor:jssl-report-db-fetched] rowsYear=%s rowsLastYear=%s",
-        len(rows_year),
-        len(rows_last_year),
-    )
 
     counts = _build_report_counts(
         rows_year=rows_year,
@@ -298,24 +257,15 @@ def _fetch_rows_for_filters(
 ) -> List[Dict[str, Any]]:
     leixing_values = _normalize_leixing_list(leixing_list)
     if not leixing_values:
-        logger.info("[anchor:jssl-fetch-rows-empty-leixing] no leixing selected")
         return []
 
     source_values = _normalize_source_list(source_list)
     if not source_values:
-        logger.info("[anchor:jssl-fetch-rows-empty-source] no source selected")
         return []
 
     case_type_code_map = get_case_type_code_map(leixing_values)
-    logger.info(
-        "[anchor:jssl-fetch-rows-start] leixing=%s sources=%s codeMapSizes=%s",
-        leixing_values,
-        source_values,
-        {key: len(value) for key, value in case_type_code_map.items()},
-    )
     rows: List[Dict[str, Any]] = []
     for source in source_values:
-        source_before_count = len(rows)
         for leixing in leixing_values:
             codes = case_type_code_map.get(leixing, [])
             combo_rows = _fetch_source_rows(
@@ -327,20 +277,6 @@ def _fetch_rows_for_filters(
                 minor_only=minor_only,
             )
             rows.extend(combo_rows)
-            logger.info(
-                "[anchor:jssl-fetch-rows-combo-done] source=%s leixing=%s codeCount=%s comboRows=%s totalRows=%s",
-                source,
-                leixing,
-                len(codes),
-                len(combo_rows),
-                len(rows),
-            )
-        logger.info(
-            "[anchor:jssl-fetch-rows-source-done] source=%s addedRows=%s totalRows=%s",
-            source,
-            len(rows) - source_before_count,
-            len(rows),
-        )
     return rows
 
 
@@ -355,11 +291,6 @@ def _fetch_source_rows(
 ) -> List[Dict[str, Any]]:
     code_csv = _build_union_code_csv([code_list])
     if not code_csv:
-        logger.info(
-            "[anchor:jssl-source-empty-codes] source=%s leixing=%s no codes found in config map",
-            source,
-            leixing,
-        )
         return []
 
     all_rows: List[Dict[str, Any]] = []
@@ -375,16 +306,6 @@ def _fetch_source_rows(
             minor_only=minor_only,
             page_num=page_num,
             page_size=_PAGE_SIZE,
-        )
-        logger.info(
-            "[anchor:jssl-case-list-request] source=%s leixing=%s pageNum=%s pageSize=%s codeCount=%s codePreview=%s minorOnly=%s",
-            source,
-            leixing,
-            page_num,
-            _PAGE_SIZE,
-            len(_parse_csv_codes(code_csv)),
-            code_csv[:120],
-            minor_only,
         )
         result = api_client.get_case_list(payload)
         if not isinstance(result, dict):
@@ -405,40 +326,10 @@ def _fetch_source_rows(
                 total = int(result.get("total", 0) or 0)
             except Exception:
                 total = 0
-        logger.info(
-            "[anchor:jssl-case-list-response] source=%s leixing=%s pageNum=%s total=%s rows=%s code=%s",
-            source,
-            leixing,
-            page_num,
-            total,
-            len(raw_rows),
-            code,
-        )
-        if raw_rows:
-            first_row = raw_rows[0] if isinstance(raw_rows[0], dict) else {}
-            logger.info(
-                "[anchor:jssl-case-list-sample] source=%s leixing=%s pageNum=%s caseNo=%s occurAddress=%s dutyDeptName=%s cmdName=%s",
-                source,
-                leixing,
-                page_num,
-                first_row.get("caseNo", ""),
-                first_row.get("occurAddress", ""),
-                first_row.get("dutyDeptName", ""),
-                first_row.get("cmdName", ""),
-            )
-
         for raw_row in raw_rows:
             if not isinstance(raw_row, dict):
                 continue
             all_rows.append(_standardize_case_row(raw_row, source=source, leixing=leixing))
-        logger.info(
-            "[anchor:jssl-case-list-match] source=%s leixing=%s pageNum=%s matchedRows=%s accumulatedRows=%s",
-            source,
-            leixing,
-            page_num,
-            len(raw_rows),
-            len(all_rows),
-        )
 
         if not raw_rows:
             break
@@ -526,6 +417,32 @@ def _standardize_case_row(row: Dict[str, Any], *, source: SourceType, leixing: s
         "case_type_name": _extract_case_type_name(row, source=source, fallback=leixing),
         "pred_label": "",
         "pred_prob": 0.0,
+    }
+
+
+def _normalize_db_report_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "case_no": _first_non_empty(row, "case_no", "caseno", "caseNo"),
+        "leixing": _first_non_empty(row, "leixing"),
+        "source": _first_non_empty(row, "source", "yuanshiqueren"),
+        "bureau": _normalize_bureau_name(_first_non_empty(row, "bureau", "分局", "cmdName", "cmdname")),
+        "station_no": _first_non_empty(row, "station_no", "派出所编号", "dutyDeptNo", "dutydeptno"),
+        "station_name": _first_non_empty(row, "station_name", "派出所名称", "dutyDeptName", "dutydeptname"),
+        "call_time": _first_non_empty(row, "call_time", "报警时间", "callTime", "calltime"),
+        "address": _first_non_empty(row, "address", "警情地址", "occurAddress", "occuraddress"),
+        "lng": _first_non_empty(row, "lng", "经度", "lngOfCriterion", "lngofcriterion"),
+        "lat": _first_non_empty(row, "lat", "纬度", "latOfCriterion", "latofcriterion"),
+        "case_contents": _first_non_empty(row, "case_contents", "报警内容", "caseContents", "casecontents"),
+        "replies": _first_non_empty(row, "replies", "处警情况"),
+        "case_type_name": _first_non_empty(
+            row,
+            "case_type_name",
+            "jq_type",
+            "newOriCharaSubclass",
+            "newCharaSubclass",
+        ),
+        "pred_label": str(row.get("pred_label") or "").strip(),
+        "pred_prob": row.get("pred_prob") or 0.0,
     }
 
 
@@ -774,15 +691,6 @@ def _write_table_xls(ws: Any, rows: Sequence[Dict[str, Any]]) -> None:
 
 def _append_predictions(rows: List[Dict[str, Any]]) -> None:
     texts = [str(row.get("address") or "").strip() for row in rows]
-    non_empty_count = sum(1 for text in texts if text)
-    sample_address = next((text for text in texts if text), "")
-    logger.info(
-        "[anchor:jssl-predict-input] totalRows=%s nonEmptyAddressRows=%s emptyAddressRows=%s sampleAddress=%s",
-        len(rows),
-        non_empty_count,
-        len(rows) - non_empty_count,
-        sample_address[:120],
-    )
     predictions = predict_addresses(texts)
     for row, (label, prob) in zip(rows, predictions):
         row["pred_label"] = label

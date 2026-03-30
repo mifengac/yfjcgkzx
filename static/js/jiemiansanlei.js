@@ -489,7 +489,6 @@ function jiemiansanleiExportReport() {
       endTime: jiemiansanleiFormatDateTime(filters.endTime),
       hbStartTime: jiemiansanleiFormatDateTime(filters.hbStartTime),
       hbEndTime: jiemiansanleiFormatDateTime(filters.hbEndTime),
-      minorOnly: filters.minorOnly,
     }),
   })
     .then((resp) => {

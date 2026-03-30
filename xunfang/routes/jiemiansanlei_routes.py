@@ -132,7 +132,6 @@ def jiemiansanlei_export_report() -> Response:
     end_time = str(payload.get("endTime") or "").strip()
     hb_start_time = str(payload.get("hbStartTime") or "").strip()
     hb_end_time = str(payload.get("hbEndTime") or "").strip()
-    minor_only = _as_bool(payload.get("minorOnly"), default=False)
 
     if not start_time or not end_time:
         return jsonify({"success": False, "message": "开始时间和结束时间不能为空"}), 400
@@ -145,7 +144,6 @@ def jiemiansanlei_export_report() -> Response:
             end_time=end_time,
             hb_start_time=hb_start_time,
             hb_end_time=hb_end_time,
-            minor_only=minor_only,
         )
     except Exception as exc:  # noqa: BLE001
         log_error(f"街面三类警情导出报表失败: {exc}")

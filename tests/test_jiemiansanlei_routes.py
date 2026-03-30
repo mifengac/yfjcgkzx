@@ -107,7 +107,7 @@ class TestJiemiansanleiRoutes(unittest.TestCase):
         self.assertTrue(mock_export.call_args.kwargs["street_only"])
         self.assertTrue(mock_export.call_args.kwargs["minor_only"])
 
-    def test_export_report_forwards_minor_filter(self) -> None:
+    def test_export_report_only_forwards_time_filters(self) -> None:
         self._login()
         with patch(
             "xunfang.routes.xunfang_routes.get_database_connection",
@@ -127,12 +127,19 @@ class TestJiemiansanleiRoutes(unittest.TestCase):
                     "endTime": "2026-03-02 00:00:00",
                     "hbStartTime": "2026-02-22 00:00:00",
                     "hbEndTime": "2026-02-23 00:00:00",
-                    "minorOnly": True,
                 },
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(mock_export.call_args.kwargs["minor_only"])
+        self.assertEqual(
+            mock_export.call_args.kwargs,
+            {
+                "start_time": "2026-03-01 00:00:00",
+                "end_time": "2026-03-02 00:00:00",
+                "hb_start_time": "2026-02-22 00:00:00",
+                "hb_end_time": "2026-02-23 00:00:00",
+            },
+        )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
 import unittest
+from io import BytesIO
 from unittest.mock import patch
+
+from openpyxl import Workbook, load_workbook
 
 from xunfang.service import jiemiansanlei_service as service
 
@@ -121,6 +124,61 @@ class TestJiemiansanleiService(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["leixing"], "侵财类")
         self.assertEqual(rows[0]["bureau"], "云安分局")
+
+    def test_export_report_only_uses_time_filters_for_db_query(self) -> None:
+        workbook = Workbook()
+        default_sheet = workbook.active
+        workbook.remove(default_sheet)
+        for name in list(service.REPORT_LEIXING_LIST) + ["三类合计"]:
+            sheet = workbook.create_sheet(title=name)
+            sheet["A6"] = ""
+
+        db_row = {
+            "caseno": "A001",
+            "leixing": "人身伤害类",
+            "yuanshiqueren": "原始",
+            "分局": "云城分局",
+            "派出所编号": "001",
+            "派出所名称": "测试所",
+            "报警时间": "2026-03-01 10:00:00",
+            "警情地址": "测试地址",
+            "报警内容": "测试内容",
+            "处警情况": "已处置",
+            "经度": "113.1",
+            "纬度": "22.1",
+            "jq_type": "测试类型",
+        }
+
+        def fake_append_predictions(rows):
+            for row in rows:
+                row["pred_label"] = service.STREET_LABEL
+                row["pred_prob"] = 0.99
+
+        with patch.object(service.os.path, "exists", return_value=True), patch(
+            "openpyxl.load_workbook",
+            return_value=workbook,
+        ), patch.object(
+            service,
+            "fetch_db_jingqings",
+            return_value=[db_row],
+        ) as mock_fetch, patch.object(service, "_append_predictions", side_effect=fake_append_predictions):
+            file_bytes, _mimetype, _filename = service.export_report(
+                start_time="2026-03-01 00:00:00",
+                end_time="2026-03-02 00:00:00",
+                hb_start_time="2026-02-22 00:00:00",
+                hb_end_time="2026-02-23 00:00:00",
+            )
+
+        self.assertEqual(mock_fetch.call_count, 2)
+        for call in mock_fetch.call_args_list:
+            query = call.args[0]
+            self.assertFalse(query.minor_only)
+            self.assertEqual(list(query.leixing_list), list(service.REPORT_LEIXING_LIST))
+            self.assertEqual(list(query.source_list), ["原始", "确认"])
+
+        exported = load_workbook(BytesIO(file_bytes))
+        self.assertEqual(exported["人身伤害类"]["C6"].value, 1)
+        self.assertEqual(exported["三类合计"]["C6"].value, 1)
 
 
 if __name__ == "__main__":
