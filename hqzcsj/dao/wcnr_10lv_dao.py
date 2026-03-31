@@ -1116,6 +1116,30 @@ def _fetch_yzbl_ratio_rows(
     end_time: str,
     leixing_list: Sequence[str],
 ) -> List[Dict[str, Any]]:
+    use_base_view = _relation_exists(
+        conn,
+        schema="ywdata",
+        name="v_wcnr_yzbl_ratio_base",
+        relkinds=("v", "m"),
+    )
+
+    if use_base_view:
+        type_condition, type_params = _build_ay_similar_filter('src."案由"', leixing_list)
+        q = f"""
+            SELECT
+                src.*
+            FROM "ywdata"."v_wcnr_yzbl_ratio_base" src
+            WHERE src."录入时间" BETWEEN %s AND %s
+              {type_condition}
+            ORDER BY src."是否应采取矫治教育措施" DESC, src."是否开具矫治文书" DESC, src."身份证号"
+        """
+        params: List[Any] = [start_time, end_time] + type_params
+        with conn.cursor() as cur:
+            cur.execute(q, params)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        return _attach_region_fields(rows)
+
     type_condition, type_params = _build_ay_similar_filter('v."案由"', leixing_list)
     q = f"""
         WITH wenshu_pre AS MATERIALIZED (
@@ -1183,7 +1207,7 @@ def _fetch_yzbl_ratio_rows(
         LEFT JOIN jzws_agg jz ON v."身份证号" = jz.xyrxx_sfzh
         WHERE v."录入时间" BETWEEN %s AND %s
         {type_condition}
-        ORDER BY "是否应采取矫治教育措施" DESC, "是否开具矫治文书" DESC
+        ORDER BY "是否应采取矫治教育措施" DESC, "是否开具矫治文书" DESC, v."身份证号"
     """
     params: List[Any] = [start_time, end_time] + type_params
     with conn.cursor() as cur:
@@ -1201,6 +1225,71 @@ def _fetch_sx_songjiao_rows(
     leixing_list: Sequence[str],
     require_songjiao: bool,
 ) -> List[Dict[str, Any]]:
+    use_base_view = _relation_exists(
+        conn,
+        schema="ywdata",
+        name="v_wcnr_sx_songjiao_ratio_base",
+        relkinds=("v", "m"),
+    )
+    having_condition = "HAVING BOOL_OR(is_songxue)" if require_songjiao else ""
+
+    if use_base_view:
+        type_condition, type_params = _build_ay_similar_filter('src."ajxx_join_ajxx_ay"', leixing_list)
+        q = f"""
+        WITH base_rows AS MATERIALIZED (
+            SELECT
+                src.*
+            FROM "ywdata"."v_wcnr_sx_songjiao_ratio_base" src
+            WHERE src."xyrxx_lrsj" BETWEEN %s AND %s
+              {type_condition}
+        ),
+        ws_pre AS MATERIALIZED (
+            SELECT ajbh, xgry_xm, wsmc
+            FROM "ywdata"."zq_zfba_wenshu"
+            WHERE wsmc ~ '不予立案通知书|撤销案件决定书|不予行政处罚决定书|提请专门'
+        ),
+        sx_wsmc AS MATERIALIZED (
+            SELECT
+                l."xyrxx_sfzh",
+                STRING_AGG(DISTINCT p.wsmc, ';' ORDER BY p.wsmc) AS ksws_mc
+            FROM base_rows l
+            JOIN ws_pre p ON (
+                (p.wsmc ~ '不予立案通知书|撤销案件决定书'
+                    AND p.ajbh = l."ajxx_join_ajxx_ajbh")
+                OR (p.wsmc ~ '不予行政处罚决定书'
+                    AND p.ajbh = l."ajxx_join_ajxx_ajbh"
+                    AND p.xgry_xm = l."xyrxx_xm")
+                OR (p.wsmc ~ '提请专门'
+                    AND p.ajbh = l."ajxx_join_ajxx_ajbh"
+                    AND p.xgry_xm = l."xyrxx_xm")
+            )
+            GROUP BY l."xyrxx_sfzh"
+        )
+        SELECT
+            MAX("xyrxx_xm")  AS "姓名",
+            "xyrxx_sfzh"     AS "身份证号",
+            MAX("xyrxx_hjdxzqh")    AS "户籍区域",
+            MAX("xyrxx_hjdxzqh_dm") AS "户籍区域代码",
+            MAX("xyrxx_xzdxz")      AS "现住地",
+            MAX("xyrxx_lrsj")       AS "录入时间",
+            (array_agg("ajxx_join_ajxx_ay"          ORDER BY "ajxx_join_ajxx_lasj" DESC NULLS LAST))[1] AS "案由",
+            (array_agg("ajxx_join_ajxx_cbdw_bh_dm"  ORDER BY "ajxx_join_ajxx_lasj" DESC NULLS LAST))[1] AS "办案部门编码",
+            LEFT(COALESCE((array_agg("ajxx_join_ajxx_cbdw_bh_dm" ORDER BY "ajxx_join_ajxx_lasj" DESC NULLS LAST))[1], ''), 6) AS "地区代码",
+            MAX(w.ksws_mc)   AS "开具文书名",
+            CASE WHEN BOOL_OR(is_songxue) THEN '是' ELSE '否' END AS "是否送校"
+        FROM base_rows
+        LEFT JOIN sx_wsmc w USING ("xyrxx_sfzh")
+        GROUP BY "xyrxx_sfzh"
+        {having_condition}
+        ORDER BY "是否送校" DESC, "录入时间" DESC NULLS LAST, "身份证号"
+        """
+        params = [start_time, end_time] + type_params
+        with conn.cursor() as cur:
+            cur.execute(q, params)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        return _attach_region_fields(rows)
+
     leixing = _normalize_leixing_list(leixing_list)
     params: List[Any] = [start_time, end_time]
     type_filter = ""
@@ -1213,7 +1302,7 @@ def _fetch_sx_songjiao_rows(
                     AND COALESCE(x."ajxx_join_ajxx_ay", '') SIMILAR TO ctc."ay_pattern"
               )"""
         params.append(list(leixing))
-    having_condition = "HAVING BOOL_OR(is_songxue)" if require_songjiao else ""
+
     q = f"""
         WITH sx_minor AS MATERIALIZED (
             SELECT
@@ -1378,22 +1467,26 @@ def _fetch_zmjz_ratio_rows(
     use_base_view = _relation_exists(
         conn,
         schema="ywdata",
-        name="v_wcnr_wfry_jbxx_base",
+        name="v_wcnr_zmjz_ratio_base",
         relkinds=("v", "m"),
     )
 
     if use_base_view:
         type_condition, type_params = _build_ay_similar_filter('src."ajxx_join_ajxx_ay"', leixing_list)
-        base_cte = f"""
-        base_raw AS MATERIALIZED (
+        q = f"""
             SELECT
-                src.*,
-                LEFT(COALESCE(src."ajxx_join_ajxx_cbdw_bh_dm", ''), 6) AS "地区代码"
-            FROM "ywdata"."v_wcnr_wfry_jbxx_base" src
+                src.*
+            FROM "ywdata"."v_wcnr_zmjz_ratio_base" src
             WHERE src."xyrxx_lrsj" BETWEEN %s AND %s
               {type_condition}
-        ),
+            ORDER BY src."xyrxx_sfzh"
         """
+        params: List[Any] = [start_time, end_time] + type_params
+        with conn.cursor() as cur:
+            cur.execute(q, params)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        return _attach_region_fields(rows)
     else:
         type_condition, type_params = _build_ay_similar_filter('v."ajxx_join_ajxx_ay"', leixing_list)
         base_cte = f"""
@@ -1505,7 +1598,7 @@ def _fetch_zmjz_ratio_rows(
                 *
             FROM base_raw
             WHERE NULLIF(BTRIM(COALESCE(xyrxx_sfzh, '')), '') IS NOT NULL
-            ORDER BY xyrxx_sfzh, xyrxx_lrsj DESC NULLS LAST, ajxx_join_ajxx_lasj DESC NULLS LAST, ajxx_join_ajxx_ajbh
+            ORDER BY xyrxx_sfzh, ajxx_join_ajxx_lasj DESC NULLS LAST, xyrxx_lrsj DESC NULLS LAST, ajxx_join_ajxx_ajbh DESC
         ),
         base_sfzh AS MATERIALIZED (
             SELECT DISTINCT xyrxx_sfzh
@@ -1652,15 +1745,13 @@ def _fetch_zmjz_ratio_rows(
             FROM person_flags
         ),
         qualified_latest_case AS MATERIALIZED (
-            SELECT DISTINCT ON (x."xyrxx_sfzh")
-                x."xyrxx_sfzh",
-                x."xyrxx_xm",
-                x."ajxx_join_ajxx_ajbh"
-            FROM "ywdata"."zq_zfba_xyrxx" x
+            SELECT
+                b."xyrxx_sfzh",
+                b."xyrxx_xm",
+                b."ajxx_join_ajxx_ajbh"
+            FROM base b
             INNER JOIN qualified_people q
-                ON q.xyrxx_sfzh = x."xyrxx_sfzh"
-            WHERE x."ajxx_join_ajxx_isdel_dm" = '0'
-            ORDER BY x."xyrxx_sfzh", x."ajxx_join_ajxx_lasj" DESC NULLS LAST, x."ajxx_join_ajxx_ajbh" DESC
+                ON q.xyrxx_sfzh = b."xyrxx_sfzh"
         ),
         tqzmjy_people AS MATERIALIZED (
             SELECT DISTINCT

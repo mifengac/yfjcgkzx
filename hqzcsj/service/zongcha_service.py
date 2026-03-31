@@ -63,7 +63,7 @@ FETCH_SOURCE_REGISTRY: List[Dict[str, Any]] = [
     {"key": "xjs", "name": "训诫书", "table": "zq_zfba_xjs", "pk_fields": ["xjs_id"], "time_field_codes": ["xjs_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "jtjyzdtzs", "name": "加强监督教育/责令接受家庭教育指导通知书", "table": "zq_zfba_jtjyzdtzs", "pk_fields": ["jqjhjyzljsjtjyzdtzs_id"], "time_field_codes": ["jqjhjyzljsjtjyzdtzs_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "zltzs", "name": "责令未成年人遵守特定行为规范通知书", "table": "zq_zfba_zlwcnrzstdxwgftzs", "pk_fields": ["zltzs_id"], "time_field_codes": ["zltzs_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
-    {"key": "wcnr_xyr", "name": "未成年人(嫌疑人)", "table": "zq_zfba_wcnr_xyr", "pk_fields": ["ajxx_ajbhs", "xyrxx_sfzh"], "time_field_codes": ["xyrxx_lrsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "wcnr_xyr", "name": "未成年人(嫌疑人)", "table": "zq_zfba_wcnr_xyr", "pk_fields": ["ajxx_join_ajxx_ajbh", "xyrxx_sfzh"], "time_field_codes": ["xyrxx_lrsj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "wcnr_shr_ajxx", "name": "未成年人(受害人)案件", "table": "zq_zfba_wcnr_shr_ajxx", "pk_fields": ["ajxx_ajbh"], "time_field_codes": ["ajxx_lasj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "wcnr_ajxx", "name": "未成年人案件", "table": "zq_zfba_wcnr_ajxx", "pk_fields": ["ajxx_ajbh"], "time_field_codes": ["ajxx_lasj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "ajxx", "name": "案件信息", "table": "zq_zfba_ajxx", "pk_fields": ["ajxx_ajbh"], "time_field_codes": ["ajxx_lasj"], "requires": "cookie+authorization", "time_mode": "range"},
@@ -73,7 +73,7 @@ FETCH_SOURCE_REGISTRY: List[Dict[str, Any]] = [
     {"key": "dbz", "name": "逮捕证", "table": "zq_zfba_dbz", "pk_fields": ["dbz_id"], "time_field_codes": ["dbz_pzdbsj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "ysajtzs", "name": "移送案件通知书", "table": "zq_zfba_ysajtzs", "pk_fields": ["ysajtzs_id"], "time_field_codes": ["ysajtzs_pzsj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "qsryxx", "name": "起诉人员信息", "table": "zq_zfba_qsryxx", "pk_fields": ["ajxx_ajbh", "qsryxx_rybh"], "time_field_codes": ["qsryxx_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
-    {"key": "xyrxx", "name": "嫌疑人信息", "table": "zq_zfba_xyrxx", "pk_fields": ["ajxx_ajbhs", "xyrxx_sfzh"], "time_field_codes": ["xyrxx_lrsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "xyrxx", "name": "嫌疑人信息", "table": "zq_zfba_xyrxx", "pk_fields": ["ajxx_join_ajxx_ajbh", "xyrxx_sfzh"], "time_field_codes": ["xyrxx_lrsj"], "requires": "cookie+authorization", "time_mode": "range"},
 ]
 
 
@@ -459,7 +459,7 @@ def _build_job_defs(*, base_forms: Dict[str, Dict[str, str]], start_time: str, e
             ZongchaJobDef(
                 name="未成年人(嫌疑人)",
                 table="zq_zfba_wcnr_xyr",
-                pk_fields=["ajxx_ajbhs", "xyrxx_sfzh"],
+                pk_fields=["ajxx_join_ajxx_ajbh", "xyrxx_sfzh"],
                 base_form=_make_form_wcnr_xyr(start_time=start_time, end_time=end_time),
                 time_field_codes=["xyrxx_lrsj"],
             ),
@@ -529,7 +529,7 @@ def _build_job_defs(*, base_forms: Dict[str, Dict[str, str]], start_time: str, e
             ZongchaJobDef(
                 name="嫌疑人信息",
                 table="zq_zfba_xyrxx",
-                pk_fields=["ajxx_ajbhs", "xyrxx_sfzh"],
+                pk_fields=["ajxx_join_ajxx_ajbh", "xyrxx_sfzh"],
                 base_form=_make_form_xyrxx(start_time=start_time, end_time=end_time),
                 time_field_codes=["xyrxx_lrsj"],
             ),
@@ -1272,7 +1272,7 @@ def _make_form_qsryxx(*, start_time: str, end_time: str, org_codes: Sequence[str
 def _make_form_xyrxx(*, start_time: str, end_time: str) -> Dict[str, str]:
     """
     嫌疑人信息：过滤 isdel=0，并按录入时间范围筛选。
-    主键：ajxx_ajbhs + xyrxx_sfzh
+    主键：ajxx_join_ajxx_ajbh + xyrxx_sfzh
     """
     conds = [
         {
