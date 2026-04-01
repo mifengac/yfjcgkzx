@@ -58,6 +58,7 @@ from hqzcsj.routes.wcnr_10lv_routes import wcnr_10lv_bp  # noqa: E402
 from shuju_tiqu.routes.shuju_tiqu_routes import shuju_tiqu_bp  # noqa: E402
 from jingqing_fenxi.routes.jingqing_fenxi_routes import jingqing_fenxi_bp  # noqa: E402
 from jingqing_anjian_fenxi.routes.jingqing_anjian_fenxi_routes import jingqing_anjian_fenxi_bp  # noqa: E402
+from xxffmk.routes.xxffmk_routes import xxffmk_bp  # noqa: E402
 try:
     from wcnr_djdo import wcnr_djdo_bp  # type: ignore  # noqa: E402
 except Exception:
@@ -85,6 +86,7 @@ MODULE_DEFINITIONS: List[Dict[str, str]] = [
     {"key": "weichengnianren_djdo", "label": "未成年人(打架斗殴)", "endpoint": "wcnr_djdo.index"},
     {"key": "jingqing_fenxi", "label": "警情分析", "endpoint": "jingqing_fenxi.index"},
     {"key": "jingqing_anjian_fenxi", "label": "警情案件分析", "endpoint": "jingqing_anjian_fenxi.index"},
+    {"key": "xxffmk", "label": "学校赋分模块", "endpoint": "xxffmk.index"},
 ]
 
 
@@ -182,6 +184,7 @@ def main():
                 "数据提取": {"endpoint": "shuju_tiqu.index", "label": "数据提取"},
                 "警情分析": {"endpoint": "jingqing_fenxi.index", "label": "警情分析"},
                 "警情案件分析": {"endpoint": "jingqing_anjian_fenxi.index", "label": "警情案件分析"},
+                "学校赋分模块": {"endpoint": "xxffmk.index", "label": "学校赋分模块"},
             }
             if wcnr_djdo_bp is not None:
                 conf_map["未成年人(打架斗殴)"] = {"endpoint": "wcnr_djdo.index", "label": "未成年人(打架斗殴)"}
@@ -390,6 +393,7 @@ app.register_blueprint(wcnr_10lv_bp, url_prefix="/hqzcsj")
 app.register_blueprint(shuju_tiqu_bp, url_prefix="/shuju_tiqu")
 app.register_blueprint(jingqing_fenxi_bp, url_prefix="/jingqing_fenxi")
 app.register_blueprint(jingqing_anjian_fenxi_bp, url_prefix="/jingqing_anjian_fenxi")
+app.register_blueprint(xxffmk_bp, url_prefix="/xxffmk")
 if wcnr_djdo_bp is not None:
     app.register_blueprint(wcnr_djdo_bp, url_prefix="/weichengnianren-djdo")
 try:
