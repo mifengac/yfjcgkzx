@@ -52,8 +52,6 @@ from hqzcsj.routes.hqzcsj_zongcha_routes import hqzcsj_bp  # noqa: E402
 from hqzcsj.routes.zfba_jq_aj_routes import zfba_jq_aj_bp  # noqa: E402
 from hqzcsj.routes.pcsjqajtj_routes import pcsjqajtj_bp  # noqa: E402
 from hqzcsj.routes.zfba_wcnr_jqaj_routes import zfba_wcnr_jqaj_bp  # noqa: E402
-from hqzcsj.routes.jzqk_tongji_routes import jzqk_tongji_bp  # noqa: E402
-from hqzcsj.routes.wcnr_1393zhibiao_routes import wcnr_1393zhibiao_bp  # noqa: E402
 from hqzcsj.routes.wcnr_10lv_routes import wcnr_10lv_bp  # noqa: E402
 from shuju_tiqu.routes.shuju_tiqu_routes import shuju_tiqu_bp  # noqa: E402
 from jingqing_fenxi.routes.jingqing_fenxi_routes import jingqing_fenxi_bp  # noqa: E402
@@ -387,8 +385,6 @@ app.register_blueprint(hqzcsj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(zfba_jq_aj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(pcsjqajtj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(zfba_wcnr_jqaj_bp, url_prefix="/hqzcsj")
-app.register_blueprint(jzqk_tongji_bp, url_prefix="/hqzcsj")
-app.register_blueprint(wcnr_1393zhibiao_bp, url_prefix="/hqzcsj")
 app.register_blueprint(wcnr_10lv_bp, url_prefix="/hqzcsj")
 app.register_blueprint(shuju_tiqu_bp, url_prefix="/shuju_tiqu")
 app.register_blueprint(jingqing_fenxi_bp, url_prefix="/jingqing_fenxi")

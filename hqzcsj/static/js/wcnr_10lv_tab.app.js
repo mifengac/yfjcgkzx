@@ -68,21 +68,13 @@
     }
 
     async function fetchJsonStrict(url) {
-        const REQUEST_TIMEOUT_MS = 45000;
         const finalUrl = toResolvedUrl(url);
         const tryFetch = async (u) => {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
             let resp;
             try {
-                resp = await fetch(u, { signal: controller.signal });
+                resp = await fetch(u);
             } catch (err) {
-                if (err && err.name === "AbortError") {
-                    throw new Error(`请求超时（>${REQUEST_TIMEOUT_MS / 1000}s）: ${u}`);
-                }
                 throw err;
-            } finally {
-                clearTimeout(timer);
             }
             const text = await resp.text();
             let data = null;

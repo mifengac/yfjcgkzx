@@ -15,6 +15,12 @@ class TestXxffmkDao(unittest.TestCase):
         sql = xxffmk_dao.build_dimension2_query()
         self.assertIn('j."newcharasubclass" IN (\'01\',\'02\',\'04\',\'05\',\'06\',\'08\',\'09\')', sql)
 
+    def test_dimension1_detail_query_uses_raw_rows(self) -> None:
+        sql = xxffmk_dao.build_dimension1_detail_query(["AB中学", "CD中学"])
+        self.assertIn('FROM "ywdata"."zq_zfba_wcnr_sfzxx" z', sql)
+        self.assertIn('BTRIM(COALESCE(z."yxx", \'\')) IN (%s, %s)', sql)
+        self.assertNotIn('GROUP BY', sql)
+
     def test_refresh_statements_cover_materialized_views(self) -> None:
         statements = xxffmk_dao.build_refresh_materialized_views_statements()
         self.assertEqual(len(statements), 3)

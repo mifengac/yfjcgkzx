@@ -1,7 +1,8 @@
-﻿-- 维度2性能测试：涉校警情
--- 重点观察 zq_kshddpt_dsjfx_jq 的时间过滤和学校名抽取性能。
--- 按需修改 params 中的时间。
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, COSTS, TIMING, SUMMARY)
+﻿-- 维度2查询：涉校警情
+-- 说明：
+-- 1. 每次只需要修改 params 里的时间即可。
+-- 2. 这里使用 newcharasubclass 过滤，和当前业务口径保持一致。
+-- 3. 先抽取文本里出现的学校名，再按学校标准视图做精确归并。
 WITH params AS (
     SELECT
         '2026-01-01 00:00:00'::text AS begin_time,
@@ -32,11 +33,29 @@ source_rows AS (
          OR COALESCE(j."casecontents", '') ~ p.school_keyword_pattern
          OR COALESCE(j."replies", '') ~ p.school_keyword_pattern
       )
+),
+matched_rows AS (
+    SELECT
+        s."caseno",
+        s."calltime",
+        s."occuraddress",
+        s."casecontents",
+        s."replies",
+        s.extracted_school_name,
+        COALESCE(sd."xxbsm", s.extracted_school_name) AS school_code,
+        COALESCE(sd."xxmc", s.extracted_school_name) AS school_name,
+        COALESCE(sd."zgjyxzbmmc", '') AS supervisor
+    FROM source_rows s
+    LEFT JOIN "ywdata"."mv_xxffmk_school_dim" sd
+      ON sd.normalized_xxmc = UPPER(REGEXP_REPLACE(COALESCE(s.extracted_school_name, ''), '[[:space:][:punct:]]', '', 'g'))
+    WHERE NULLIF(BTRIM(COALESCE(s.extracted_school_name, '')), '') IS NOT NULL
 )
 SELECT
-    s."caseno",
-    s."calltime",
-    s.extracted_school_name
-FROM source_rows s
-WHERE NULLIF(BTRIM(COALESCE(s.extracted_school_name, '')), '') IS NOT NULL
-ORDER BY s."calltime" DESC, s."caseno";
+    school_code,
+    school_name,
+    supervisor,
+    COUNT(*) AS police_count,
+    STRING_AGG(DISTINCT extracted_school_name, '；' ORDER BY extracted_school_name) AS raw_school_names
+FROM matched_rows
+GROUP BY school_code, school_name, supervisor
+ORDER BY police_count DESC, school_code;

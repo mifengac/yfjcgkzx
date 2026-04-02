@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from time import perf_counter
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 from gonggong.config.database import get_database_connection
@@ -32,6 +33,7 @@ class DimensionResult:
     counts_by_school: Dict[str, int]
     detail_rows_by_school: Dict[str, List[Dict[str, Any]]]
     unmatched_rows: List[Dict[str, Any]]
+    raw_keys_by_school: Dict[str, List[str]] = field(default_factory=dict)
 
 
 def parse_dt(text: str) -> datetime:
@@ -84,6 +86,34 @@ def refresh_materialized_views() -> Dict[str, Any]:
             conn.close()
         except Exception:
             pass
+
+
+def _log_timing_anchor(stage: str, timings: Mapping[str, Any], extra: Optional[Mapping[str, Any]] = None) -> None:
+    ordered_keys = [
+        "school_records_seconds",
+        "songsheng_seconds",
+        "jingqing_seconds",
+        "tuanhuo_seconds",
+        "chuoxue_seconds",
+        "yebuguisu_seconds",
+        "rank_rows_seconds",
+        "filter_rows_seconds",
+        "slice_rows_seconds",
+        "summary_seconds",
+        "load_total_seconds",
+        "detail_rows_seconds",
+        "total_seconds",
+    ]
+    parts: List[str] = []
+    for key in ordered_keys:
+        if key in timings:
+            parts.append(f"{key}={timings[key]}s")
+    if extra:
+        for key, value in extra.items():
+            if value is None or value == "":
+                continue
+            parts.append(f"{key}={value}")
+    print(f"[XXFFMK][{stage}] " + " | ".join(parts), flush=True)
 
 
 def normalize_school_name(text: str) -> str:
@@ -251,6 +281,7 @@ def _compute_dimension1(
     rows = xxffmk_dao.fetch_dimension1_rows(conn, start_time, end_time)
     counts_by_school: Dict[str, int] = defaultdict(int)
     detail_rows_by_school: Dict[str, List[Dict[str, Any]]] = {}
+    raw_keys_by_school: Dict[str, List[str]] = defaultdict(list)
     unmatched_rows: List[Dict[str, Any]] = []
     for row in rows:
         raw_school_name = str(row.get("raw_school_name") or "").strip()
@@ -264,6 +295,8 @@ def _compute_dimension1(
             unmatched_rows.append({"raw_school_name": raw_school_name, "count": raw_count})
             continue
         counts_by_school[school_code] += raw_count
+        if raw_school_name and raw_school_name not in raw_keys_by_school[school_code]:
+            raw_keys_by_school[school_code].append(raw_school_name)
         _append_detail_row(
             detail_rows_by_school,
             school_code,
@@ -274,7 +307,7 @@ def _compute_dimension1(
                 "学校标识码": school_code,
             },
         )
-    return DimensionResult(dict(counts_by_school), detail_rows_by_school, unmatched_rows)
+    return DimensionResult(dict(counts_by_school), detail_rows_by_school, unmatched_rows, dict(raw_keys_by_school))
 
 
 def _compute_dimension2(
@@ -397,18 +430,31 @@ def _compute_dimension5(conn: Any, start_time: str, end_time: str) -> DimensionR
     return DimensionResult(dict(counts_by_school), detail_rows_by_school, [])
 
 
-def _load_dimension_results(conn: Any, start_time: str, end_time: str) -> Tuple[SchoolMatcher, Dict[str, Dict[str, Any]], Dict[str, DimensionResult]]:
+def _load_dimension_results(
+    conn: Any,
+    start_time: str,
+    end_time: str,
+) -> Tuple[SchoolMatcher, Dict[str, Dict[str, Any]], Dict[str, DimensionResult], Dict[str, float]]:
+    timings: Dict[str, float] = {}
+    load_started_at = perf_counter()
+
+    step_started_at = perf_counter()
     school_records = xxffmk_dao.fetch_school_records(conn)
+    timings["school_records_seconds"] = round(perf_counter() - step_started_at, 3)
     matcher = SchoolMatcher(school_records)
     school_info_map: Dict[str, Dict[str, Any]] = dict(matcher.records_by_code)
 
-    dimension_results = {
-        "songsheng": _compute_dimension1(conn, matcher, start_time, end_time),
-        "jingqing": _compute_dimension2(conn, matcher, start_time, end_time),
-        "tuanhuo": _compute_dimension3(conn, start_time, end_time),
-        "chuoxue": _compute_dimension4(conn),
-        "yebuguisu": _compute_dimension5(conn, start_time, end_time),
-    }
+    dimension_results: Dict[str, DimensionResult] = {}
+    for dimension_key, compute_fn in (
+        ("songsheng", lambda: _compute_dimension1(conn, matcher, start_time, end_time)),
+        ("jingqing", lambda: _compute_dimension2(conn, matcher, start_time, end_time)),
+        ("tuanhuo", lambda: _compute_dimension3(conn, start_time, end_time)),
+        ("chuoxue", lambda: _compute_dimension4(conn)),
+        ("yebuguisu", lambda: _compute_dimension5(conn, start_time, end_time)),
+    ):
+        step_started_at = perf_counter()
+        dimension_results[dimension_key] = compute_fn()
+        timings[f"{dimension_key}_seconds"] = round(perf_counter() - step_started_at, 3)
 
     for result in dimension_results.values():
         for school_code, rows in result.detail_rows_by_school.items():
@@ -422,7 +468,8 @@ def _load_dimension_results(conn: Any, start_time: str, end_time: str) -> Tuple[
                 "source_type": "",
                 "normalized_xxmc": normalize_school_name(first_row.get("学校名称") or ""),
             }
-    return matcher, school_info_map, dimension_results
+    timings["load_total_seconds"] = round(perf_counter() - load_started_at, 3)
+    return matcher, school_info_map, dimension_results, timings
 
 
 def _build_rank_rows(
@@ -491,6 +538,7 @@ def build_rank_payload(
     school_codes: Sequence[str] | None = None,
     school_name: str = "",
 ) -> Dict[str, Any]:
+    overall_started_at = perf_counter()
     start_dt = parse_dt(start_time)
     end_dt = parse_dt(end_time)
     if end_dt < start_dt:
@@ -498,22 +546,41 @@ def build_rank_payload(
 
     conn = get_database_connection()
     try:
-        _matcher, school_info_map, dimension_results = _load_dimension_results(conn, fmt_dt(start_dt), fmt_dt(end_dt))
+        _matcher, school_info_map, dimension_results, timings = _load_dimension_results(conn, fmt_dt(start_dt), fmt_dt(end_dt))
     finally:
         try:
             conn.close()
         except Exception:
             pass
 
+    rows_started_at = perf_counter()
     all_rows = _build_rank_rows(school_info_map, dimension_results)
+    timings["rank_rows_seconds"] = round(perf_counter() - rows_started_at, 3)
+
+    filter_started_at = perf_counter()
     filtered_rows = _filter_rank_rows(all_rows, school_codes=school_codes, school_name=school_name)
+    timings["filter_rows_seconds"] = round(perf_counter() - filter_started_at, 3)
+
+    sort_started_at = perf_counter()
     row_limit = max(1, int(limit or 10))
     display_rows = filtered_rows[:row_limit]
+    timings["slice_rows_seconds"] = round(perf_counter() - sort_started_at, 3)
 
+    summary_started_at = perf_counter()
     unmatched_summary = {
         "songsheng": xxffmk_dao.summarize_unmatched(dimension_results["songsheng"].unmatched_rows, name_key="raw_school_name"),
         "jingqing": xxffmk_dao.summarize_unmatched(dimension_results["jingqing"].unmatched_rows, name_key="raw_school_name"),
     }
+    timings["summary_seconds"] = round(perf_counter() - summary_started_at, 3)
+    timings["total_seconds"] = round(perf_counter() - overall_started_at, 3)
+    _log_timing_anchor(
+        "rank",
+        timings,
+        {
+            "schools": len(display_rows),
+            "filtered_total": len(filtered_rows),
+        },
+    )
     return {
         "filters": {
             "beginDate": fmt_dt(start_dt),
@@ -526,6 +593,7 @@ def build_rank_payload(
         "rows": display_rows,
         "total": len(filtered_rows),
         "unmatched_summary": unmatched_summary,
+        "timings": timings,
     }
 
 
@@ -554,6 +622,7 @@ def _dimension_detail_rows(
     start_time: str,
     end_time: str,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    detail_started_at = perf_counter()
     start_dt = parse_dt(start_time)
     end_dt = parse_dt(end_time)
     if end_dt < start_dt:
@@ -561,7 +630,7 @@ def _dimension_detail_rows(
 
     conn = get_database_connection()
     try:
-        matcher, _school_info_map, dimension_results = _load_dimension_results(conn, fmt_dt(start_dt), fmt_dt(end_dt))
+        matcher, _school_info_map, dimension_results, _timings = _load_dimension_results(conn, fmt_dt(start_dt), fmt_dt(end_dt))
     finally:
         try:
             conn.close()
@@ -573,13 +642,30 @@ def _dimension_detail_rows(
         raise ValueError("未知维度")
     result = dimension_results[dimension_key]
     school_code = str(xxbsm or "").strip()
-    rows = list(result.detail_rows_by_school.get(school_code) or [])
-    if dimension_key in ("songsheng", "jingqing"):
-        rows.sort(key=lambda item: (-int(item.get("送生人数", item.get("夜间出现天数", item.get("团伙涉案人数", item.get("辍学人数", 1))) or 0)), str(item)))
+    rows: List[Dict[str, Any]] = []
+    if dimension_key == "songsheng":
+        raw_school_names = list(dict.fromkeys(result.raw_keys_by_school.get(school_code) or []))
+        if raw_school_names:
+            conn = get_database_connection()
+            try:
+                rows = xxffmk_dao.fetch_dimension1_detail_rows(conn, fmt_dt(start_dt), fmt_dt(end_dt), raw_school_names)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        if not rows:
+            rows = list(result.detail_rows_by_school.get(school_code) or [])
+    else:
+        rows = list(result.detail_rows_by_school.get(school_code) or [])
     unmatched_rows = []
     if dimension_key in ("songsheng", "jingqing"):
         unmatched_rows = result.unmatched_rows
     _ = matcher
+    timings = {
+        "detail_rows_seconds": round(perf_counter() - detail_started_at, 3),
+    }
+    _log_timing_anchor(f"detail:{dimension_key}", timings, {"school_code": school_code, "rows": len(rows)})
     return rows, unmatched_rows
 
 

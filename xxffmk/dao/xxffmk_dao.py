@@ -4,7 +4,8 @@ from typing import Any, Dict, Iterable, List, Sequence
 
 
 SCHOOL_SUFFIX_PATTERN = r"(?:幼儿园|小学|中学|高中|高级中学|完全中学|九年一贯制学校|十二年一贯制学校|学校|大学|学院|职中|职高|技工学校|技校|实验学校|职业技术学校|中等职业学校)"
-SCHOOL_NAME_PATTERN = rf"([A-Za-z0-9一-龥·（）()\-]{{2,40}}{SCHOOL_SUFFIX_PATTERN})"
+# Avoid rare-range characters like "龥" in the regex to reduce encoding risk in deployment tools.
+SCHOOL_NAME_PATTERN = rf"([^,，。；;：:、\s]{{2,40}}{SCHOOL_SUFFIX_PATTERN})"
 REFRESHABLE_MATERIALIZED_VIEWS = [
     '"ywdata"."mv_xxffmk_school_dim"',
     '"ywdata"."mv_xxffmk_student_school_rel"',
@@ -182,6 +183,26 @@ ORDER BY raw_count DESC, raw_school_name
 """.strip()
 
 
+def build_dimension1_detail_query(raw_school_names: Sequence[str]) -> str:
+    if not raw_school_names:
+        return """
+SELECT z.*
+FROM "ywdata"."zq_zfba_wcnr_sfzxx" z
+WHERE 1 = 0
+""".strip()
+    placeholders = ", ".join(["%s"] * len(raw_school_names))
+    return f"""
+SELECT
+    z.*
+FROM "ywdata"."zq_zfba_wcnr_sfzxx" z
+WHERE z."rx_time" >= %s
+  AND z."rx_time" <= %s
+  AND NULLIF(BTRIM(COALESCE(z."yxx", '')), '') IS NOT NULL
+  AND BTRIM(COALESCE(z."yxx", '')) IN ({placeholders})
+ORDER BY z."rx_time" DESC, z."yxx"
+""".strip()
+
+
 def build_dimension2_query() -> str:
     return f"""
 WITH source_rows AS (
@@ -354,6 +375,21 @@ def fetch_school_records(conn: Any) -> List[Dict[str, Any]]:
 def fetch_dimension1_rows(conn: Any, start_time: str, end_time: str) -> List[Dict[str, Any]]:
     with conn.cursor() as cursor:
         cursor.execute(build_dimension1_query(), (start_time, end_time))
+        return _fetch_all_dicts(cursor)
+
+
+def fetch_dimension1_detail_rows(
+    conn: Any,
+    start_time: str,
+    end_time: str,
+    raw_school_names: Sequence[str],
+) -> List[Dict[str, Any]]:
+    names = [str(name or "").strip() for name in raw_school_names if str(name or "").strip()]
+    if not names:
+        return []
+    params = [start_time, end_time, *names]
+    with conn.cursor() as cursor:
+        cursor.execute(build_dimension1_detail_query(names), params)
         return _fetch_all_dicts(cursor)
 
 

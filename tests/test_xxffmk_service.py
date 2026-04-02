@@ -82,7 +82,11 @@ class TestXxffmkService(unittest.TestCase):
         }
 
         with patch.object(service, "get_database_connection", return_value=_DummyConnection()), \
-             patch.object(service, "_load_dimension_results", return_value=(None, school_info_map, dimension_results)):
+             patch.object(
+                 service,
+                 "_load_dimension_results",
+                 return_value=(None, school_info_map, dimension_results, {"total_seconds": 0.1}),
+             ):
             payload = service.build_rank_payload(
                 start_time="2026-01-01 00:00:00",
                 end_time="2026-03-31 23:59:59",
@@ -96,6 +100,47 @@ class TestXxffmkService(unittest.TestCase):
         self.assertEqual(payload["rows"][0]["dimension_scores"]["songsheng"]["score"], 20)
         self.assertEqual(payload["rows"][1]["dimension_scores"]["tuanhuo"]["score"], 15)
         self.assertEqual(payload["rows"][2]["dimension_scores"]["songsheng"]["score"], 18)
+        self.assertIn("timings", payload)
+        self.assertIn("total_seconds", payload["timings"])
+
+    def test_dimension1_detail_returns_raw_rows(self) -> None:
+        dummy_conn = _DummyConnection()
+        fake_dimension_results = {
+            "songsheng": service.DimensionResult(
+                counts_by_school={"A": 3},
+                detail_rows_by_school={"A": [{"原学校名称": "AB中学", "送生人数": 3}]},
+                unmatched_rows=[],
+                raw_keys_by_school={"A": ["AB中学"]},
+            ),
+            "jingqing": _dimension_result({}),
+            "tuanhuo": _dimension_result({}),
+            "chuoxue": _dimension_result({}),
+            "yebuguisu": _dimension_result({}),
+        }
+        with patch.object(service, "get_database_connection", return_value=dummy_conn), patch.object(
+            service,
+            "_load_dimension_results",
+            return_value=(None, {"A": {"xxbsm": "A", "xxmc": "A校", "zgjyxzbmmc": "A局"}}, fake_dimension_results, {"total_seconds": 0.1}),
+        ), patch.object(
+            service.xxffmk_dao,
+            "fetch_dimension1_detail_rows",
+            return_value=[
+                {"rx_time": "2026-01-01 09:00:00", "yxx": "AB中学", "sfzjh": "123", "xm": "张三"},
+                {"rx_time": "2026-01-02 09:00:00", "yxx": "AB中学", "sfzjh": "456", "xm": "李四"},
+            ],
+        ):
+            payload = service.get_dimension_detail(
+                dimension="songsheng",
+                xxbsm="A",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-03-31 23:59:59",
+                page=1,
+                page_size=20,
+            )
+
+        self.assertEqual(payload["total"], 2)
+        self.assertIn("rx_time", payload["columns"])
+        self.assertEqual(payload["rows"][0]["yxx"], "AB中学")
 
     def test_refresh_materialized_views_returns_summary(self) -> None:
         dummy_conn = _DummyConnection()

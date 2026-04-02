@@ -106,13 +106,14 @@
         ];
         (payload.dimension_order || []).forEach(function(config) {
             const score = school.dimension_scores[config.key] || {};
+            const actionLabel = config.key === "jingqing" ? "查询明细" : "查看明细";
             html.push(
                 "<tr>",
                 "<td>" + escapeHtml(config.label) + "</td>",
                 "<td>" + escapeHtml(score.value || 0) + "</td>",
                 "<td>" + escapeHtml(score.rank || "-") + "</td>",
                 "<td>" + escapeHtml(score.score || 0) + "</td>",
-                '<td><button type="button" class="link-button" data-dimension-key="' + escapeHtml(config.key) + '">' + "查看明细" + "</button></td>",
+                '<td><button type="button" class="link-button" data-dimension-key="' + escapeHtml(config.key) + '">' + actionLabel + "</button></td>",
                 "</tr>"
             );
         });
