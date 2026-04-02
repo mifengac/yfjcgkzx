@@ -55,7 +55,7 @@
         }
         const html = [
             '<table>',
-            '<thead><tr><th>排名</th><th>学校</th><th>主管教育局</th><th>总分</th></tr></thead>',
+            '<thead><tr><th>排名</th><th>学校</th><th>总分</th></tr></thead>',
             '<tbody>'
         ];
         rows.forEach(function(row) {
@@ -63,7 +63,6 @@
                 "<tr>",
                 "<td>" + escapeHtml(row.rank) + "</td>",
                 '<td><button type="button" class="link-button" data-school-code="' + escapeHtml(row.xxbsm) + '">' + escapeHtml(row.xxmc || row.xxbsm) + "</button></td>",
-                "<td>" + escapeHtml(row.zgjyxzbmmc || "") + "</td>",
                 '<td><span class="score-badge">' + escapeHtml(row.total_score) + "</span></td>",
                 "</tr>"
             );

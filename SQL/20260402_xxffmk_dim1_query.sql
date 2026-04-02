@@ -23,7 +23,6 @@ raw_counts AS (
 SELECT
     COALESCE(s."xxbsm", raw.raw_school_name) AS school_code,
     COALESCE(s."xxmc", raw.raw_school_name) AS school_name,
-    COALESCE(s."zgjyxzbmmc", '') AS supervisor,
     SUM(raw.raw_count) AS send_count,
     STRING_AGG(DISTINCT raw.raw_school_name, '；' ORDER BY raw.raw_school_name) AS raw_school_names
 FROM raw_counts raw
@@ -31,6 +30,5 @@ LEFT JOIN "ywdata"."mv_xxffmk_school_dim" s
   ON s.normalized_xxmc = UPPER(REGEXP_REPLACE(raw.raw_school_name, '[[:space:][:punct:]]', '', 'g'))
 GROUP BY
     COALESCE(s."xxbsm", raw.raw_school_name),
-    COALESCE(s."xxmc", raw.raw_school_name),
-    COALESCE(s."zgjyxzbmmc", '')
+    COALESCE(s."xxmc", raw.raw_school_name)
 ORDER BY send_count DESC, school_code;

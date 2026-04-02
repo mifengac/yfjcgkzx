@@ -376,7 +376,6 @@ def _compute_dimension3(conn: Any, start_time: str, end_time: str) -> DimensionR
             "录入时间": fmt_dt(row.get("xyrxx_lrsj")) if isinstance(row.get("xyrxx_lrsj"), datetime) else row.get("xyrxx_lrsj") or "",
             "学校标识码": row.get("xxbsm") or "",
             "学校名称": row.get("xxmc") or "",
-            "主管教育局": row.get("zgjyxzbmmc") or "",
         },
     )
 
@@ -397,7 +396,6 @@ def _compute_dimension4(conn: Any) -> DimensionResult:
             "监护人电话": row.get("jhrdh") or "",
             "学校标识码": row.get("xxbsm") or "",
             "学校名称": row.get("xxmc") or "",
-            "主管教育局": row.get("zgjyxzbmmc") or "",
             "年级": row.get("njmc") or "",
             "班级": row.get("bjmc") or "",
         },
@@ -422,7 +420,6 @@ def _compute_dimension5(conn: Any, start_time: str, end_time: str) -> DimensionR
                 "夜间出现天数": int(row.get("night_days", 0) or 0),
                 "学校标识码": school_code,
                 "学校名称": row.get("xxmc") or "",
-                "主管教育局": row.get("zgjyxzbmmc") or "",
                 "年级": row.get("njmc") or "",
                 "班级": row.get("bjmc") or "",
             },
@@ -464,7 +461,6 @@ def _load_dimension_results(
             school_info_map[school_code] = {
                 "xxbsm": school_code,
                 "xxmc": first_row.get("学校名称") or "",
-                "zgjyxzbmmc": first_row.get("主管教育局") or "",
                 "source_type": "",
                 "normalized_xxmc": normalize_school_name(first_row.get("学校名称") or ""),
             }
@@ -487,7 +483,7 @@ def _build_rank_rows(
 
     rows: List[Dict[str, Any]] = []
     for school_code in school_codes:
-        school_info = dict(school_info_map.get(school_code) or {"xxbsm": school_code, "xxmc": "", "zgjyxzbmmc": ""})
+        school_info = dict(school_info_map.get(school_code) or {"xxbsm": school_code, "xxmc": ""})
         per_dimension: Dict[str, Dict[str, Any]] = {}
         total_score = 0
         for config in DIMENSION_ORDER:
@@ -501,7 +497,6 @@ def _build_rank_rows(
             {
                 "xxbsm": school_code,
                 "xxmc": school_info.get("xxmc") or "",
-                "zgjyxzbmmc": school_info.get("zgjyxzbmmc") or "",
                 "source_type": school_info.get("source_type") or "",
                 "dimension_scores": per_dimension,
                 "total_score": total_score,

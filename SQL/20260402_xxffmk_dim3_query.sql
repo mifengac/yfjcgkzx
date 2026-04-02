@@ -33,12 +33,11 @@ gang_cases AS (
 SELECT
     r."xxbsm",
     r."xxmc",
-    r."zgjyxzbmmc",
     COUNT(*) AS gang_person_count
 FROM minor_people m
 JOIN gang_cases g
   ON g.ajbh = m.ajbh
 JOIN "ywdata"."mv_xxffmk_student_school_rel" r
   ON r."sfzjh" = m.sfzjh
-GROUP BY r."xxbsm", r."xxmc", r."zgjyxzbmmc"
+GROUP BY r."xxbsm", r."xxmc"
 ORDER BY gang_person_count DESC, r."xxbsm";

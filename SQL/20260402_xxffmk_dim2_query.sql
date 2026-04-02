@@ -43,8 +43,7 @@ matched_rows AS (
         s."replies",
         s.extracted_school_name,
         COALESCE(sd."xxbsm", s.extracted_school_name) AS school_code,
-        COALESCE(sd."xxmc", s.extracted_school_name) AS school_name,
-        COALESCE(sd."zgjyxzbmmc", '') AS supervisor
+        COALESCE(sd."xxmc", s.extracted_school_name) AS school_name
     FROM source_rows s
     LEFT JOIN "ywdata"."mv_xxffmk_school_dim" sd
       ON sd.normalized_xxmc = UPPER(REGEXP_REPLACE(COALESCE(s.extracted_school_name, ''), '[[:space:][:punct:]]', '', 'g'))
@@ -53,9 +52,8 @@ matched_rows AS (
 SELECT
     school_code,
     school_name,
-    supervisor,
     COUNT(*) AS police_count,
     STRING_AGG(DISTINCT extracted_school_name, '；' ORDER BY extracted_school_name) AS raw_school_names
 FROM matched_rows
-GROUP BY school_code, school_name, supervisor
+GROUP BY school_code, school_name
 ORDER BY police_count DESC, school_code;

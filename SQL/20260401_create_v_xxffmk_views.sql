@@ -10,34 +10,32 @@ WITH school_sources AS (
     SELECT
         s."xxbsm",
         s."xxmc",
-        s."zgjyxzbmmc",
         'zzxj' AS source_type,
         1 AS source_priority,
         MAX(COALESCE(s."gkrksj", s."bzkrksj", s."cd_time", s."add_time")) AS latest_time
     FROM "ywdata"."sh_yf_zzxj_xx" s
     WHERE NULLIF(BTRIM(COALESCE(s."xxbsm", '')), '') IS NOT NULL
       AND NULLIF(BTRIM(COALESCE(s."xxmc", '')), '') IS NOT NULL
-    GROUP BY s."xxbsm", s."xxmc", s."zgjyxzbmmc"
+    GROUP BY s."xxbsm", s."xxmc"
 
     UNION ALL
 
     SELECT
         s."xxbsm",
         s."xxmc",
-        s."zgjyxzbmmc",
         'zxxj' AS source_type,
         2 AS source_priority,
         MAX(COALESCE(s."bzkrksj", s."cd_time", s."add_time")) AS latest_time
     FROM "ywdata"."sh_gd_zxxxsxj_xx" s
     WHERE NULLIF(BTRIM(COALESCE(s."xxbsm", '')), '') IS NOT NULL
       AND NULLIF(BTRIM(COALESCE(s."xxmc", '')), '') IS NOT NULL
-    GROUP BY s."xxbsm", s."xxmc", s."zgjyxzbmmc"
+    GROUP BY s."xxbsm", s."xxmc"
 ),
 ranked AS (
     SELECT
         ss.*,
         ROW_NUMBER() OVER (
-            PARTITION BY ss."xxbsm", ss."xxmc", ss."zgjyxzbmmc"
+            PARTITION BY ss."xxbsm", ss."xxmc"
             ORDER BY ss.source_priority, ss.latest_time DESC NULLS LAST
         ) AS rn
     FROM school_sources ss
@@ -45,7 +43,6 @@ ranked AS (
 SELECT
     r."xxbsm",
     r."xxmc",
-    r."zgjyxzbmmc",
     r.source_type,
     UPPER(REGEXP_REPLACE(COALESCE(r."xxmc", ''), '[[:space:][:punct:]]', '', 'g')) AS normalized_xxmc
 FROM ranked r
@@ -53,7 +50,7 @@ WHERE r.rn = 1
 WITH DATA;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_xxffmk_school_dim_code_name
-    ON "ywdata"."mv_xxffmk_school_dim" ("xxbsm", "xxmc", "zgjyxzbmmc");
+    ON "ywdata"."mv_xxffmk_school_dim" ("xxbsm", "xxmc");
 
 COMMENT ON MATERIALIZED VIEW "ywdata"."mv_xxffmk_school_dim" IS '学校赋分模块学校标准维：中职优先的学校去重结果';
 
@@ -63,7 +60,6 @@ WITH student_sources AS (
         s."sfzjh",
         s."xxbsm",
         s."xxmc",
-        s."zgjyxzbmmc",
         'zzxj' AS source_type,
         s."njmc",
         s."bjmc",
@@ -81,7 +77,6 @@ WITH student_sources AS (
         s."sfzjh",
         s."xxbsm",
         s."xxmc",
-        s."zgjyxzbmmc",
         'zxxj' AS source_type,
         s."njmc",
         s."bjmc",
@@ -106,7 +101,6 @@ SELECT
     r."sfzjh",
     r."xxbsm",
     r."xxmc",
-    r."zgjyxzbmmc",
     r.source_type,
     r."njmc",
     r."bjmc"

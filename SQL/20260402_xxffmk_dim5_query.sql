@@ -22,10 +22,9 @@ night_days AS (
 SELECT
     r."xxbsm",
     r."xxmc",
-    r."zgjyxzbmmc",
     COUNT(*) AS no_return_count
 FROM night_days q
 JOIN "ywdata"."mv_xxffmk_student_school_rel" r
   ON r."sfzjh" = q.sfzjh
-GROUP BY r."xxbsm", r."xxmc", r."zgjyxzbmmc"
+GROUP BY r."xxbsm", r."xxmc"
 ORDER BY no_return_count DESC, r."xxbsm";

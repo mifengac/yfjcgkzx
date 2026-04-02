@@ -5,11 +5,10 @@
 SELECT
     r."xxbsm",
     r."xxmc",
-    r."zgjyxzbmmc",
     COUNT(*) AS dropout_count
 FROM "ywdata"."b_per_qscxwcnr" q
 JOIN "ywdata"."mv_xxffmk_student_school_rel" r
   ON r."sfzjh" = q."zjhm"
 WHERE NULLIF(BTRIM(COALESCE(q."zjhm", '')), '') IS NOT NULL
-GROUP BY r."xxbsm", r."xxmc", r."zgjyxzbmmc"
+GROUP BY r."xxbsm", r."xxmc"
 ORDER BY dropout_count DESC, r."xxbsm";

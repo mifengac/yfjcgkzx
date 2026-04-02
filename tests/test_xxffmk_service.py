@@ -35,7 +35,7 @@ class TestXxffmkService(unittest.TestCase):
     def test_school_matcher_handles_prefixed_road_name(self) -> None:
         matcher = service.SchoolMatcher(
             [
-                {"xxbsm": "A001", "xxmc": "AB中学", "zgjyxzbmmc": "教育局", "source_type": "zxxj"},
+                {"xxbsm": "A001", "xxmc": "AB中学", "source_type": "zxxj"},
             ]
         )
 
@@ -47,7 +47,7 @@ class TestXxffmkService(unittest.TestCase):
         with patch.dict(service.SCHOOL_ALIAS_MAP, {"AB实验中学": "AB中学"}, clear=True):
             matcher = service.SchoolMatcher(
                 [
-                    {"xxbsm": "A001", "xxmc": "AB中学", "zgjyxzbmmc": "教育局", "source_type": "zxxj"},
+                    {"xxbsm": "A001", "xxmc": "AB中学", "source_type": "zxxj"},
                 ]
             )
             matched = matcher.match("AB实验中学")
@@ -69,9 +69,9 @@ class TestXxffmkService(unittest.TestCase):
 
     def test_build_rank_payload_merges_dimension_scores(self) -> None:
         school_info_map = {
-            "A": {"xxbsm": "A", "xxmc": "甲学校", "zgjyxzbmmc": "甲局"},
-            "B": {"xxbsm": "B", "xxmc": "乙学校", "zgjyxzbmmc": "乙局"},
-            "C": {"xxbsm": "C", "xxmc": "丙学校", "zgjyxzbmmc": "丙局"},
+            "A": {"xxbsm": "A", "xxmc": "甲学校"},
+            "B": {"xxbsm": "B", "xxmc": "乙学校"},
+            "C": {"xxbsm": "C", "xxmc": "丙学校"},
         }
         dimension_results = {
             "songsheng": _dimension_result({"A": 10, "B": 10, "C": 1}),
@@ -120,7 +120,7 @@ class TestXxffmkService(unittest.TestCase):
         with patch.object(service, "get_database_connection", return_value=dummy_conn), patch.object(
             service,
             "_load_dimension_results",
-            return_value=(None, {"A": {"xxbsm": "A", "xxmc": "A校", "zgjyxzbmmc": "A局"}}, fake_dimension_results, {"total_seconds": 0.1}),
+            return_value=(None, {"A": {"xxbsm": "A", "xxmc": "A校"}}, fake_dimension_results, {"total_seconds": 0.1}),
         ), patch.object(
             service.xxffmk_dao,
             "fetch_dimension1_detail_rows",

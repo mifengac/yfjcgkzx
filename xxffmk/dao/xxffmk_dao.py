@@ -25,34 +25,32 @@ def build_school_dim_cte(alias: str = "school_dim") -> str:
         SELECT
             s."xxbsm",
             s."xxmc",
-            s."zgjyxzbmmc",
             'zzxj' AS source_type,
             1 AS source_priority,
             MAX(COALESCE(s."gkrksj", s."bzkrksj", s."cd_time", s."add_time")) AS latest_time
         FROM "ywdata"."sh_yf_zzxj_xx" s
         WHERE NULLIF(BTRIM(COALESCE(s."xxbsm", '')), '') IS NOT NULL
           AND NULLIF(BTRIM(COALESCE(s."xxmc", '')), '') IS NOT NULL
-        GROUP BY s."xxbsm", s."xxmc", s."zgjyxzbmmc"
+        GROUP BY s."xxbsm", s."xxmc"
 
         UNION ALL
 
         SELECT
             s."xxbsm",
             s."xxmc",
-            s."zgjyxzbmmc",
             'zxxj' AS source_type,
             2 AS source_priority,
             MAX(COALESCE(s."bzkrksj", s."cd_time", s."add_time")) AS latest_time
         FROM "ywdata"."sh_gd_zxxxsxj_xx" s
         WHERE NULLIF(BTRIM(COALESCE(s."xxbsm", '')), '') IS NOT NULL
           AND NULLIF(BTRIM(COALESCE(s."xxmc", '')), '') IS NOT NULL
-        GROUP BY s."xxbsm", s."xxmc", s."zgjyxzbmmc"
+        GROUP BY s."xxbsm", s."xxmc"
     ),
     ranked AS (
         SELECT
             ss.*,
             ROW_NUMBER() OVER (
-                PARTITION BY ss."xxbsm", ss."xxmc", ss."zgjyxzbmmc"
+                PARTITION BY ss."xxbsm", ss."xxmc"
                 ORDER BY ss.source_priority, ss.latest_time DESC NULLS LAST
             ) AS rn
         FROM school_sources ss
@@ -60,7 +58,6 @@ def build_school_dim_cte(alias: str = "school_dim") -> str:
     SELECT
         r."xxbsm",
         r."xxmc",
-        r."zgjyxzbmmc",
         r.source_type,
         UPPER(REGEXP_REPLACE(COALESCE(r."xxmc", ''), '[[:space:][:punct:]]', '', 'g')) AS normalized_xxmc
     FROM ranked r
@@ -77,7 +74,6 @@ def build_student_school_rel_cte(alias: str = "student_school_rel") -> str:
             s."sfzjh",
             s."xxbsm",
             s."xxmc",
-            s."zgjyxzbmmc",
             'zzxj' AS source_type,
             s."njmc",
             s."bjmc",
@@ -95,7 +91,6 @@ def build_student_school_rel_cte(alias: str = "student_school_rel") -> str:
             s."sfzjh",
             s."xxbsm",
             s."xxmc",
-            s."zgjyxzbmmc",
             'zxxj' AS source_type,
             s."njmc",
             s."bjmc",
@@ -120,7 +115,6 @@ def build_student_school_rel_cte(alias: str = "student_school_rel") -> str:
         r."sfzjh",
         r."xxbsm",
         r."xxmc",
-        r."zgjyxzbmmc",
         r.source_type,
         r."njmc",
         r."bjmc"
@@ -137,7 +131,6 @@ def build_student_school_rel_ref(alias: str = "student_school_rel") -> str:
         r."sfzjh",
         r."xxbsm",
         r."xxmc",
-        r."zgjyxzbmmc",
         r.source_type,
         r."njmc",
         r."bjmc"
@@ -153,7 +146,6 @@ school_dim AS (
     SELECT
         s."xxbsm",
         s."xxmc",
-        s."zgjyxzbmmc",
         s.source_type,
         s.normalized_xxmc
 FROM "ywdata"."mv_xxffmk_school_dim" s
@@ -161,7 +153,6 @@ FROM "ywdata"."mv_xxffmk_school_dim" s
 SELECT
     s."xxbsm",
     s."xxmc",
-    s."zgjyxzbmmc",
     s.source_type,
     s.normalized_xxmc
 FROM school_dim s
@@ -268,8 +259,7 @@ SELECT
     m.xm,
     m."xyrxx_lrsj",
     r."xxbsm",
-    r."xxmc",
-    r."zgjyxzbmmc"
+    r."xxmc"
 FROM minor_people m
 JOIN gang_cases g
   ON g.ajbh = m.ajbh
@@ -292,7 +282,6 @@ SELECT
     q."xb",
     r."xxbsm",
     r."xxmc",
-    r."zgjyxzbmmc",
     r."njmc",
     r."bjmc"
 FROM "ywdata"."b_per_qscxwcnr" q
@@ -329,7 +318,6 @@ SELECT
     q.night_days,
     r."xxbsm",
     r."xxmc",
-    r."zgjyxzbmmc",
     r."njmc",
     r."bjmc"
 FROM night_days q
