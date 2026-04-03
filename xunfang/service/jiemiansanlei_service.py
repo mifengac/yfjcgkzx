@@ -740,12 +740,11 @@ def _get_model_bundle() -> ModelBundle:
         if _MODEL_BUNDLE is not None:
             return _MODEL_BUNDLE
 
-        model_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "5lei_dizhi_model", "best_model")
+        model_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "gonggong", "5lei_dizhi_model")
         )
-        id2label_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "5lei_dizhi_model", "id2label.json")
-        )
+        model_dir = os.path.join(model_root, "best_model")
+        id2label_path = os.path.join(model_root, "id2label.json")
 
         try:
             import torch  # type: ignore

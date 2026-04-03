@@ -103,7 +103,7 @@ def _append_addr_predictions(rows: List[Dict[str, Any]], *, addr_col: str = "发
     try:
         from xunfang.service.jiemiansanlei_service import predict_addresses
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"无法加载地址分类模型（xunfang/5lei_dizhi_model）：{exc}") from exc
+        raise RuntimeError(f"无法加载地址分类模型（gonggong/5lei_dizhi_model）：{exc}") from exc
 
     texts = [str((r.get(addr_col) or "")).strip() for r in rows]
     preds = predict_addresses(texts)

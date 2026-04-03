@@ -1,0 +1,133 @@
+<div class="fenxi-container">
+    <div class="query-area">
+        <div class="query-item">
+            <label>开始时间:</label>
+            <input type="datetime-local" step="1" id="fightBeginDate">
+        </div>
+        <div class="query-item">
+            <label>结束时间:</label>
+            <input type="datetime-local" step="1" id="fightEndDate">
+        </div>
+        <div class="query-item">
+            <label>环比开始:</label>
+            <input type="datetime-local" step="1" id="fightM2mStartTime">
+        </div>
+        <div class="query-item">
+            <label>环比结束:</label>
+            <input type="datetime-local" step="1" id="fightM2mEndTime">
+        </div>
+
+        <div class="query-item">
+            <label>分析维度:</label>
+            <div class="multi-select" id="fightDimMs">
+                <div class="multi-select-display" id="fightDimMsDisplay">全部</div>
+                <div class="multi-select-dropdown" id="fightDimMsDropdown">
+                    <label class="multi-select-option" style="border-bottom:1px solid #eee;font-weight:bold;"><input type="checkbox" value="_all" checked> 全选</label>
+                    <label class="multi-select-option"><input type="checkbox" value="srr" checked> 各地同比环比</label>
+                    <label class="multi-select-option"><input type="checkbox" value="time" checked> 时段</label>
+                    <label class="multi-select-option"><input type="checkbox" value="dept" checked> 派出所</label>
+                    <label class="multi-select-option"><input type="checkbox" value="phone" checked> 重复报警电话</label>
+                    <label class="multi-select-option"><input type="checkbox" value="cluster" checked> 重复报警地址</label>
+                    <label class="multi-select-option"><input type="checkbox" value="addr" checked> 警情地址统计</label>
+                    <label class="multi-select-option"><input type="checkbox" value="reason" checked> 打架原因分析</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="query-item">
+            <button class="btn" id="fightTopicAnalyzeBtn">统计</button>
+            <button class="btn" id="fightTopicExportBtn" style="background:#28a745">导出</button>
+            <span id="fightTopicLoading">正在处理中，请稍候...</span>
+        </div>
+    </div>
+
+    <div id="fightTopicError" class="error-message special-case-hidden"></div>
+
+    <div class="charts-container">
+        <div class="chart-box" id="fight-box-srr" style="grid-column: 1 / -1;">
+            <div id="fight-table-srr"></div>
+        </div>
+
+        <div class="chart-box" id="fight-box-time">
+            <div class="chart-head">
+                <h3>时段</h3>
+                <div class="chart-opt" id="fight-opt-time">
+                    <label>分组:</label>
+                    <input type="range" id="fightOptTimeBucketIndex" min="0" max="6" step="1" value="2">
+                    <span class="opt-value" id="fightOptTimeBucketLabel">3小时</span>
+                    <span class="opt-tip">仅支持可整除24小时: 1/2/3/4/6/8/12</span>
+                </div>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="fight-chart-time"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="fight-state-time"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="fight-box-dept">
+            <div class="chart-head">
+                <h3>派出所</h3>
+                <div class="chart-opt" id="fight-opt-dept">
+                    <label><input type="checkbox" id="fightOptDeptAll" checked> 全部</label>
+                    <input type="range" id="fightOptDeptTopN" min="1" max="100" step="1" value="20" disabled>
+                    <span class="opt-value" id="fightOptDeptTopNLabel">全部</span>
+                </div>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="fight-chart-dept"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="fight-state-dept"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="fight-box-phone">
+            <div class="chart-head">
+                <h3>重复报警电话</h3>
+                <div class="chart-opt" id="fight-opt-phone">
+                    <label>阈值:</label>
+                    <input type="range" id="fightOptPhoneMinCount" min="2" max="10" step="1" value="2">
+                    <span class="opt-value" id="fightOptPhoneMinCountLabel">&gt;=2次</span>
+                    <span class="opt-tip">自动过滤 00000000</span>
+                </div>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="fight-chart-phone"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="fight-state-phone"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="fight-box-cluster">
+            <div class="chart-head">
+                <h3>重复报警地址</h3>
+                <div class="chart-opt" id="fight-opt-cluster">
+                    <label>半径:</label>
+                    <input type="range" id="fightOptClusterRadius" min="50" max="500" step="50" value="50">
+                    <span class="opt-value" id="fightOptClusterRadiusLabel">50米</span>
+                </div>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="fight-chart-cluster"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="fight-state-cluster"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="fight-box-addr">
+            <div class="chart-head">
+                <h3>警情地址统计</h3>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="fight-chart-addr"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="fight-state-addr"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="fight-box-reason">
+            <div class="chart-head">
+                <h3>打架原因分析</h3>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="fight-chart-reason"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="fight-state-reason"></div>
+            </div>
+        </div>
+    </div>
+</div>

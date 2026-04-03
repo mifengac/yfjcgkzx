@@ -180,7 +180,8 @@
             cursor: pointer;
         }
         .btn:hover { background: #0056b3; }
-        #loading {
+        #loading,
+        #fightTopicLoading {
             display: none;
             color: #ff9800;
             font-weight: bold;
@@ -397,6 +398,28 @@
         .special-case-actions {
             justify-content: flex-end;
         }
+        .fight-chart-wrap {
+            position: relative;
+            min-height: 300px;
+        }
+        .fight-chart-state {
+            min-height: 300px;
+            border: 1px dashed #d0d7de;
+            border-radius: 6px;
+            background: #fafcff;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+        .fight-chart-state.error {
+            border: 1px solid #f5c2c7;
+            background: #fff5f5;
+            color: #842029;
+        }
         @media (max-width: 900px) {
             .charts-container {
                 grid-template-columns: 1fr;
@@ -423,6 +446,7 @@
 
         <div class="tab-nav">
             <button type="button" class="tab-btn active" data-tab-target="analysis">警情分析</button>
+            <button type="button" class="tab-btn" data-tab-target="fight-topic">打架斗殴专题</button>
             <button type="button" class="tab-btn" data-tab-target="wander">流浪/乞讨警情</button>
             <button type="button" class="tab-btn" data-tab-target="rental">出租屋警情</button>
         </div>
@@ -430,6 +454,10 @@
         <div class="page-card-body">
             <div class="tab-panel active" data-tab-panel="analysis">
                 {% include "analysis_tab.html" %}
+            </div>
+
+            <div class="tab-panel" data-tab-panel="fight-topic">
+                {% include "fight_topic_tab.html" %}
             </div>
 
             <div class="tab-panel" data-tab-panel="wander">
@@ -445,6 +473,7 @@
 
 <script src="/jingqing_fenxi/static/js/chart.min.js"></script>
 <script src="/jingqing_fenxi/static/js/analysis_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/fight_topic_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/wander_case_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/rental_case_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/jingqing_fenxi_tabs.js"></script>

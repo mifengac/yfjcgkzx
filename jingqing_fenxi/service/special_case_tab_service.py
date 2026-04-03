@@ -26,7 +26,7 @@ BRANCH_CMD_ID_MAP = {
     '郁南': '445322000000',
 }
 
-SPECIAL_CASE_UPSTREAM_PAGE_SIZE = 8000
+SPECIAL_CASE_UPSTREAM_PAGE_SIZE = 5000
 
 EXPORT_HEADERS = [
     ('caseNo', '接警号'),
@@ -123,7 +123,10 @@ def build_special_case_payload(begin_date: str, end_date: str) -> Dict[str, Any]
 
 
 def fetch_all_special_case_rows(begin_date: str, end_date: str) -> List[Dict[str, Any]]:
-    return fetch_all_case_list(build_special_case_payload(begin_date, end_date))
+    return fetch_all_case_list(
+        build_special_case_payload(begin_date, end_date),
+        max_page_size=SPECIAL_CASE_UPSTREAM_PAGE_SIZE,
+    )
 
 
 def count_keyword_matches(rows: Iterable[Dict[str, Any]], keywords: Sequence[str]) -> int:

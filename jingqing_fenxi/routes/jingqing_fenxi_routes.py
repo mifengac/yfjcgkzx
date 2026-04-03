@@ -8,5 +8,6 @@ def index():
 
 
 from jingqing_fenxi.routes import analysis_tab_routes  # noqa: E402,F401
+from jingqing_fenxi.routes import fight_topic_routes  # noqa: E402,F401
 from jingqing_fenxi.routes import rental_case_routes  # noqa: E402,F401
 from jingqing_fenxi.routes import wander_case_routes  # noqa: E402,F401
