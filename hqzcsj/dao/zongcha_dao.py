@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import re
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
@@ -9,6 +11,7 @@ from psycopg2.extras import execute_values
 
 
 _TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+LOGGER = logging.getLogger(__name__)
 
 
 def ensure_schema(conn, schema: str) -> None:
@@ -81,6 +84,163 @@ def infer_col_types(rows: Sequence[Dict[str, Any]]) -> Dict[str, str]:
     return inferred
 
 
+def _normalize_pk_fields(pk_fields: Sequence[str]) -> List[str]:
+    return [str(field) for field in (pk_fields or []) if field]
+
+
+def _get_table_column_names(cur, schema: str, table: str) -> set[str]:
+    cur.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema=%s AND table_name=%s
+        """,
+        (schema, table),
+    )
+    return {str(row[0]) for row in cur.fetchall() if row and row[0]}
+
+
+def _constraint_matches(columns: Sequence[str], pk_fields: Sequence[str]) -> bool:
+    actual = [str(col) for col in (columns or []) if col]
+    expected = _normalize_pk_fields(pk_fields)
+    return len(actual) == len(expected) and set(actual) == set(expected)
+
+
+def _build_constraint_name(table: str, pk_fields: Sequence[str]) -> str:
+    suffix = "_".join(_normalize_pk_fields(pk_fields)) or "pk"
+    base = f"uq_{table}_{suffix}"
+    if len(base) <= 63:
+        return base
+    digest = hashlib.md5(base.encode("utf-8")).hexdigest()[:12]
+    short = f"uq_{table[:24]}_{suffix[:20]}_{digest}"
+    if len(short) <= 63:
+        return short
+    return f"uq_{table[:40]}_{digest}"
+
+
+def ensure_conflict_target_constraint(
+    *,
+    cur,
+    schema: str,
+    table: str,
+    pk_fields: Sequence[str],
+    preferred_order_fields: Sequence[str] = (),
+) -> Tuple[bool, int, int, int]:
+    pk_fields = _normalize_pk_fields(pk_fields)
+    if not pk_fields:
+        return False, 0, 0, 0
+
+    table_columns = _get_table_column_names(cur, schema, table)
+
+    cur.execute(
+        """
+        SELECT con.conname, con.contype, array_agg(att.attname ORDER BY ord.n) AS columns
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        JOIN unnest(con.conkey) WITH ORDINALITY AS ord(attnum, n) ON TRUE
+        JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = ord.attnum
+        WHERE nsp.nspname=%s
+          AND rel.relname=%s
+          AND con.contype IN ('p', 'u')
+        GROUP BY con.conname, con.contype
+        """,
+        (schema, table),
+    )
+    constraints = [
+        {
+            "name": str(name),
+            "type": str(contype),
+            "columns": [str(col) for col in (columns or []) if col],
+        }
+        for name, contype, columns in cur.fetchall()
+    ]
+    matching_constraint_exists = any(
+        _constraint_matches(item["columns"], pk_fields) for item in constraints
+    )
+    mismatched_primary_keys = [
+        item for item in constraints if item["type"] == "p" and not _constraint_matches(item["columns"], pk_fields)
+    ]
+    dropped_legacy_primary_keys = 0
+    for item in mismatched_primary_keys:
+        cur.execute(
+            sql.SQL("ALTER TABLE {}.{} DROP CONSTRAINT {}").format(
+                sql.Identifier(schema),
+                sql.Identifier(table),
+                sql.Identifier(item["name"]),
+            )
+        )
+        dropped_legacy_primary_keys += 1
+
+    if matching_constraint_exists and not dropped_legacy_primary_keys:
+        return False, 0, 0, 0
+
+    empty_predicates = [
+        sql.SQL("NULLIF(BTRIM(COALESCE({}::text, '')), '') IS NULL").format(sql.Identifier(field))
+        for field in pk_fields
+    ]
+    cur.execute(
+        sql.SQL("DELETE FROM {}.{} WHERE {}").format(
+            sql.Identifier(schema),
+            sql.Identifier(table),
+            sql.SQL(" OR ").join(empty_predicates),
+        )
+    )
+    dropped_empty_pk = int(cur.rowcount or 0)
+
+    order_parts = [
+        sql.SQL("{} DESC NULLS LAST").format(sql.Identifier(field))
+        for field in preferred_order_fields
+        if field and field in table_columns and field not in pk_fields
+    ]
+    order_parts.extend(
+        sql.SQL("{} DESC NULLS LAST").format(sql.Identifier(field))
+        for field in sorted(table_columns)
+        if field.endswith("_id") and field not in pk_fields
+    )
+    order_parts.append(sql.SQL("ctid DESC"))
+
+    cur.execute(
+        sql.SQL(
+            """
+            WITH ranked AS (
+                SELECT
+                    ctid AS rid,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY {}
+                        ORDER BY {}
+                    ) AS rn
+                FROM {}.{}
+            )
+            DELETE FROM {}.{} t
+            USING ranked r
+            WHERE t.ctid = r.rid
+              AND r.rn > 1
+            """
+        ).format(
+            sql.SQL(", ").join(sql.Identifier(field) for field in pk_fields),
+            sql.SQL(", ").join(order_parts),
+            sql.Identifier(schema),
+            sql.Identifier(table),
+            sql.Identifier(schema),
+            sql.Identifier(table),
+        )
+    )
+    dropped_duplicates = int(cur.rowcount or 0)
+
+    if not matching_constraint_exists:
+        constraint_name = _build_constraint_name(table, pk_fields)
+        cur.execute(
+            sql.SQL("ALTER TABLE {}.{} ADD CONSTRAINT {} PRIMARY KEY ({})").format(
+                sql.Identifier(schema),
+                sql.Identifier(table),
+                sql.Identifier(constraint_name),
+                sql.SQL(", ").join(sql.Identifier(field) for field in pk_fields),
+            )
+        )
+    return True, dropped_empty_pk, dropped_duplicates, dropped_legacy_primary_keys
+
+
 def ensure_table_and_columns(
     *,
     conn,
@@ -89,8 +249,9 @@ def ensure_table_and_columns(
     pk_fields: Sequence[str],
     inferred_types: Dict[str, str],
     table_comment: str = "",
+    constraint_order_fields: Sequence[str] = (),
 ) -> Dict[str, str]:
-    pk_fields = [f for f in pk_fields if f]
+    pk_fields = _normalize_pk_fields(pk_fields)
     if not pk_fields:
         raise ValueError("pk_fields 不能为空")
 
@@ -118,6 +279,15 @@ def ensure_table_and_columns(
             )
 
         # 补列：默认 TEXT；疑似时间列用 TIMESTAMP
+        for pk in pk_fields:
+            cur.execute(
+                sql.SQL("ALTER TABLE {}.{} ADD COLUMN IF NOT EXISTS {} TEXT").format(
+                    sql.Identifier(schema),
+                    sql.Identifier(table),
+                    sql.Identifier(pk),
+                )
+            )
+
         for col, col_type in sorted((inferred_types or {}).items()):
             if not col or col in pk_fields:
                 continue
@@ -129,6 +299,23 @@ def ensure_table_and_columns(
                     sql.Identifier(col),
                     sql.SQL(safe_type),
                 )
+            )
+
+        fixed_constraint, dropped_empty_pk, dropped_duplicates, dropped_legacy_primary_keys = ensure_conflict_target_constraint(
+            cur=cur,
+            schema=schema,
+            table=table,
+            pk_fields=pk_fields,
+            preferred_order_fields=constraint_order_fields,
+        )
+        if fixed_constraint:
+            LOGGER.warning(
+                "[%s] 已自动对齐主键/唯一约束(%s)，清理空主键=%s，清理重复=%s，移除旧主键=%s",
+                table,
+                ",".join(pk_fields),
+                dropped_empty_pk,
+                dropped_duplicates,
+                dropped_legacy_primary_keys,
             )
 
     conn.commit()

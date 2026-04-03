@@ -188,6 +188,13 @@ def _run_job(
                         continue
 
                     fetched_total += len(window_rows)
+                    if job.table in {"zq_zfba_wcnr_xyr", "zq_zfba_xyrxx"}:
+                        window_rows, _ = _normalize_xyr_case_ref_rows(
+                            rows=window_rows,
+                            source_name=job.name,
+                        )
+                        if not window_rows:
+                            continue
                     window_rows, _ = _drop_rows_with_empty_pk(
                         rows=window_rows,
                         pk_fields=job.pk_fields,
@@ -208,6 +215,7 @@ def _run_job(
                         pk_fields=job.pk_fields,
                         inferred_types=inferred,
                         table_comment=job.table,
+                        constraint_order_fields=job.time_field_codes,
                     )
                     processed_total += upsert_rows(
                         conn=conn,
@@ -227,6 +235,7 @@ def _run_job(
                         pk_fields=job.pk_fields,
                         inferred_types={pk: "TEXT" for pk in job.pk_fields},
                         table_comment=job.table,
+                        constraint_order_fields=job.time_field_codes,
                     )
                 results.append(
                     {
@@ -602,6 +611,41 @@ def _drop_rows_with_empty_pk(
 
     if dropped:
         LOGGER.warning("[%s] 丢弃主键缺失记录 %s 条（主键=%s）", source_name, dropped, ",".join(valid_pk_fields))
+    return kept, dropped
+
+
+def _normalize_xyr_case_ref_rows(
+    *, rows: Sequence[Dict[str, Any]], source_name: str
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    嫌疑人类表的兼容规则：
+    优先使用 ajxx_join_ajxx_ajbh；若缺失则回退到旧字段 ajxx_ajbhs。
+    两个字段都没有时才跳过，不进入后续入库。
+    """
+    if not rows:
+        return [], 0
+
+    kept: List[Dict[str, Any]] = []
+    dropped = 0
+    for row in rows:
+        row_map = dict(row or {})
+        case_ref = str(row_map.get("ajxx_join_ajxx_ajbh") or "").strip()
+        if not case_ref:
+            case_ref = str(row_map.get("ajxx_ajbhs") or "").strip()
+        if not case_ref:
+            dropped += 1
+            continue
+        row_map["ajxx_join_ajxx_ajbh"] = case_ref
+        if not str(row_map.get("ajxx_ajbhs") or "").strip():
+            row_map["ajxx_ajbhs"] = case_ref
+        kept.append(row_map)
+
+    if dropped:
+        LOGGER.warning(
+            "[%s] 丢弃缺少案件关联编号记录 %s 条（字段=ajxx_join_ajxx_ajbh/ajxx_ajbhs）",
+            source_name,
+            dropped,
+        )
     return kept, dropped
 
 
