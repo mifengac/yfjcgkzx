@@ -48,6 +48,7 @@ from gzrzdd.routes.gzrzdd_routes import gzrzdd_bp  # noqa: E402
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp  # noqa: E402
 from mdjfxsyj.routes.mdjfxsyj_mdj_xsyj_routes import mdjfxsyj_bp  # noqa: E402
 from mdjfxsyj.routes.mdjfxsyj_cfbj_routes import mdjfxsyj_cfbj_bp  # noqa: E402
+from mdjfxsyj.routes.mdjfxsyj_yyjdjc_routes import mdjfxsyj_yyjdjc_bp  # noqa: E402
 from hqzcsj.routes.hqzcsj_zongcha_routes import hqzcsj_bp  # noqa: E402
 from hqzcsj.routes.zfba_jq_aj_routes import zfba_jq_aj_bp  # noqa: E402
 from hqzcsj.routes.pcsjqajtj_routes import pcsjqajtj_bp  # noqa: E402
@@ -381,6 +382,7 @@ app.register_blueprint(gzrzdd_bp, url_prefix="/gzrzdd")
 app.register_blueprint(jszahzyj_bp, url_prefix="/jszahzyj")
 app.register_blueprint(mdjfxsyj_bp, url_prefix="/mdjfxsyj")
 app.register_blueprint(mdjfxsyj_cfbj_bp, url_prefix="/mdjfxsyj/cfbj")
+app.register_blueprint(mdjfxsyj_yyjdjc_bp, url_prefix="/mdjfxsyj/yyjdjc")
 app.register_blueprint(hqzcsj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(zfba_jq_aj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(pcsjqajtj_bp, url_prefix="/hqzcsj")

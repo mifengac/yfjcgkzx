@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>扬言极端监测</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/water.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('mdjfxsyj.static', filename='vendor/flatpickr/flatpickr.min.css') }}" />
+    <style>
+      body.mdj-yyjdjc-body {
+        max-width: none;
+        margin: 0;
+        padding: 12px 16px 24px;
+      }
+
+      .mdj-yyjdjc-shell {
+        width: 100%;
+      }
+
+      .mdj-yyjdjc-toolbar,
+      .mdj-yyjdjc-card-head,
+      .mdj-yyjdjc-card-title,
+      .mdj-yyjdjc-export-menu,
+      .mdj-yyjdjc-pagination,
+      .mdj-yyjdjc-pagination-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .mdj-yyjdjc-toolbar {
+        align-items: flex-end;
+      }
+
+      .mdj-yyjdjc-toolbar label {
+        min-width: 240px;
+      }
+
+      .mdj-yyjdjc-toolbar input {
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      section[data-source] {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid #e6e8ef;
+      }
+
+      section[data-source]:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .mdj-yyjdjc-card-head {
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .mdj-yyjdjc-card-title {
+        flex: 1 1 auto;
+        align-items: flex-start;
+        min-width: 0;
+      }
+
+      .mdj-yyjdjc-card-title-text {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .mdj-yyjdjc-card-title h3 {
+        margin: 0;
+      }
+
+      .mdj-yyjdjc-card-title p,
+      .mdj-yyjdjc-status,
+      .mdj-yyjdjc-source-meta {
+        margin: 0;
+      }
+
+      .mdj-yyjdjc-collapse-btn {
+        appearance: none;
+        border: 1px solid #d7dbe7;
+        background: #f6f8fc;
+        color: #273142;
+        border-radius: 999px;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        font-size: 16px;
+        line-height: 1;
+        font-weight: 700;
+        transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+        transform-origin: center center;
+      }
+
+      .mdj-yyjdjc-collapse-btn:hover {
+        background: #edf2ff;
+        border-color: #b7c6ff;
+      }
+
+      .mdj-yyjdjc-collapse-btn.is-collapsed {
+        transform: rotate(0deg);
+      }
+
+      .mdj-yyjdjc-collapse-btn:not(.is-collapsed) {
+        transform: rotate(90deg);
+      }
+
+      .mdj-yyjdjc-card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .mdj-yyjdjc-source-card.is-collapsed .mdj-yyjdjc-card-body,
+      .mdj-yyjdjc-card-body[hidden] {
+        display: none !important;
+      }
+
+      .mdj-yyjdjc-table-wrap {
+        overflow: auto;
+      }
+
+      .mdj-yyjdjc-table-wrap table {
+        min-width: 1100px;
+        table-layout: auto;
+      }
+
+      .mdj-yyjdjc-table-wrap td {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .mdj-yyjdjc-police-table {
+        min-width: 1500px;
+        table-layout: fixed !important;
+      }
+
+      .mdj-yyjdjc-police-table th,
+      .mdj-yyjdjc-police-table td {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+      }
+
+      .mdj-yyjdjc-police-table tbody tr {
+        height: 42px;
+      }
+
+      .mdj-yyjdjc-police-table td {
+        padding-top: 8px;
+        padding-bottom: 8px;
+      }
+
+      .mdj-yyjdjc-pagination {
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 4px;
+      }
+
+      .mdj-yyjdjc-pagination-info {
+        font-weight: 600;
+        color: #4a5568;
+      }
+
+      .mdj-yyjdjc-pagination-controls {
+        justify-content: flex-end;
+      }
+
+      .mdj-yyjdjc-page-size-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .mdj-yyjdjc-page-size-select {
+        min-width: 92px;
+      }
+
+      .mdj-yyjdjc-pagination button,
+      .mdj-yyjdjc-pagination select {
+        margin: 0;
+      }
+
+      .mdj-yyjdjc-status-error {
+        color: #b42318;
+        white-space: pre-wrap;
+      }
+
+      .mdj-yyjdjc-summary {
+        margin: 0 0 12px;
+      }
+
+      .mdj-yyjdjc-summary code {
+        display: inline-block;
+        margin: 2px 6px 2px 0;
+      }
+
+      details.mdj-yyjdjc-export > summary {
+        margin: 0;
+        cursor: pointer;
+      }
+
+      details.mdj-yyjdjc-export[open] {
+        padding-bottom: 10px;
+      }
+
+      .mdj-yyjdjc-export-menu button {
+        margin: 0;
+      }
+
+      .mdj-yyjdjc-empty {
+        color: var(--text-muted);
+      }
+
+      @media (max-width: 960px) {
+        body.mdj-yyjdjc-body {
+          padding: 10px 12px 20px;
+        }
+
+        .mdj-yyjdjc-toolbar label {
+          min-width: 100%;
+        }
+
+        .mdj-yyjdjc-card-head {
+          align-items: flex-start;
+        }
+
+        .mdj-yyjdjc-pagination {
+          align-items: flex-start;
+        }
+      }
+    </style>
+    <script src="{{ url_for('mdjfxsyj.static', filename='vendor/flatpickr/flatpickr.min.js') }}"></script>
+    <script src="{{ url_for('mdjfxsyj.static', filename='vendor/flatpickr/l10n/zh.js') }}"></script>
+  </head>
+  <body class="mdj-yyjdjc-body">
+    <main class="mdj-yyjdjc-shell">
+      <header>
+        <h2>扬言极端监测</h2>
+        <p class="mdj-yyjdjc-summary">
+          当前关键词口径：
+          {% for keyword in keyword_list %}
+          <code>{{ keyword }}</code>
+          {% endfor %}
+        </p>
+      </header>
+
+      <fieldset>
+        <legend>数据过滤区</legend>
+        <div class="mdj-yyjdjc-toolbar">
+          <label>
+            开始时间
+            <input id="yyjdjcStartTime" type="text" placeholder="YYYY-MM-DD HH:MM:SS" />
+          </label>
+          <label>
+            结束时间
+            <input id="yyjdjcEndTime" type="text" placeholder="YYYY-MM-DD HH:MM:SS" />
+          </label>
+          <button id="yyjdjcQueryBtn" type="button">查询</button>
+          <button id="yyjdjcExportAllBtn" type="button">导出</button>
+        </div>
+        <p id="yyjdjcStatus" class="mdj-yyjdjc-status"></p>
+      </fieldset>
+
+      <section class="mdj-yyjdjc-source-card" data-source="police">
+        <div class="mdj-yyjdjc-card-head">
+          <div class="mdj-yyjdjc-card-title">
+            <button
+              type="button"
+              class="mdj-yyjdjc-collapse-btn"
+              data-collapse-toggle="police"
+              aria-expanded="true"
+              aria-controls="yyjdjc-police-body"
+              title="收起模块"
+            >
+              ▶
+            </button>
+            <div class="mdj-yyjdjc-card-title-text">
+              <h3>涉扬言极端警情</h3>
+              <p id="yyjdjc-police-meta" class="mdj-yyjdjc-source-meta">共 0 条</p>
+            </div>
+          </div>
+          <details class="mdj-yyjdjc-export">
+            <summary>导出</summary>
+            <div class="mdj-yyjdjc-export-menu">
+              <button type="button" data-source-export="police" data-format="csv">csv</button>
+              <button type="button" data-source-export="police" data-format="xlsx">xlsx</button>
+            </div>
+          </details>
+        </div>
+        <div id="yyjdjc-police-body" class="mdj-yyjdjc-card-body">
+          <p id="yyjdjc-police-error" class="mdj-yyjdjc-status mdj-yyjdjc-status-error" hidden></p>
+          <p id="yyjdjc-police-empty" class="mdj-yyjdjc-empty" hidden>暂无数据</p>
+          <div id="yyjdjc-police-wrap" class="mdj-yyjdjc-table-wrap">
+            <table id="yyjdjc-police-table" class="mdj-yyjdjc-police-table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="yyjdjc-police-pagination" class="mdj-yyjdjc-pagination"></div>
+        </div>
+      </section>
+
+      <section class="mdj-yyjdjc-source-card" data-source="workorder">
+        <div class="mdj-yyjdjc-card-head">
+          <div class="mdj-yyjdjc-card-title">
+            <button
+              type="button"
+              class="mdj-yyjdjc-collapse-btn"
+              data-collapse-toggle="workorder"
+              aria-expanded="true"
+              aria-controls="yyjdjc-workorder-body"
+              title="收起模块"
+            >
+              ▶
+            </button>
+            <div class="mdj-yyjdjc-card-title-text">
+              <h3>涉扬言极端12345工单</h3>
+              <p id="yyjdjc-workorder-meta" class="mdj-yyjdjc-source-meta">共 0 条</p>
+            </div>
+          </div>
+          <details class="mdj-yyjdjc-export">
+            <summary>导出</summary>
+            <div class="mdj-yyjdjc-export-menu">
+              <button type="button" data-source-export="workorder" data-format="csv">csv</button>
+              <button type="button" data-source-export="workorder" data-format="xlsx">xlsx</button>
+            </div>
+          </details>
+        </div>
+        <div id="yyjdjc-workorder-body" class="mdj-yyjdjc-card-body">
+          <p id="yyjdjc-workorder-error" class="mdj-yyjdjc-status mdj-yyjdjc-status-error" hidden></p>
+          <p id="yyjdjc-workorder-empty" class="mdj-yyjdjc-empty" hidden>暂无数据</p>
+          <div id="yyjdjc-workorder-wrap" class="mdj-yyjdjc-table-wrap">
+            <table id="yyjdjc-workorder-table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="yyjdjc-workorder-pagination" class="mdj-yyjdjc-pagination"></div>
+        </div>
+      </section>
+
+      <section class="mdj-yyjdjc-source-card" data-source="dispute">
+        <div class="mdj-yyjdjc-card-head">
+          <div class="mdj-yyjdjc-card-title">
+            <button
+              type="button"
+              class="mdj-yyjdjc-collapse-btn"
+              data-collapse-toggle="dispute"
+              aria-expanded="true"
+              aria-controls="yyjdjc-dispute-body"
+              title="收起模块"
+            >
+              ▶
+            </button>
+            <div class="mdj-yyjdjc-card-title-text">
+              <h3>涉扬言极端矛盾纠纷事件</h3>
+              <p id="yyjdjc-dispute-meta" class="mdj-yyjdjc-source-meta">共 0 条</p>
+            </div>
+          </div>
+          <details class="mdj-yyjdjc-export">
+            <summary>导出</summary>
+            <div class="mdj-yyjdjc-export-menu">
+              <button type="button" data-source-export="dispute" data-format="csv">csv</button>
+              <button type="button" data-source-export="dispute" data-format="xlsx">xlsx</button>
+            </div>
+          </details>
+        </div>
+        <div id="yyjdjc-dispute-body" class="mdj-yyjdjc-card-body">
+          <p id="yyjdjc-dispute-error" class="mdj-yyjdjc-status mdj-yyjdjc-status-error" hidden></p>
+          <p id="yyjdjc-dispute-empty" class="mdj-yyjdjc-empty" hidden>暂无数据</p>
+          <div id="yyjdjc-dispute-wrap" class="mdj-yyjdjc-table-wrap">
+            <table id="yyjdjc-dispute-table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="yyjdjc-dispute-pagination" class="mdj-yyjdjc-pagination"></div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      window.__MDJ_YYJDJC_ENDPOINTS__ = {
+        apiData: "{{ url_for('mdjfxsyj_yyjdjc.api_data') }}",
+        exportAll: "{{ url_for('mdjfxsyj_yyjdjc.export_all') }}",
+        exportSource: "{{ url_for('mdjfxsyj_yyjdjc.export_source') }}"
+      };
+    </script>
+    <script src="{{ url_for('mdjfxsyj_yyjdjc.static', filename='mdjfxsyj_yyjdjc.js') }}"></script>
+  </body>
+</html>
