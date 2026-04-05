@@ -420,6 +420,162 @@
             background: #fff5f5;
             color: #842029;
         }
+        .monitor-empty-state {
+            padding: 12px 14px;
+            background: #f8fafc;
+            color: #475569;
+            border: 1px dashed #cbd5e1;
+            border-radius: 6px;
+        }
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.35);
+            z-index: 80;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 90;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+        }
+        .modal .panel {
+            width: min(1200px, 96vw);
+            max-height: 92vh;
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 14px 40px rgba(0,0,0,.18);
+            border: 1px solid #e6e8ef;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal .hd,
+        .modal .ft {
+            padding: 14px 16px;
+            border-bottom: 1px solid #eef0f6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .modal .ft {
+            border-bottom: none;
+            border-top: 1px solid #eef0f6;
+            justify-content: flex-end;
+        }
+        .modal .bd {
+            padding: 16px;
+            overflow: auto;
+        }
+        .custom-monitor-modal-layout {
+            display: grid;
+            grid-template-columns: minmax(340px, 1.05fr) minmax(420px, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+        .custom-monitor-scheme-list,
+        .custom-monitor-editor {
+            border: 1px solid #e3e7ef;
+            border-radius: 10px;
+            background: #fff;
+            padding: 12px;
+        }
+        .custom-monitor-panel-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .custom-monitor-scheme-table-wrap {
+            max-height: 56vh;
+            overflow: auto;
+            border: 1px solid #eef2f7;
+            border-radius: 8px;
+        }
+        .custom-monitor-rule-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .custom-monitor-rule-row {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #fafcff;
+            padding: 12px;
+        }
+        .custom-monitor-rule-grid {
+            display: grid;
+            grid-template-columns: 180px 180px minmax(220px, 1fr);
+            gap: 10px;
+            align-items: start;
+        }
+        .custom-monitor-rule-grid label,
+        .custom-monitor-rule-tools,
+        .custom-monitor-toggle {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 13px;
+            color: #475569;
+        }
+        .custom-monitor-rule-grid select,
+        .custom-monitor-rule-grid textarea,
+        .custom-monitor-textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 10px;
+            font-size: 13px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #fff;
+        }
+        .custom-monitor-rule-tools {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .custom-monitor-toggle {
+            flex-direction: row;
+            align-items: center;
+        }
+        .custom-monitor-action-row,
+        .custom-monitor-op-cell {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .custom-monitor-mini-btn {
+            padding: 6px 10px;
+            font-size: 12px;
+        }
+        .custom-monitor-secondary-btn {
+            background: #64748b;
+        }
+        .custom-monitor-secondary-btn:hover {
+            background: #475569;
+        }
+        .custom-monitor-danger-btn {
+            background: #dc2626;
+        }
+        .custom-monitor-danger-btn:hover {
+            background: #b91c1c;
+        }
+        .custom-monitor-rule-empty {
+            padding: 14px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #64748b;
+            text-align: center;
+        }
         @media (max-width: 900px) {
             .charts-container {
                 grid-template-columns: 1fr;
@@ -427,6 +583,10 @@
             .tab-nav {
                 overflow-x: auto;
                 padding-bottom: 12px;
+            }
+            .custom-monitor-modal-layout,
+            .custom-monitor-rule-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -447,8 +607,7 @@
         <div class="tab-nav">
             <button type="button" class="tab-btn active" data-tab-target="analysis">警情分析</button>
             <button type="button" class="tab-btn" data-tab-target="fight-topic">打架斗殴专题</button>
-            <button type="button" class="tab-btn" data-tab-target="wander">流浪/乞讨警情</button>
-            <button type="button" class="tab-btn" data-tab-target="rental">出租屋警情</button>
+            <button type="button" class="tab-btn" data-tab-target="custom-case-monitor">自定义警情监测</button>
         </div>
 
         <div class="page-card-body">
@@ -460,12 +619,8 @@
                 {% include "fight_topic_tab.html" %}
             </div>
 
-            <div class="tab-panel" data-tab-panel="wander">
-                {% include "wander_case_tab.html" %}
-            </div>
-
-            <div class="tab-panel" data-tab-panel="rental">
-                {% include "rental_case_tab.html" %}
+            <div class="tab-panel" data-tab-panel="custom-case-monitor">
+                {% include "custom_case_monitor_tab.html" %}
             </div>
         </div>
     </div>
@@ -474,8 +629,7 @@
 <script src="/jingqing_fenxi/static/js/chart.min.js"></script>
 <script src="/jingqing_fenxi/static/js/analysis_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/fight_topic_tab.js"></script>
-<script src="/jingqing_fenxi/static/js/wander_case_tab.js"></script>
-<script src="/jingqing_fenxi/static/js/rental_case_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/custom_case_monitor_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/jingqing_fenxi_tabs.js"></script>
 </body>
 </html>

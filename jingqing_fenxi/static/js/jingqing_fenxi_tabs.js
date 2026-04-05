@@ -18,7 +18,6 @@
         initTabSwitching();
         if (window.AnalysisTabPage) window.AnalysisTabPage.init();
         if (window.FightTopicTabPage) window.FightTopicTabPage.init();
-        if (window.WanderCaseTabPage) window.WanderCaseTabPage.init();
-        if (window.RentalCaseTabPage) window.RentalCaseTabPage.init();
+        if (window.CustomCaseMonitorTabPage) window.CustomCaseMonitorTabPage.init();
     });
 })();
