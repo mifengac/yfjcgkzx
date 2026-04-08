@@ -73,9 +73,10 @@ def create_pending_batch(
                     sheet_name,
                     import_status,
                     is_active,
-                    created_by
+                    created_by,
+                    error_message
                 )
-                VALUES (%s, %s, 'pending', FALSE, %s)
+                VALUES (%s, %s, 'pending', FALSE, %s, '')
                 RETURNING id
                 """,
                 (source_file_name, sheet_name, created_by),
