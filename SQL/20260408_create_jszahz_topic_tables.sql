@@ -61,3 +61,7 @@ CREATE TABLE IF NOT EXISTS "jcgkzx_monitor"."jszahz_topic_snapshot" (
 
 CREATE INDEX IF NOT EXISTS idx_jszahz_topic_snapshot_query
     ON "jcgkzx_monitor"."jszahz_topic_snapshot" (batch_id, lgsj, fxdj_label, ssfjdm, zjhm);
+
+COMMENT ON TABLE "jcgkzx_monitor"."jszahz_topic_batch" IS U&'\7CBE\795E\969C\788D\4E13\9898\6279\6B21\5BFC\5165\8868';
+COMMENT ON TABLE "jcgkzx_monitor"."jszahz_topic_person_type" IS U&'\7CBE\795E\969C\788D\4E13\9898\4EBA\5458\6807\7B7E\660E\7EC6\8868';
+COMMENT ON TABLE "jcgkzx_monitor"."jszahz_topic_snapshot" IS U&'\7CBE\795E\969C\788D\4E13\9898\5FEB\7167\7ED3\679C\8868';
