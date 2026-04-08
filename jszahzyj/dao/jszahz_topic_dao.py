@@ -77,10 +77,9 @@ def create_pending_batch(
                     matched_person_count,
                     generated_tag_count,
                     created_by,
-                    error_message,
                     created_at
                 )
-                VALUES (%s, %s, 'pending', FALSE, 0, 0, 0, %s, '', CURRENT_TIMESTAMP)
+                VALUES (%s, %s, 'pending', FALSE, 0, 0, 0, %s, CURRENT_TIMESTAMP)
                 RETURNING id
                 """,
                 (source_file_name, sheet_name, created_by),
@@ -113,7 +112,7 @@ def mark_batch_failed(
                     error_message = %s
                 WHERE id = %s
                 """,
-                (imported_row_count, generated_tag_count, str(error_message or "")[:1000], batch_id),
+                (imported_row_count, generated_tag_count, str(error_message or "导入失败")[:1000], batch_id),
             )
         conn.commit()
     finally:
@@ -183,10 +182,10 @@ def save_batch_data_and_activate(
                 risk_source AS (
                     SELECT DISTINCT ON (p.zjhm)
                         p.zjhm,
-                        COALESCE(p.xm, '') AS xm,
+                        p.xm,
                         p.lgsj,
-                        COALESCE(p.lgdw, '') AS lgdw,
-                        COALESCE(p.fxdj, '') AS fxdj,
+                        p.lgdw,
+                        p.fxdj,
                         CASE
                             WHEN p.fxdj = '00' THEN '0级患者'
                             WHEN p.fxdj = '01' THEN '1级患者'
@@ -196,8 +195,8 @@ def save_batch_data_and_activate(
                             WHEN p.fxdj = '05' THEN '5级患者'
                             ELSE '无数据'
                         END AS fxdj_label,
-                        COALESCE(d1.ssfjdm, d2.ssfjdm, '') AS ssfjdm,
-                        COALESCE(d1.ssfj, d2.ssfj, '') AS ssfj
+                        COALESCE(d1.ssfjdm, d2.ssfjdm) AS ssfjdm,
+                        COALESCE(d1.ssfj, d2.ssfj) AS ssfj
                     FROM "stdata"."b_per_jszahzryxxwh" p
                     LEFT JOIN "stdata"."b_dic_zzjgdm" d1
                         ON p.lgdw = d1.sspcsdm
@@ -258,7 +257,7 @@ def save_batch_data_and_activate(
                     imported_row_count = %s,
                     generated_tag_count = %s,
                     matched_person_count = %s,
-                    error_message = '',
+                    error_message = NULL,
                     activated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 """,
@@ -288,8 +287,8 @@ def query_summary_rows(
 
     sql = """
     SELECT
-        COALESCE(NULLIF(s.ssfjdm, ''), '__UNMATCHED__') AS "分局代码",
-        COALESCE(NULLIF(s.ssfj, ''), '未匹配分局') AS "分局名称",
+        COALESCE(s.ssfjdm, '__UNMATCHED__') AS "分局代码",
+        COALESCE(s.ssfj, '未匹配分局') AS "分局名称",
         COUNT(DISTINCT s.zjhm) AS "去重患者数"
     FROM "jcgkzx_monitor"."jszahz_topic_snapshot" s
     WHERE s.batch_id = %s
@@ -299,7 +298,7 @@ def query_summary_rows(
     params: List[Any] = [batch_id, start_time, end_time]
 
     if branch_list:
-        sql += ' AND COALESCE(NULLIF(s.ssfjdm, \'\'), \'__UNMATCHED__\') = ANY(%s)'
+        sql += ' AND COALESCE(s.ssfjdm, \'__UNMATCHED__\') = ANY(%s)'
         params.append(branch_list)
     if risk_list:
         sql += ' AND s.fxdj_label = ANY(%s)'
@@ -317,8 +316,8 @@ def query_summary_rows(
         params.append(person_type_list)
 
     sql += """
-    GROUP BY COALESCE(NULLIF(s.ssfjdm, ''), '__UNMATCHED__'), COALESCE(NULLIF(s.ssfj, ''), '未匹配分局')
-    ORDER BY COUNT(DISTINCT s.zjhm) DESC, COALESCE(NULLIF(s.ssfj, ''), '未匹配分局')
+    GROUP BY COALESCE(s.ssfjdm, '__UNMATCHED__'), COALESCE(s.ssfj, '未匹配分局')
+    ORDER BY COUNT(DISTINCT s.zjhm) DESC, COALESCE(s.ssfj, '未匹配分局')
     """
     return execute_query(sql, tuple(params))
 
@@ -341,7 +340,7 @@ def query_detail_rows(
         COALESCE(s.zjhm, '') AS "身份证号",
         s.lgsj AS "列管时间",
         COALESCE(s.lgdw, '') AS "列管单位",
-        COALESCE(NULLIF(s.ssfj, ''), '未匹配分局') AS "分局",
+        COALESCE(s.ssfj, '未匹配分局') AS "分局",
         COALESCE(s.fxdj_label, '无数据') AS "人员风险",
         COALESCE(s.person_types_text, '') AS "人员类型"
     FROM "jcgkzx_monitor"."jszahz_topic_snapshot" s
@@ -352,7 +351,7 @@ def query_detail_rows(
     params: List[Any] = [batch_id, start_time, end_time]
 
     if branch_code and branch_code != "__ALL__":
-        sql += ' AND COALESCE(NULLIF(s.ssfjdm, \'\'), \'__UNMATCHED__\') = %s'
+        sql += ' AND COALESCE(s.ssfjdm, \'__UNMATCHED__\') = %s'
         params.append(branch_code)
     if risk_list:
         sql += ' AND s.fxdj_label = ANY(%s)'
@@ -370,6 +369,6 @@ def query_detail_rows(
         params.append(person_type_list)
 
     sql += """
-    ORDER BY COALESCE(NULLIF(s.ssfj, ''), '未匹配分局'), s.lgsj DESC NULLS LAST, s.xm, s.zjhm
+    ORDER BY COALESCE(s.ssfj, '未匹配分局'), s.lgsj DESC NULLS LAST, s.xm, s.zjhm
     """
     return execute_query(sql, tuple(params))

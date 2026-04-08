@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS "jcgkzx_monitor"."jszahz_topic_batch" (
     matched_person_count INTEGER NOT NULL DEFAULT 0,
     generated_tag_count INTEGER NOT NULL DEFAULT 0,
     created_by VARCHAR(64) NOT NULL DEFAULT '',
-    error_message VARCHAR(1000) NOT NULL DEFAULT '',
+    error_message VARCHAR(1000) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     activated_at TIMESTAMP NULL
 );
@@ -43,14 +43,14 @@ CREATE TABLE IF NOT EXISTS "jcgkzx_monitor"."jszahz_topic_snapshot" (
     id SERIAL PRIMARY KEY,
     batch_id INTEGER NOT NULL,
     zjhm VARCHAR(64) NOT NULL,
-    xm VARCHAR(128) NOT NULL DEFAULT '',
+    xm VARCHAR(128) NULL,
     lgsj TIMESTAMP NULL,
-    lgdw VARCHAR(128) NOT NULL DEFAULT '',
-    fxdj VARCHAR(16) NOT NULL DEFAULT '',
+    lgdw VARCHAR(128) NULL,
+    fxdj VARCHAR(16) NULL,
     fxdj_label VARCHAR(32) NOT NULL DEFAULT '无数据',
-    person_types_text VARCHAR(255) NOT NULL DEFAULT '',
-    ssfjdm VARCHAR(32) NOT NULL DEFAULT '',
-    ssfj VARCHAR(128) NOT NULL DEFAULT '',
+    person_types_text VARCHAR(255) NOT NULL,
+    ssfjdm VARCHAR(32) NULL,
+    ssfj VARCHAR(128) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_jszahz_topic_snapshot_batch
         FOREIGN KEY (batch_id)
