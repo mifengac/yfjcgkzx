@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import csv
 from datetime import datetime
-from io import BytesIO, StringIO
+from io import BytesIO
 import logging
 from typing import Any, Dict, List
 
-from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, Response, abort, jsonify, redirect, request, send_file, session, url_for
 from openpyxl import Workbook
+from werkzeug.exceptions import HTTPException
 
 from gonggong.config.database import get_database_connection
+from gonggong.utils.filtered_summary_detail_controller import FilteredSummaryDetailController
 from hqzcsj.dao.zfba_wcnr_jqaj_dao import fetch_leixing_list
 from hqzcsj.service.zfba_wcnr_report_service import build_report_file
 from hqzcsj.service.zfba_wcnr_jqaj_service import (
@@ -22,6 +23,65 @@ from hqzcsj.service.zfba_wcnr_jqaj_service import (
 
 
 zfba_wcnr_jqaj_bp = Blueprint("zfba_wcnr_jqaj", __name__, template_folder="../templates")
+zfba_wcnr_jqaj_controller = FilteredSummaryDetailController(
+    list_arg_map={"leixing": "leixing_list", "za_type": "za_types"},
+    bool_arg_map={"show_ratio": "show_ratio", "show_hb": "show_hb"},
+    format_param_name="fmt",
+    default_region_code="__ALL__",
+    sheet_title="\u6570\u636e",
+)
+
+
+def _resolve_region_name(diqu: str) -> str:
+    if diqu and diqu not in ("__ALL__", "\u5168\u5e02"):
+        return next((name for code, name in REGION_ORDER if code == diqu), diqu)
+    return "\u5168\u5e02"
+
+
+def _build_summary_payload(filters: Dict[str, Any]) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    meta, rows = build_summary(
+        start_time=filters["start_time"],
+        end_time=filters["end_time"],
+        hb_start_time=filters["hb_start_time"] or None,
+        hb_end_time=filters["hb_end_time"] or None,
+        leixing_list=filters["leixing_list"],
+        za_types=filters["za_types"],
+    )
+    if not filters["show_hb"]:
+        rows = [{k: v for k, v in row.items() if not str(k).startswith("\u73af\u6bd4")} for row in rows]
+    if filters["show_ratio"]:
+        rows = append_ratio_columns(rows)
+    return meta.__dict__, rows
+
+
+def _load_detail_rows(
+    filters: Dict[str, Any],
+    metric: str,
+    diqu: str,
+    limit: int,
+) -> tuple[List[Dict[str, Any]], bool]:
+    return fetch_detail(
+        metric=metric,
+        diqu=diqu,
+        start_time=filters["start_time"],
+        end_time=filters["end_time"],
+        leixing_list=filters["leixing_list"],
+        za_types=filters["za_types"],
+        limit=limit,
+    )
+
+
+def _build_summary_filename(_filters: Dict[str, Any], export_format: str, timestamp: str) -> str:
+    return f"\u672a\u6210\u5e74\u4eba\u8b66\u60c5\u6848\u4ef6\u7edf\u8ba1{timestamp}.{export_format}"
+
+
+def _build_detail_filename(
+    _filters: Dict[str, Any],
+    region_name: str,
+    export_format: str,
+    timestamp: str,
+) -> str:
+    return f"{region_name}\u672a\u6210\u5e74\u4eba\u8be6\u7ec6\u6570\u636e{timestamp}.{export_format}"
 
 
 @zfba_wcnr_jqaj_bp.before_request
@@ -39,6 +99,8 @@ def _check_access() -> None:
         conn.close()
         if not row:
             abort(403)
+    except HTTPException:
+        raise
     except Exception:
         abort(500)
 
@@ -51,11 +113,6 @@ def _parse_list_args(name: str) -> List[str]:
         if s:
             out.append(s)
     return out
-
-
-def _parse_bool_arg(name: str) -> bool:
-    v = (request.args.get(name) or "").strip().lower()
-    return v in ("1", "true", "yes", "on")
 
 
 @zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/api/leixing")
@@ -73,75 +130,30 @@ def api_leixing() -> Any:
 
 @zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/api/summary")
 def api_summary() -> Any:
-    start_time = (request.args.get("start_time") or "").strip()
-    end_time = (request.args.get("end_time") or "").strip()
-    hb_start_time = (request.args.get("hb_start_time") or "").strip()
-    hb_end_time = (request.args.get("hb_end_time") or "").strip()
-    if not start_time or not end_time:
-        start_time, end_time = default_time_range_for_page()
-    leixing_list = _parse_list_args("leixing")
-    za_types = _parse_list_args("za_type")
-    show_ratio = _parse_bool_arg("show_ratio")
-    show_hb = _parse_bool_arg("show_hb")
+    filters = zfba_wcnr_jqaj_controller.parse_filters(default_time_range_for_page)
     try:
-        meta, rows = build_summary(
-            start_time=start_time,
-            end_time=end_time,
-            hb_start_time=hb_start_time or None,
-            hb_end_time=hb_end_time or None,
-            leixing_list=leixing_list,
-            za_types=za_types,
-        )
-        if not show_hb:
-            rows = [{k: v for k, v in row.items() if not str(k).startswith("环比")} for row in rows]
-        if show_ratio:
-            rows = append_ratio_columns(rows)
-        return jsonify({"success": True, "meta": meta.__dict__, "rows": rows})
+        return zfba_wcnr_jqaj_controller.build_summary_response(filters, _build_summary_payload)
     except Exception as exc:
         logging.exception(
             "zfba_wcnr_jqaj api_summary failed: start_time=%s end_time=%s hb_start_time=%s hb_end_time=%s leixing_list=%s za_types=%s",
-            start_time,
-            end_time,
-            hb_start_time,
-            hb_end_time,
-            leixing_list,
-            za_types,
+            filters["start_time"],
+            filters["end_time"],
+            filters["hb_start_time"],
+            filters["hb_end_time"],
+            filters["leixing_list"],
+            filters["za_types"],
         )
         return jsonify({"success": False, "message": str(exc)}), 400
 
 
 @zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/export")
 def export_summary() -> Response:
-    fmt = (request.args.get("fmt") or "xlsx").lower()
-    start_time = (request.args.get("start_time") or "").strip()
-    end_time = (request.args.get("end_time") or "").strip()
-    hb_start_time = (request.args.get("hb_start_time") or "").strip()
-    hb_end_time = (request.args.get("hb_end_time") or "").strip()
-    if not start_time or not end_time:
-        start_time, end_time = default_time_range_for_page()
-    leixing_list = _parse_list_args("leixing")
-    za_types = _parse_list_args("za_type")
-    show_ratio = _parse_bool_arg("show_ratio")
-    show_hb = _parse_bool_arg("show_hb")
-
-    meta, rows = build_summary(
-        start_time=start_time,
-        end_time=end_time,
-        hb_start_time=hb_start_time or None,
-        hb_end_time=hb_end_time or None,
-        leixing_list=leixing_list,
-        za_types=za_types,
+    filters = zfba_wcnr_jqaj_controller.parse_filters(default_time_range_for_page)
+    return zfba_wcnr_jqaj_controller.build_summary_export_response(
+        filters,
+        _build_summary_payload,
+        _build_summary_filename,
     )
-    if not show_hb:
-        rows = [{k: v for k, v in row.items() if not str(k).startswith("环比")} for row in rows]
-    if show_ratio:
-        rows = append_ratio_columns(rows)
-    _ = meta
-    ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"未成年人警情案件统计{ts}.{fmt}"
-    if fmt == "csv":
-        return _download_csv(rows, filename)
-    return _download_excel(rows, filename)
 
 
 @zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/report_export")
@@ -186,72 +198,26 @@ def report_export() -> Response:
 
 @zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/detail")
 def detail_page() -> Any:
-    metric = (request.args.get("metric") or "").strip()
-    diqu = (request.args.get("diqu") or "__ALL__").strip()
-    start_time = (request.args.get("start_time") or "").strip()
-    end_time = (request.args.get("end_time") or "").strip()
-    if not start_time or not end_time:
-        start_time, end_time = default_time_range_for_page()
-    leixing_list = _parse_list_args("leixing")
-    za_types = _parse_list_args("za_type")
-
-    region_name = "全市"
-    if diqu and diqu not in ("__ALL__", "全市"):
-        region_name = next((name for code, name in REGION_ORDER if code == diqu), diqu)
-
-    rows, truncated = fetch_detail(
-        metric=metric,
-        diqu=diqu,
-        start_time=start_time,
-        end_time=end_time,
-        leixing_list=leixing_list,
-        za_types=za_types,
+    filters = zfba_wcnr_jqaj_controller.parse_filters(default_time_range_for_page)
+    return zfba_wcnr_jqaj_controller.build_detail_page(
+        filters=filters,
+        detail_rows_loader=_load_detail_rows,
+        region_name_resolver=_resolve_region_name,
+        template_name="zfba_wcnr_jqaj_detail.html",
         limit=5000,
-    )
-    return render_template(
-        "zfba_wcnr_jqaj_detail.html",
-        metric=metric,
-        diqu=diqu,
-        region_name=region_name,
-        start_time=start_time,
-        end_time=end_time,
-        leixing_list=leixing_list,
-        za_types=za_types,
-        rows=rows,
-        truncated=truncated,
     )
 
 
 @zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/detail/export")
 def export_detail() -> Response:
-    fmt = (request.args.get("fmt") or "xlsx").lower()
-    metric = (request.args.get("metric") or "").strip()
-    diqu = (request.args.get("diqu") or "__ALL__").strip()
-    start_time = (request.args.get("start_time") or "").strip()
-    end_time = (request.args.get("end_time") or "").strip()
-    if not start_time or not end_time:
-        start_time, end_time = default_time_range_for_page()
-    leixing_list = _parse_list_args("leixing")
-    za_types = _parse_list_args("za_type")
-
-    region_name = "全市"
-    if diqu and diqu not in ("__ALL__", "全市"):
-        region_name = next((name for code, name in REGION_ORDER if code == diqu), diqu)
-
-    rows, _truncated = fetch_detail(
-        metric=metric,
-        diqu=diqu,
-        start_time=start_time,
-        end_time=end_time,
-        leixing_list=leixing_list,
-        za_types=za_types,
+    filters = zfba_wcnr_jqaj_controller.parse_filters(default_time_range_for_page)
+    return zfba_wcnr_jqaj_controller.build_detail_export_response(
+        filters=filters,
+        detail_rows_loader=_load_detail_rows,
+        region_name_resolver=_resolve_region_name,
+        filename_builder=_build_detail_filename,
         limit=0,
     )
-    ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"{region_name}未成年人详细数据{ts}.{fmt}"
-    if fmt == "csv":
-        return _download_csv(rows, filename)
-    return _download_excel(rows, filename)
 
 
 @zfba_wcnr_jqaj_bp.route("/zfba_wcnr_jqaj/detail/export_all")
@@ -317,46 +283,3 @@ def export_detail_all() -> Response:
     )
 
 
-def _download_csv(rows: List[Dict[str, Any]], filename: str) -> Response:
-    output = StringIO()
-    if rows:
-        headers = list(rows[0].keys())
-        writer = csv.DictWriter(output, fieldnames=headers)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: (row.get(k) if row.get(k) is not None else "") for k in headers})
-    else:
-        output.write("无数据\n")
-
-    buffer = BytesIO(output.getvalue().encode("utf-8-sig"))
-    buffer.seek(0)
-    return send_file(
-        buffer,
-        as_attachment=True,
-        download_name=filename,
-        mimetype="text/csv; charset=utf-8",
-    )
-
-
-def _download_excel(rows: List[Dict[str, Any]], filename: str) -> Response:
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "数据"
-
-    if rows:
-        headers = list(rows[0].keys())
-        sheet.append(headers)
-        for row in rows:
-            sheet.append([(row.get(k) if row.get(k) is not None else "") for k in headers])
-    else:
-        sheet.append(["无数据"])
-
-    buffer = BytesIO()
-    workbook.save(buffer)
-    buffer.seek(0)
-    return send_file(
-        buffer,
-        as_attachment=True,
-        download_name=filename,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )

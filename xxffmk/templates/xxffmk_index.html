@@ -6,16 +6,28 @@
     <title>{{ module_name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/water.css') }}">
     <style>
+        html,
+        body {
+            width: 100%;
+            max-width: none !important;
+            min-height: 100vh;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
         body {
             margin: 0;
             background: #f3f6fb;
             min-height: 100vh;
             width: 100vw;
+            max-width: none !important;
+            overflow-x: hidden;
         }
         .page-shell {
             width: 100%;
+            max-width: none;
             min-height: 100vh;
             padding: 0;
+            margin: 0;
             box-sizing: border-box;
         }
         .page-card {
@@ -24,6 +36,7 @@
             box-shadow: none;
             overflow: hidden;
             width: 100%;
+            max-width: none;
             min-height: 100vh;
         }
         .page-card-body {
