@@ -130,6 +130,11 @@ def save_batch_data_and_activate(
     conn = get_database_connection()
     try:
         with conn.cursor() as cur:
+            try:
+                cur.execute("SET LOCAL lock_timeout = '5000ms'")
+                cur.execute("SET LOCAL statement_timeout = '30000ms'")
+            except Exception:
+                conn.rollback()
             if rows:
                 cur.executemany(
                     """
@@ -179,6 +184,10 @@ def save_batch_data_and_activate(
                     WHERE batch_id = %s
                     GROUP BY batch_id, zjhm
                 ),
+                target_ids AS (
+                    SELECT zjhm
+                    FROM person_types
+                ),
                 risk_source AS (
                     SELECT DISTINCT ON (p.zjhm)
                         p.zjhm,
@@ -198,6 +207,8 @@ def save_batch_data_and_activate(
                         COALESCE(d1.ssfjdm, d2.ssfjdm) AS ssfjdm,
                         COALESCE(d1.ssfj, d2.ssfj) AS ssfj
                     FROM "stdata"."b_per_jszahzryxxwh" p
+                    JOIN target_ids t
+                        ON t.zjhm = p.zjhm
                     LEFT JOIN "stdata"."b_dic_zzjgdm" d1
                         ON p.lgdw = d1.sspcsdm
                     LEFT JOIN "stdata"."b_dic_zzjgdm" d2

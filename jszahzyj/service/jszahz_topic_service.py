@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -9,6 +10,9 @@ from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Tuple
 from openpyxl import Workbook, load_workbook
 
 from jszahzyj.dao import jszahz_topic_dao
+
+
+logger = logging.getLogger(__name__)
 
 
 PERSON_TYPE_OPTIONS = [
@@ -164,6 +168,7 @@ def defaults_payload() -> Dict[str, Any]:
 
 
 def import_jszahz_topic_excel(*, file_obj: BinaryIO, filename: str, created_by: str) -> Dict[str, Any]:
+    started_at = datetime.now()
     batch_id = jszahz_topic_dao.create_pending_batch(
         source_file_name=filename or "upload.xlsx",
         sheet_name="汇总",
@@ -172,6 +177,13 @@ def import_jszahz_topic_excel(*, file_obj: BinaryIO, filename: str, created_by: 
 
     try:
         parsed = parse_person_type_workbook(file_obj)
+        logger.info(
+            "jszahz topic import parsed: batch_id=%s file=%s imported_rows=%s generated_tags=%s",
+            batch_id,
+            filename,
+            parsed.imported_row_count,
+            parsed.generated_tag_count,
+        )
         matched_person_count = jszahz_topic_dao.save_batch_data_and_activate(
             batch_id=batch_id,
             imported_row_count=parsed.imported_row_count,
@@ -187,9 +199,18 @@ def import_jszahz_topic_excel(*, file_obj: BinaryIO, filename: str, created_by: 
             generated_tag_count=tag_count,
             error_message=str(exc),
         )
+        logger.exception("jszahz topic import failed: batch_id=%s file=%s", batch_id, filename)
         raise
 
     active_batch = jszahz_topic_dao.get_active_batch()
+    elapsed_seconds = (datetime.now() - started_at).total_seconds()
+    logger.info(
+        "jszahz topic import completed: batch_id=%s file=%s matched_person_count=%s elapsed_seconds=%.3f",
+        batch_id,
+        filename,
+        matched_person_count,
+        elapsed_seconds,
+    )
     return {
         "success": True,
         "batch_id": batch_id,

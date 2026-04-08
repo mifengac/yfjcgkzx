@@ -251,18 +251,32 @@
     formData.append("file", input.files[0]);
     setError("");
     setStatus("Excel 上传处理中，请稍候...");
+    const controller = new AbortController();
+    const timer = window.setTimeout(function () {
+      controller.abort();
+    }, 60000);
 
-    const response = await fetch("/jszahzyj/api/jszahzztk/upload", {
-      method: "POST",
-      body: formData,
-    });
-    const payload = await response.json();
-    if (!response.ok || !payload.success) {
-      throw new Error((payload && payload.message) || "上传失败");
+    try {
+      const response = await fetch("/jszahzyj/api/jszahzztk/upload", {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw new Error((payload && payload.message) || "上传失败");
+      }
+      input.value = "";
+      setBatchInfo(payload.active_batch || null);
+      setStatus("上传成功，已切换为最新生效批次。");
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        throw new Error("上传超过 60 秒仍未完成，后端可能正在等待数据库锁或执行长查询。");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
     }
-    input.value = "";
-    setBatchInfo(payload.active_batch || null);
-    setStatus("上传成功，已切换为最新生效批次。");
   }
 
   async function querySummary() {
