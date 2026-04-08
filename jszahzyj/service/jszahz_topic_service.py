@@ -4,7 +4,7 @@ import io
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Tuple
 
 from openpyxl import Workbook, load_workbook
@@ -57,7 +57,7 @@ class ParsedImportResult:
 def default_time_range() -> Tuple[str, str]:
     now = datetime.now()
     end_dt = datetime(now.year, now.month, now.day, 0, 0, 0)
-    start_dt = end_dt - timedelta(days=7)
+    start_dt = datetime(2025, 1, 1, 0, 0, 0)
     return (
         start_dt.strftime("%Y-%m-%d %H:%M:%S"),
         end_dt.strftime("%Y-%m-%d %H:%M:%S"),

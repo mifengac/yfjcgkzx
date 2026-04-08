@@ -108,10 +108,11 @@ class TestJszahzTopicService(unittest.TestCase):
         start_dt = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
         end_dt = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
 
+        self.assertEqual(start_dt, datetime(2025, 1, 1, 0, 0, 0))
         self.assertEqual(end_dt.hour, 0)
         self.assertEqual(end_dt.minute, 0)
         self.assertEqual(end_dt.second, 0)
-        self.assertEqual((end_dt - start_dt).days, 7)
+        self.assertGreaterEqual((end_dt - start_dt).days, 0)
 
     def test_query_summary_payload_appends_total_row(self) -> None:
         with patch.object(
