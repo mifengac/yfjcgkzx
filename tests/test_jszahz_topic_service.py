@@ -103,5 +103,41 @@ class TestJszahzTopicService(unittest.TestCase):
         self.assertIn("请先上传", payload["message"])
 
 
+def _build_workbook_with_row3_headers() -> io.BytesIO:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "\u6c47\u603b"
+    sheet["E2"] = "\u8eab\u4efd\u8bc1\u53f7"
+    sheet.merge_cells("G2:J2")
+    sheet["G2"] = "\u4eba\u5458\u6807\u7b7e"
+    sheet["G3"] = "\u670d\u836f\u60c5\u51b5"
+    sheet["H3"] = "\u76d1\u62a4\u60c5\u51b5"
+    sheet["I3"] = "\u65e2\u5f80\u6709\u81ea\u6740\u6216\u4e25\u91cd\u4f24\u4eba"
+    sheet["J3"] = "\u5217\u4e3a\u91cd\u70b9\u5173\u6ce8\u4eba\u5458"
+
+    sheet["E4"] = "440123199001011111"
+    sheet["G4"] = "\u4e0d\u89c4\u5f8b\u670d\u836f"
+    sheet["H4"] = "\u5f31\u76d1\u62a4"
+    sheet["I4"] = "\u662f"
+    sheet["J4"] = "\u662f"
+
+    data = io.BytesIO()
+    workbook.save(data)
+    data.seek(0)
+    return data
+
+
+class TestJszahzTopicServiceRow3Headers(unittest.TestCase):
+    def test_parse_person_type_workbook_supports_row3_headers(self) -> None:
+        payload = jszahz_topic_service.parse_person_type_workbook(_build_workbook_with_row3_headers())
+
+        labels = {(row["zjhm"], row["person_type"]) for row in payload.rows}
+        self.assertEqual(payload.imported_row_count, 1)
+        self.assertEqual(payload.generated_tag_count, 3)
+        self.assertIn(("440123199001011111", "\u4e0d\u89c4\u5f8b\u670d\u836f"), labels)
+        self.assertIn(("440123199001011111", "\u5f31\u76d1\u62a4"), labels)
+        self.assertIn(("440123199001011111", "\u65e2\u5f80\u6709\u4e25\u91cd\u81ea\u6740\u6216\u4f24\u4eba\u884c\u4e3a"), labels)
+
+
 if __name__ == "__main__":
     unittest.main()

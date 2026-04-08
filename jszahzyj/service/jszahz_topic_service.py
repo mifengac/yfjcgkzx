@@ -87,17 +87,24 @@ def _normalize_id_card(value: Any) -> str:
     return text.upper()
 
 
+def _build_header_index(sheet) -> Dict[str, int]:
+    headers: Dict[str, int] = {}
+    for col in range(1, sheet.max_column + 1):
+        row2_text = _normalize_text(sheet.cell(row=2, column=col).value)
+        row3_text = _normalize_text(sheet.cell(row=3, column=col).value)
+        header_text = row3_text or row2_text
+        if header_text and header_text not in headers:
+            headers[header_text] = col
+    return headers
+
+
 def parse_person_type_workbook(file_obj: BinaryIO) -> ParsedImportResult:
     workbook = load_workbook(file_obj, read_only=True, data_only=True)
     sheet = workbook.worksheets[0]
     if sheet.title != "汇总":
         raise ValueError("Excel 第一个 sheet 名称必须为“汇总”")
 
-    headers = {
-        _normalize_text(sheet.cell(row=2, column=col).value): col
-        for col in range(1, sheet.max_column + 1)
-        if _normalize_text(sheet.cell(row=2, column=col).value)
-    }
+    headers = _build_header_index(sheet)
     for header in PERSON_TYPE_RULES:
         if header not in headers:
             raise ValueError(f"Excel 缺少必要列: {header}")
