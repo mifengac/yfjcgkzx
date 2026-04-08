@@ -20,7 +20,7 @@
             background: #fff;
             border-radius: 12px;
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-            overflow: hidden;
+            overflow: visible;
         }
         .page-card-body {
             padding: 20px;
@@ -48,7 +48,7 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-            z-index: 100;
+            z-index: 1200;
             padding: 4px 6px;
             max-height: 250px;
             overflow-y: auto;
@@ -78,6 +78,9 @@
             flex-wrap: wrap;
             gap: 15px;
             align-items: center;
+            overflow: visible;
+            position: relative;
+            z-index: 5;
         }
         .query-item {
             display: flex;
@@ -414,6 +417,9 @@
             text-align: center;
             padding: 12px;
             box-sizing: border-box;
+        }
+        .fight-chart-state.special-case-hidden {
+            display: none;
         }
         .fight-chart-state.error {
             border: 1px solid #f5c2c7;

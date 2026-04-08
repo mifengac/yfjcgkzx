@@ -41,6 +41,11 @@
         }
 
         .module-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 56px;
             padding: 10px;
             background: #1976d2;
             color: #fff;
@@ -48,6 +53,10 @@
             border-radius: 4px;
             cursor: pointer;
             transition: background 0.2s ease;
+            text-align: center;
+            font-size: 15px;
+            font-weight: 600;
+            line-height: 1.4;
         }
 
         .module-button:hover,
@@ -56,10 +65,22 @@
         }
 
         .module-link {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
             text-decoration: none;
+        }
+
+        .module-link-fixed-task,
+        .module-link-fixed-sms,
+        .module-link-fixed-sentinel {
+            background: #2e7d32;
+        }
+
+        .module-link-fixed-task:hover,
+        .module-link-fixed-task:focus,
+        .module-link-fixed-sms:hover,
+        .module-link-fixed-sms:focus,
+        .module-link-fixed-sentinel:hover,
+        .module-link-fixed-sentinel:focus {
+            background: #1f5a23;
         }
     </style>
 </head>
@@ -91,14 +112,26 @@
                     {{ module.label }}
                 </button>
                 {% endfor %}
-                <a class="module-button module-link" href="http://68.252.1.92:3000" target="_blank" rel="noopener noreferrer">
+                <a class="module-button module-link module-link-fixed-task" href="http://68.252.1.92:3000" target="_blank" rel="noopener noreferrer">
                     治安任务管理系统
+                </a>
+                <a class="module-button module-link module-link-fixed-sms" href="http://68.252.1.91:8000" target="_blank" rel="noopener noreferrer">
+                    短信配置平台
+                </a>
+                <a class="module-button module-link module-link-fixed-sentinel" href="http://127.0.0.1:5001" target="_blank" rel="noopener noreferrer">
+                    猎影哨兵
                 </a>
             </div>
             {% else %}
             <div class="module-grid">
-                <a class="module-button module-link" href="http://68.252.1.92:3000" target="_blank" rel="noopener noreferrer">
+                <a class="module-button module-link module-link-fixed-task" href="http://68.252.1.92:3000" target="_blank" rel="noopener noreferrer">
                     治安任务管理系统
+                </a>
+                <a class="module-button module-link module-link-fixed-sms" href="http://68.252.1.91:8000" target="_blank" rel="noopener noreferrer">
+                    短信配置平台
+                </a>
+                <a class="module-button module-link module-link-fixed-sentinel" href="http://127.0.0.1:5001" target="_blank" rel="noopener noreferrer">
+                    猎影哨兵
                 </a>
             </div>
             <p style="margin-top:12px;">当前 IP（{{ client_ip }}）未配置显示任何模块，请联系管理员。</p>
