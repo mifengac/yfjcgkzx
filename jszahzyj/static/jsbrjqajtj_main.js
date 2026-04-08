@@ -259,10 +259,9 @@
         tabs.querySelectorAll(".jszahzyj-tab-btn").forEach((x) => x.classList.remove("active"));
         btn.classList.add("active");
         const tab = btn.getAttribute("data-tab");
-        const pMain = $("tab-jszahzyj-main");
-        const pNew = $("tab-jsbrjqajtj");
-        if (pMain) pMain.classList.toggle("active", tab === "jszahzyj-main");
-        if (pNew) pNew.classList.toggle("active", tab === "jsbrjqajtj");
+        document.querySelectorAll(".jszahzyj-tab-panel").forEach((panel) => {
+          panel.classList.toggle("active", panel.id === "tab-" + tab);
+        });
       });
     });
   }

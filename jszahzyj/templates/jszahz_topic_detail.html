@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/water.css') }}">
+    <style>
+        body { margin: 0; background: #f8fafc; color: #1f2937; }
+        .page { padding: 16px; }
+        .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .head h1 { margin: 0; font-size: 18px; }
+        .sub { color: #64748b; font-size: 12px; }
+        .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .table-wrap { border: 1px solid #dbe3ef; border-radius: 10px; background: #fff; overflow: auto; max-height: calc(100vh - 120px); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; text-align: left; font-size: 13px; white-space: nowrap; }
+        th { position: sticky; top: 0; background: #f8fbff; z-index: 2; }
+        .empty { padding: 24px; color: #64748b; text-align: center; }
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="head">
+        <div>
+            <h1>{{ title }}</h1>
+            <div class="sub">当前分局：{{ branch_name }}，共 {{ records|length }} 条明细</div>
+        </div>
+        <div class="toolbar">
+            <button type="button" onclick="downloadDetail()">导出 xlsx</button>
+        </div>
+    </div>
+
+    {% if message %}
+    <div class="sub" style="margin-bottom: 12px;">{{ message }}</div>
+    {% endif %}
+
+    <div class="table-wrap">
+        {% if records %}
+        <table>
+            <thead>
+            <tr>
+                {% for key in records[0].keys() %}
+                <th>{{ key }}</th>
+                {% endfor %}
+            </tr>
+            </thead>
+            <tbody>
+            {% for row in records %}
+            <tr>
+                {% for value in row.values() %}
+                <td>{{ value if value is not none else '' }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无明细数据</div>
+        {% endif %}
+    </div>
+</div>
+<script>
+    function downloadDetail() {
+        const params = new URLSearchParams({
+            branch_code: "{{ branch_code }}",
+            start_time: "{{ filters.start_time }}",
+            end_time: "{{ filters.end_time }}",
+            person_types: "{{ filters.person_types|join(',') }}",
+            risk_labels: "{{ filters.risk_labels|join(',') }}"
+        });
+        window.location.href = "{{ url_for('jszahzyj.download_jszahzztk_detail') }}?" + params.toString();
+    }
+</script>
+</body>
+</html>

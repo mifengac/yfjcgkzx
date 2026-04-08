@@ -19,6 +19,7 @@ from flask import (
     url_for,
 )
 import logging
+from werkzeug.exceptions import HTTPException
 
 from gonggong.config.database import get_database_connection
 from jszahzyj.service.jszahzyj_service import (
@@ -63,6 +64,8 @@ def _check_access() -> None:
 
         if not row:
             abort(403)
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"权限检查失败: {e}")
         abort(500)
@@ -192,3 +195,4 @@ def export() -> Response:
 
 # 注册“精神病人警情案件统计”子功能路由（与 jszahzyj_bp 同一个蓝图）
 from jszahzyj.routes import jsbrjqajtj_routes_impl  # noqa: E402,F401
+from jszahzyj.routes import jszahz_topic_routes_impl  # noqa: E402,F401

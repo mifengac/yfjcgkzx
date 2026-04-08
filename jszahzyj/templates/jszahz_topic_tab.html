@@ -1,0 +1,78 @@
+<section class="jszahz-topic" id="jszahzTopicApp">
+    <div class="jszahz-topic-toolbar">
+        <div class="jszahz-topic-batch" id="jszahzTopicBatchInfo">当前无生效批次，请先上传 Excel。</div>
+        <div class="jszahz-topic-upload">
+            <input type="file" id="jszahzTopicFile" accept=".xlsx,.xlsm">
+            <button type="button" class="module-button" id="jszahzTopicUploadBtn">上传 Excel</button>
+        </div>
+    </div>
+
+    <section class="filter-form">
+        <div class="filter-row">
+            <div class="filter-group">
+                <label for="jszahzTopicStartTime">列管开始时间</label>
+                <input id="jszahzTopicStartTime" type="datetime-local" step="1">
+            </div>
+            <div class="filter-group">
+                <label for="jszahzTopicEndTime">列管结束时间</label>
+                <input id="jszahzTopicEndTime" type="datetime-local" step="1">
+            </div>
+            <div class="filter-group">
+                <label>分局</label>
+                <div class="multi-select-box" id="jszahzTopicBranchDisplay"><span>全部</span></div>
+                <div class="multi-select-menu" id="jszahzTopicBranchMenu"></div>
+            </div>
+            <div class="filter-group">
+                <label>人员类型</label>
+                <div class="multi-select-box" id="jszahzTopicTypeDisplay"><span>全部</span></div>
+                <div class="multi-select-menu" id="jszahzTopicTypeMenu"></div>
+            </div>
+            <div class="filter-group">
+                <label>人员风险</label>
+                <div class="multi-select-box" id="jszahzTopicRiskDisplay"><span>全部</span></div>
+                <div class="multi-select-menu" id="jszahzTopicRiskMenu"></div>
+            </div>
+            <div class="filter-group jszahz-topic-actions">
+                <button type="button" class="module-button" id="jszahzTopicQueryBtn">查询</button>
+                <button type="button" class="module-button secondary" id="jszahzTopicExportBtn">导出</button>
+            </div>
+        </div>
+        <div class="jszahz-topic-tip" id="jszahzTopicStatus">页面已初始化，等待查询。</div>
+        <div class="error-message jszahz-topic-hidden" id="jszahzTopicError"></div>
+    </section>
+
+    <section class="results-header">
+        <div class="results-info" id="jszahzTopicSummary">未查询</div>
+    </section>
+
+    <div class="results-table-container">
+        <table class="jszahz-topic-table" id="jszahzTopicTable">
+            <thead>
+                <tr>
+                    <th>分局代码</th>
+                    <th>分局名称</th>
+                    <th>去重患者数</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="3" class="no-data">初始化不展示数据，请先上传 Excel 并点击查询。</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="jszahz-topic-drawer" id="jszahzTopicDrawer">
+        <div class="jszahz-topic-drawer-mask" id="jszahzTopicDrawerMask"></div>
+        <div class="jszahz-topic-drawer-panel">
+            <div class="jszahz-topic-drawer-head">
+                <div>
+                    <div class="jszahz-topic-drawer-title" id="jszahzTopicDrawerTitle">详细数据</div>
+                    <div class="jszahz-topic-drawer-subtitle">按身份证号去重展示</div>
+                </div>
+                <button type="button" class="module-button secondary" id="jszahzTopicDrawerCloseBtn">关闭</button>
+            </div>
+            <iframe id="jszahzTopicDrawerFrame" title="精神患者主题库详细数据"></iframe>
+        </div>
+    </div>
+</section>

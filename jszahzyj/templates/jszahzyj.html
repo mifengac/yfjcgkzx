@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>精神障碍患者预警</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/water.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('jszahzyj.static', filename='jsbrjqajtj.css') }}">
+    <link rel="stylesheet" href="{{ url_for('jszahzyj.static', filename='jszahz_topic.css') }}">
     <style>
         body {
             font-family: 'Microsoft YaHei', Arial, sans-serif;
@@ -280,6 +282,7 @@
         <div class="jszahzyj-tabs" id="jszahzyjTabs">
             <button class="jszahzyj-tab-btn active" data-tab="jszahzyj-main">精神障碍患者预警</button>
             <button class="jszahzyj-tab-btn" data-tab="jsbrjqajtj">精神病人警情案件统计</button>
+            <button class="jszahzyj-tab-btn" data-tab="jszahz-topic">精神患者主题库</button>
         </div>
 
         <div class="jszahzyj-tab-panel active" id="tab-jszahzyj-main">
@@ -409,9 +412,14 @@
         <div class="jszahzyj-tab-panel" id="tab-jsbrjqajtj">
             {% include "jsbrjqajtj_tab.html" %}
         </div>
+
+        <div class="jszahzyj-tab-panel" id="tab-jszahz-topic">
+            {% include "jszahz_topic_tab.html" %}
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/jszahzyj.js') }}"></script>
     <script src="{{ url_for('jszahzyj.static', filename='jsbrjqajtj_main.js') }}"></script>
+    <script src="{{ url_for('jszahzyj.static', filename='jszahz_topic_main.js') }}"></script>
 </body>
 </html>

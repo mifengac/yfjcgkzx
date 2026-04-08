@@ -1,0 +1,141 @@
+.jszahz-topic-hidden {
+  display: none;
+}
+
+.jszahz-topic {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.jszahz-topic-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: #f8fbff;
+  border: 1px solid #d9e5f3;
+  border-radius: 8px;
+}
+
+.jszahz-topic-batch,
+.jszahz-topic-tip {
+  color: #475569;
+  font-size: 13px;
+}
+
+.jszahz-topic-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.jszahz-topic-upload input[type="file"] {
+  max-width: 280px;
+}
+
+.jszahz-topic-actions {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.jszahz-topic-table th:last-child,
+.jszahz-topic-table td:last-child {
+  text-align: center;
+}
+
+.jszahz-topic-link {
+  border: none;
+  background: transparent;
+  color: #1976d2;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0;
+}
+
+.jszahz-topic-link:hover {
+  text-decoration: underline;
+}
+
+.jszahz-topic-drawer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 120;
+}
+
+.jszahz-topic-drawer.open {
+  pointer-events: auto;
+}
+
+.jszahz-topic-drawer-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.jszahz-topic-drawer.open .jszahz-topic-drawer-mask {
+  opacity: 1;
+}
+
+.jszahz-topic-drawer-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(960px, 92vw);
+  height: 100%;
+  background: #fff;
+  box-shadow: -10px 0 30px rgba(15, 23, 42, 0.18);
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.jszahz-topic-drawer.open .jszahz-topic-drawer-panel {
+  transform: translateX(0);
+}
+
+.jszahz-topic-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fbff;
+}
+
+.jszahz-topic-drawer-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.jszahz-topic-drawer-subtitle {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.jszahz-topic-drawer iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+@media (max-width: 960px) {
+  .jszahz-topic-toolbar {
+    align-items: stretch;
+  }
+
+  .jszahz-topic-upload,
+  .jszahz-topic-actions {
+    width: 100%;
+  }
+}
