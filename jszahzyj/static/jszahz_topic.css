@@ -2,6 +2,10 @@
   display: none;
 }
 
+.jszahz-topic-drawer-loading.jszahz-topic-hidden {
+  display: none;
+}
+
 .jszahz-topic {
   display: flex;
   flex-direction: column;
