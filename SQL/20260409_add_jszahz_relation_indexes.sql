@@ -11,10 +11,10 @@ ON "ywdata"."t_qsjdc_jbxx" ("sfzmhm", "ccdjrq");
 CREATE INDEX IF NOT EXISTS idx_b_evt_jjzdbczjajxx_dsrsfzmhm_wfsj
 ON "ywdata"."b_evt_jjzdbczjajxx" ("dsrsfzmhm", "wfsj");
 
-CREATE INDEX IF NOT EXISTS idx_t_spy_ryrlgj_xx_libname_id_number_shot_time_ts
+CREATE INDEX IF NOT EXISTS idx_t_spy_ryrlgj_xx_id_number_libname_shot_time_ts
 ON "ywdata"."t_spy_ryrlgj_xx" (
-    "libname",
     "id_number",
+    "libname",
     (CASE
         WHEN "shot_time" ~ '^\d{14}$' THEN ywdata.str_to_ts("shot_time")
         ELSE NULL

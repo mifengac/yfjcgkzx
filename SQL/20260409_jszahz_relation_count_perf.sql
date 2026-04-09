@@ -31,13 +31,24 @@ WITH params AS (
 ids AS (
     SELECT DISTINCT UNNEST(p.sample_ids) AS zjhm
     FROM params p
+),
+patterns AS (
+    SELECT ARRAY_AGG('%' || zjhm || '%') AS like_patterns
+    FROM ids
+),
+candidate AS (
+    SELECT jq."replies"
+    FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
+    CROSS JOIN patterns p
+    WHERE jq."replies" IS NOT NULL
+      AND jq."replies" LIKE ANY (p.like_patterns)
 )
 SELECT
     ids.zjhm AS "身份证号",
     COUNT(*) AS "数量"
 FROM ids
-JOIN "ywdata"."zq_kshddpt_dsjfx_jq" jq
-  ON COALESCE(jq."replies", '') LIKE ('%' || ids.zjhm || '%')
+JOIN candidate c
+  ON c."replies" LIKE ('%' || ids.zjhm || '%')
 GROUP BY ids.zjhm;
 
 -- 关联机动车统计执行计划
@@ -61,19 +72,16 @@ GROUP BY ids.zjhm;
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, COSTS, TIMING, SUMMARY)
 WITH params AS (
     SELECT ARRAY['身份证号1', '身份证号2', '身份证号3']::text[] AS sample_ids
-),
-ids AS (
-    SELECT DISTINCT UNNEST(p.sample_ids) AS zjhm
-    FROM params p
 )
 SELECT
-    ids.zjhm AS "身份证号",
+    spy."id_number" AS "身份证号",
     COUNT(*) AS "数量"
-FROM ids
-JOIN "ywdata"."t_spy_ryrlgj_xx" spy
-  ON spy."id_number" = ids.zjhm
+FROM "ywdata"."t_spy_ryrlgj_xx" spy
+JOIN params p
+  ON 1 = 1
 WHERE spy."libname" = '精神病人'
-GROUP BY ids.zjhm;
+  AND spy."id_number" = ANY (p.sample_ids)
+GROUP BY spy."id_number";
 
 -- 关联门诊统计执行计划
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, COSTS, TIMING, SUMMARY)
