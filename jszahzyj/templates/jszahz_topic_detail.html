@@ -144,22 +144,10 @@
     </div>
 </div>
 <script>
-    const DEBUG_TOKEN = "{{ debug_token or '' }}";
-
-    function logDetail(eventName, payload) {
-        if (payload === undefined) {
-            console.log("[JSZAHZ_DETAIL][" + DEBUG_TOKEN + "] " + eventName);
-            return;
-        }
-        console.log("[JSZAHZ_DETAIL][" + DEBUG_TOKEN + "] " + eventName, payload);
-    }
-
     function notifyParentReady() {
         if (window.parent && window.parent !== window) {
-            logDetail("post-ready");
             window.parent.postMessage({
-                type: "jszahz-topic-detail-ready",
-                debugToken: DEBUG_TOKEN
+                type: "jszahz-topic-detail-ready"
             }, "*");
         }
     }
@@ -173,11 +161,9 @@
             640
         );
         if (window.parent && window.parent !== window) {
-            logDetail("post-width", { width: contentWidth });
             window.parent.postMessage({
                 type: "jszahz-topic-detail-width",
-                width: contentWidth,
-                debugToken: DEBUG_TOKEN
+                width: contentWidth
             }, "*");
         }
     }
@@ -229,7 +215,6 @@
     async function loadRelationCounts() {
         const placeholders = Array.from(document.querySelectorAll("[data-relation-placeholder='1']"));
         if (!placeholders.length) {
-            logDetail("relation-counts-skip-no-placeholders");
             reportPreferredWidth();
             return;
         }
@@ -239,24 +224,21 @@
             .filter(Boolean)));
 
         if (!zjhms.length) {
-            logDetail("relation-counts-skip-no-zjhms");
             placeholders.forEach(function (el) { renderRelationPlaceholder(el, 0); });
             reportPreferredWidth();
             return;
         }
 
         try {
-            logDetail("relation-counts-request-start", { zjhmCount: zjhms.length, zjhms: zjhms });
             const response = await fetch("{{ url_for('jszahzyj.api_jszahzztk_detail_relation_counts') }}", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ zjhms: zjhms, _debug_token: DEBUG_TOKEN })
+                body: JSON.stringify({ zjhms: zjhms })
             });
             const payload = await response.json();
             if (!response.ok || !payload.success) {
                 throw new Error((payload && payload.message) || "关联统计加载失败");
             }
-            logDetail("relation-counts-request-success", payload);
 
             const counts = payload.counts || {};
             placeholders.forEach(function (el) {
@@ -266,9 +248,6 @@
                 renderRelationPlaceholder(el, count);
             });
         } catch (_error) {
-            logDetail("relation-counts-request-error", {
-                message: _error && _error.message ? _error.message : String(_error || ""),
-            });
             placeholders.forEach(function (el) {
                 const span = document.createElement("span");
                 span.className = "relation-link relation-link-disabled";
@@ -281,7 +260,6 @@
         }
     }
 
-    logDetail("script-evaluated");
     window.addEventListener("DOMContentLoaded", notifyParentReady);
     window.addEventListener("DOMContentLoaded", reportPreferredWidth);
     window.addEventListener("load", notifyParentReady);

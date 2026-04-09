@@ -5,7 +5,6 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from time import perf_counter
 from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Tuple
 
 from openpyxl import Workbook, load_workbook
@@ -311,9 +310,7 @@ def query_detail_payload(
     person_types: Iterable[str] | None,
     risk_labels: Iterable[str] | None,
     include_relation_counts: bool = True,
-    debug_token: str = "",
 ) -> Dict[str, Any]:
-    started_at = perf_counter()
     filters = _normalize_filters(
         start_time=start_time,
         end_time=end_time,
@@ -321,30 +318,8 @@ def query_detail_payload(
         person_types=person_types,
         risk_labels=risk_labels,
     )
-    logger.warning(
-        "[JSZAHZ_BACKEND][%s] service.query_detail_payload:start include_relation_counts=%s branch_code=%s start_time=%s end_time=%s person_type_count=%s risk_count=%s",
-        debug_token or "no-token",
-        include_relation_counts,
-        (branch_code or "__ALL__"),
-        filters["start_time"],
-        filters["end_time"],
-        len(filters["person_types"]),
-        len(filters["risk_labels"]),
-    )
-    active_batch_started_at = perf_counter()
     active_batch = jszahz_topic_dao.get_active_batch()
-    logger.warning(
-        "[JSZAHZ_BACKEND][%s] service.query_detail_payload:active_batch duration=%.3fs active_batch_id=%s",
-        debug_token or "no-token",
-        perf_counter() - active_batch_started_at,
-        (active_batch or {}).get("id") if active_batch else None,
-    )
     if not active_batch:
-        logger.warning(
-            "[JSZAHZ_BACKEND][%s] service.query_detail_payload:no_active_batch total_duration=%.3fs",
-            debug_token or "no-token",
-            perf_counter() - started_at,
-        )
         return {
             "success": True,
             "records": [],
@@ -354,7 +329,6 @@ def query_detail_payload(
             "active_batch": None,
         }
 
-    query_rows_started_at = perf_counter()
     records = jszahz_topic_dao.query_detail_rows(
         batch_id=int(active_batch["id"]),
         start_time=filters["start_time"],
@@ -363,24 +337,10 @@ def query_detail_payload(
         person_types=filters["person_types"],
         risk_labels=filters["risk_labels"],
     )
-    logger.warning(
-        "[JSZAHZ_BACKEND][%s] service.query_detail_payload:query_detail_rows duration=%.3fs row_count=%s",
-        debug_token or "no-token",
-        perf_counter() - query_rows_started_at,
-        len(records or []),
-    )
-    relation_stage_started_at = perf_counter()
     detail_records = (
         attach_relation_counts(records)
         if include_relation_counts
         else initialize_relation_placeholders(records)
-    )
-    logger.warning(
-        "[JSZAHZ_BACKEND][%s] service.query_detail_payload:relation_stage duration=%.3fs final_count=%s total_duration=%.3fs",
-        debug_token or "no-token",
-        perf_counter() - relation_stage_started_at,
-        len(detail_records or []),
-        perf_counter() - started_at,
     )
     return {
         "success": True,

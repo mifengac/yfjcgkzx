@@ -3,9 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any, Dict, List
 
-from time import perf_counter
-
-from flask import Response, current_app, jsonify, render_template, request, send_file, session
+from flask import Response, jsonify, render_template, request, send_file, session
 
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp
 from jszahzyj.service.jszahz_topic_relation_service import (
@@ -98,24 +96,12 @@ def download_jszahzztk() -> Response:
 
 @jszahzyj_bp.route("/jszahzztk/detail_page", methods=["GET"])
 def jszahzztk_detail_page() -> Response:
-    started_at = perf_counter()
-    debug_token = str(request.args.get("_debug_token") or "").strip()
     branch_code = str(request.args.get("branch_code") or "").strip()
     branch_name = str(request.args.get("branch_name") or "").strip() or "汇总"
     start_time = str(request.args.get("start_time") or "").strip()
     end_time = str(request.args.get("end_time") or "").strip()
     person_types = _parse_csv_values(str(request.args.get("person_types") or ""))
     risk_labels = _parse_csv_values(str(request.args.get("risk_labels") or ""))
-    current_app.logger.warning(
-        "[JSZAHZ_BACKEND][%s] detail_page:start branch_code=%s branch_name=%s start_time=%s end_time=%s person_type_count=%s risk_count=%s",
-        debug_token or "no-token",
-        branch_code or "__ALL__",
-        branch_name,
-        start_time,
-        end_time,
-        len(person_types),
-        len(risk_labels),
-    )
     try:
         payload = query_detail_payload(
             branch_code=branch_code,
@@ -124,30 +110,11 @@ def jszahzztk_detail_page() -> Response:
             person_types=person_types,
             risk_labels=risk_labels,
             include_relation_counts=False,
-            debug_token=debug_token,
         )
     except ValueError as exc:
-        current_app.logger.exception(
-            "[JSZAHZ_BACKEND][%s] detail_page:value_error after %.3fs",
-            debug_token or "no-token",
-            perf_counter() - started_at,
-        )
         return Response(str(exc), status=400)
     except Exception as exc:
-        current_app.logger.exception(
-            "[JSZAHZ_BACKEND][%s] detail_page:error after %.3fs",
-            debug_token or "no-token",
-            perf_counter() - started_at,
-        )
         return Response(str(exc), status=500)
-
-    current_app.logger.warning(
-        "[JSZAHZ_BACKEND][%s] detail_page:success duration=%.3fs record_count=%s message=%s",
-        debug_token or "no-token",
-        perf_counter() - started_at,
-        len(payload.get("records") or []),
-        payload.get("message") or "",
-    )
 
     return render_template(
         "jszahz_topic_detail.html",
@@ -158,29 +125,15 @@ def jszahzztk_detail_page() -> Response:
         records=payload["records"],
         message=payload["message"],
         relation_column_types=RELATION_COLUMN_TYPES,
-        debug_token=debug_token,
     )
 
 
 @jszahzyj_bp.route("/api/jszahzztk/detail_relation_counts", methods=["POST"])
 def api_jszahzztk_detail_relation_counts() -> Response:
-    started_at = perf_counter()
     payload: Dict[str, Any] = request.json or {}
-    debug_token = str(payload.get("_debug_token") or "").strip()
     try:
         zjhms = payload.get("zjhms") or []
-        current_app.logger.warning(
-            "[JSZAHZ_BACKEND][%s] detail_relation_counts:start zjhm_count=%s",
-            debug_token or "no-token",
-            len(zjhms),
-        )
-        counts = build_relation_count_payload(list(zjhms), debug_token=debug_token)
-        current_app.logger.warning(
-            "[JSZAHZ_BACKEND][%s] detail_relation_counts:success duration=%.3fs relation_keys=%s",
-            debug_token or "no-token",
-            perf_counter() - started_at,
-            ",".join(sorted(counts.keys())),
-        )
+        counts = build_relation_count_payload(list(zjhms))
         return jsonify(
             {
                 "success": True,
@@ -188,18 +141,8 @@ def api_jszahzztk_detail_relation_counts() -> Response:
             }
         )
     except ValueError as exc:
-        current_app.logger.exception(
-            "[JSZAHZ_BACKEND][%s] detail_relation_counts:value_error after %.3fs",
-            debug_token or "no-token",
-            perf_counter() - started_at,
-        )
         return jsonify({"success": False, "message": str(exc)}), 400
     except Exception as exc:
-        current_app.logger.exception(
-            "[JSZAHZ_BACKEND][%s] detail_relation_counts:error after %.3fs",
-            debug_token or "no-token",
-            perf_counter() - started_at,
-        )
         return jsonify({"success": False, "message": str(exc)}), 500
 
 
