@@ -5,7 +5,7 @@ from jszahzyj.dao import jszahz_topic_relation_dao
 
 
 class TestJszahzTopicRelationDao(unittest.TestCase):
-    def test_query_relation_count_maps_uses_optimized_alarm_and_video_sql(self) -> None:
+    def test_query_relation_count_maps_uses_alarm_mapping_table_and_video_index_sql(self) -> None:
         side_effect = [
             [],
             [{"身份证号": "440123199001011111", "数量": 2}],
@@ -28,13 +28,29 @@ class TestJszahzTopicRelationDao(unittest.TestCase):
         self.assertEqual(mock_execute.call_count, 6)
 
         alarm_sql, alarm_params = mock_execute.call_args_list[1][0]
-        self.assertIn("LIKE ANY", alarm_sql)
-        self.assertIn("candidate", alarm_sql)
+        self.assertIn('"jcgkzx_monitor"."jszahz_jq_sfzh_map"', alarm_sql)
+        self.assertIn('"sfzh" = ANY', alarm_sql)
+        self.assertNotIn("LIKE ANY", alarm_sql)
         self.assertEqual(alarm_params, (["440123199001011111"],))
 
         video_sql, video_params = mock_execute.call_args_list[3][0]
         self.assertIn('"id_number" = ANY', video_sql)
         self.assertEqual(video_params, (["440123199001011111"],))
+
+    def test_query_alarm_rows_reads_from_mapping_table(self) -> None:
+        with patch(
+            "jszahzyj.dao.jszahz_topic_relation_dao.execute_query",
+            return_value=[],
+        ) as mock_execute:
+            jszahz_topic_relation_dao.query_alarm_rows("440123199001011111")
+
+        alarm_sql, alarm_params = mock_execute.call_args[0]
+        self.assertIn('"jcgkzx_monitor"."jszahz_jq_sfzh_map"', alarm_sql)
+        self.assertIn('AS "警情地址"', alarm_sql)
+        self.assertIn('AS "处警情况"', alarm_sql)
+        self.assertIn('AS "警情编号"', alarm_sql)
+        self.assertIn('ORDER BY jqm."source_sync_ts" DESC', alarm_sql)
+        self.assertEqual(alarm_params, ("440123199001011111",))
 
 
 if __name__ == "__main__":

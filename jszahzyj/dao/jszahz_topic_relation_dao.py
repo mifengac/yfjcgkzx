@@ -60,27 +60,12 @@ def query_relation_count_maps(zjhms: Iterable[str]) -> Dict[str, Dict[str, int]]
         ),
         "alarm": _query_count_map(
             """
-            WITH ids AS (
-                SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
-            ),
-            patterns AS (
-                SELECT ARRAY_AGG('%' || zjhm || '%') AS like_patterns
-                FROM ids
-            ),
-            candidate AS (
-                SELECT jq."replies"
-                FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
-                CROSS JOIN patterns p
-                WHERE jq."replies" IS NOT NULL
-                  AND jq."replies" LIKE ANY (p.like_patterns)
-            )
             SELECT
-                ids.zjhm AS "身份证号",
+                jqm."sfzh" AS "身份证号",
                 COUNT(*) AS "数量"
-            FROM ids
-            JOIN candidate c
-              ON c."replies" LIKE ('%%' || ids.zjhm || '%%')
-            GROUP BY ids.zjhm
+            FROM "jcgkzx_monitor"."jszahz_jq_sfzh_map" jqm
+            WHERE jqm."sfzh" = ANY(%s::text[])
+            GROUP BY jqm."sfzh"
             """,
             (normalized,),
         ),
@@ -166,14 +151,21 @@ def query_alarm_rows(zjhm: str) -> List[Dict[str, Any]]:
     return execute_query(
         """
         SELECT
-            jq."calltime" AS "报警时间",
-            jq."cmdname" AS "分局",
-            jq."dutydeptname" AS "管辖单位",
-            jq."casecontents" AS "报警内容",
-            jq."newcharasubclassname" AS "警情性质"
-        FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
-        WHERE COALESCE(jq."replies", '') LIKE ('%%' || %s || '%%')
-        ORDER BY jq."calltime" DESC NULLS LAST
+            jqm."calltime" AS "报警时间",
+            jqm."cmdname" AS "分局",
+            jqm."dutydeptname" AS "管辖单位",
+            jqm."casecontents" AS "报警内容",
+            jqm."newcharasubclass" AS "警情性质",
+            jqm."occuraddress" AS "警情地址",
+            jqm."replies" AS "处警情况",
+            jqm."newcharasubclass" AS "确认警情编码",
+            jqm."neworicharasubclass" AS "原始警情编码",
+            jqm."cmdid" AS "分局编码",
+            jqm."dutydeptno" AS "管辖单位编码",
+            jqm."caseno" AS "警情编号"
+        FROM "jcgkzx_monitor"."jszahz_jq_sfzh_map" jqm
+        WHERE jqm."sfzh" = %s
+        ORDER BY jqm."source_sync_ts" DESC, jqm."source_jq_id" DESC
         """,
         (zjhm,),
     )

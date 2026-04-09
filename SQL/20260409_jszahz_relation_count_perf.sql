@@ -3,7 +3,7 @@
 -- 1. 将 params.sample_ids 中的身份证号数组替换为能复现慢查询的真实样本
 -- 2. 依次执行 6 段 EXPLAIN ANALYZE
 -- 3. 对比每段 Execution Time、Buffers，以及是否出现 Seq Scan
--- 4. 当前库不支持 pg_trgm，默认最可能慢的是“关联警情统计执行计划”
+-- 4. 关联警情已切到中间表，通常不再是最慢项；请以实际 Execution Time 为准
 
 -- 关联案件统计执行计划
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, COSTS, TIMING, SUMMARY)
@@ -27,29 +27,15 @@ GROUP BY ids.zjhm;
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, COSTS, TIMING, SUMMARY)
 WITH params AS (
     SELECT ARRAY['身份证号1', '身份证号2', '身份证号3']::text[] AS sample_ids
-),
-ids AS (
-    SELECT DISTINCT UNNEST(p.sample_ids) AS zjhm
-    FROM params p
-),
-patterns AS (
-    SELECT ARRAY_AGG('%' || zjhm || '%') AS like_patterns
-    FROM ids
-),
-candidate AS (
-    SELECT jq."replies"
-    FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
-    CROSS JOIN patterns p
-    WHERE jq."replies" IS NOT NULL
-      AND jq."replies" LIKE ANY (p.like_patterns)
 )
 SELECT
-    ids.zjhm AS "身份证号",
+    jqm."sfzh" AS "身份证号",
     COUNT(*) AS "数量"
-FROM ids
-JOIN candidate c
-  ON c."replies" LIKE ('%' || ids.zjhm || '%')
-GROUP BY ids.zjhm;
+FROM "jcgkzx_monitor"."jszahz_jq_sfzh_map" jqm
+JOIN params p
+  ON 1 = 1
+WHERE jqm."sfzh" = ANY (p.sample_ids)
+GROUP BY jqm."sfzh";
 
 -- 关联机动车统计执行计划
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, COSTS, TIMING, SUMMARY)
