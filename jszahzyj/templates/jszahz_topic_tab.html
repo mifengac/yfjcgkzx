@@ -72,7 +72,16 @@
                 </div>
                 <button type="button" class="module-button secondary" id="jszahzTopicDrawerCloseBtn">关闭</button>
             </div>
-            <iframe id="jszahzTopicDrawerFrame" title="精神患者主题库详细数据"></iframe>
+            <div class="jszahz-topic-drawer-body">
+                <div class="jszahz-topic-drawer-loading jszahz-topic-hidden" id="jszahzTopicDrawerLoading">
+                    <div class="jszahz-topic-drawer-loading-card">
+                        <div class="jszahz-topic-drawer-spinner" aria-hidden="true"></div>
+                        <div class="jszahz-topic-drawer-loading-title" id="jszahzTopicDrawerLoadingTitle">正在查询详细数据及关联统计，请稍候...</div>
+                        <div class="jszahz-topic-drawer-loading-hint" id="jszahzTopicDrawerLoadingHint">当前会按身份证号去重加载明细，并统计 6 类关联数据</div>
+                    </div>
+                </div>
+                <iframe id="jszahzTopicDrawerFrame" title="精神患者主题库详细数据"></iframe>
+            </div>
         </div>
     </div>
 </section>

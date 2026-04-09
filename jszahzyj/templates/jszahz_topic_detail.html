@@ -38,7 +38,18 @@
             border: 1px solid #c8ddf6;
             font-weight: 600;
         }
-        .relation-link:hover { background: #dbeafe; }
+        .relation-link-active {
+            color: #15803d;
+            background: #ecfdf3;
+            border-color: #86efac;
+        }
+        .relation-link-active:hover { background: #dcfce7; }
+        .relation-link-disabled {
+            color: #94a3b8;
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+            cursor: not-allowed;
+        }
         .empty { padding: 24px; color: #64748b; text-align: center; }
     </style>
 </head>
@@ -92,12 +103,17 @@
                 {% endif %}
                 <td class="{{ class_name }}" title="{{ '' if is_relation else (value if value is not none else '') }}">
                     {% if is_relation %}
+                    {% set relation_count = (value if value is not none else 0)|int %}
+                    {% if relation_count > 0 %}
                     <a
-                        class="relation-link"
+                        class="relation-link relation-link-active"
                         href="{{ url_for('jszahzyj.jszahzztk_relation_page', relation_type=relation_column_types[key], zjhm=row.get('身份证号', ''), xm=row.get('姓名', '')) }}"
                         target="_blank"
                         rel="noopener noreferrer"
-                    >查看({{ value if value is not none else 0 }})</a>
+                    >查看({{ relation_count }})</a>
+                    {% else %}
+                    <span class="relation-link relation-link-disabled" aria-disabled="true">查看(0)</span>
+                    {% endif %}
                     {% else %}
                     {{ value if value is not none else '' }}
                     {% endif %}

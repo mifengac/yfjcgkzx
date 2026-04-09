@@ -176,9 +176,12 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
 
         body = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
+        self.assertIn('class="relation-link relation-link-disabled"', body)
+        self.assertIn('aria-disabled="true"', body)
         self.assertIn("查看(0)", body)
+        self.assertIn('class="relation-link relation-link-active"', body)
         self.assertIn("查看(5)", body)
-        self.assertIn("relation_type=case", body)
+        self.assertNotIn("relation_type=case", body)
         self.assertIn("relation_type=clinic", body)
         self.assertIn("relation_type=racing", body)
 

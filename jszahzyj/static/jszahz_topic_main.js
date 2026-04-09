@@ -12,6 +12,7 @@
     selectedRisks: [],
     lastFilters: null,
     drawerContentWidth: null,
+    drawerSlowTimer: null,
   };
 
   function toInputDateTime(value) {
@@ -191,6 +192,41 @@
     });
   }
 
+  function clearDrawerLoadingTimer() {
+    if (state.drawerSlowTimer) {
+      window.clearTimeout(state.drawerSlowTimer);
+      state.drawerSlowTimer = null;
+    }
+  }
+
+  function showDrawerLoading() {
+    const loading = $("jszahzTopicDrawerLoading");
+    const title = $("jszahzTopicDrawerLoadingTitle");
+    const hint = $("jszahzTopicDrawerLoadingHint");
+    if (!loading) return;
+    clearDrawerLoadingTimer();
+    if (title) {
+      title.textContent = "正在查询详细数据及关联统计，请稍候...";
+    }
+    if (hint) {
+      hint.textContent = "当前会按身份证号去重加载明细，并统计 6 类关联数据";
+    }
+    loading.classList.remove("jszahz-topic-hidden");
+    state.drawerSlowTimer = window.setTimeout(function () {
+      if (hint && !loading.classList.contains("jszahz-topic-hidden")) {
+        hint.textContent = "查询时间较长，正在统计关联数据，请继续等待";
+      }
+    }, 3000);
+  }
+
+  function hideDrawerLoading() {
+    const loading = $("jszahzTopicDrawerLoading");
+    clearDrawerLoadingTimer();
+    if (loading) {
+      loading.classList.add("jszahz-topic-hidden");
+    }
+  }
+
   function openDrawer(branchCode, branchName) {
     const filters = state.lastFilters || buildFilters();
     const title = $("jszahzTopicDrawerTitle");
@@ -204,6 +240,8 @@
 
     state.drawerContentWidth = null;
     applyDrawerWidth();
+    showDrawerLoading();
+    drawer.classList.add("open");
 
     const params = new URLSearchParams({
       branch_code: branchCode || "__ALL__",
@@ -214,7 +252,6 @@
       risk_labels: (filters.risk_labels || []).join(","),
     });
     frame.src = "/jszahzyj/jszahzztk/detail_page?" + params.toString();
-    drawer.classList.add("open");
   }
 
   function closeDrawer() {
@@ -222,6 +259,7 @@
     const frame = $("jszahzTopicDrawerFrame");
     state.drawerContentWidth = null;
     applyDrawerWidth();
+    hideDrawerLoading();
     if (frame) frame.src = "about:blank";
     if (drawer) drawer.classList.remove("open");
   }
@@ -252,6 +290,10 @@
     if (data.type !== "jszahz-topic-detail-width") return;
     state.drawerContentWidth = Number(data.width) || null;
     applyDrawerWidth();
+  }
+
+  function handleDrawerFrameLoad() {
+    hideDrawerLoading();
   }
 
   async function loadDefaults() {
@@ -347,8 +389,10 @@
   function initDrawerEvents() {
     const closeBtn = $("jszahzTopicDrawerCloseBtn");
     const mask = $("jszahzTopicDrawerMask");
+    const frame = $("jszahzTopicDrawerFrame");
     if (closeBtn) closeBtn.addEventListener("click", closeDrawer);
     if (mask) mask.addEventListener("click", closeDrawer);
+    if (frame) frame.addEventListener("load", handleDrawerFrameLoad);
     window.addEventListener("message", handleDrawerMessage);
     window.addEventListener("resize", applyDrawerWidth);
   }
