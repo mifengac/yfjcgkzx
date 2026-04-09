@@ -5,6 +5,19 @@ from jszahzyj.service import jszahz_topic_relation_service
 
 
 class TestJszahzTopicRelationService(unittest.TestCase):
+    def test_build_relation_count_payload_normalizes_ids(self) -> None:
+        with patch.object(
+            jszahz_topic_relation_service.jszahz_topic_relation_dao,
+            "query_relation_count_maps",
+            return_value={"alarm": {"440123199001011111": 2}},
+        ) as mock_query:
+            payload = jszahz_topic_relation_service.build_relation_count_payload(
+                ["440123199001011111", " 440123199001011111 ", ""]
+            )
+
+        self.assertEqual(payload["alarm"]["440123199001011111"], 2)
+        mock_query.assert_called_once_with(["440123199001011111"])
+
     def test_attach_relation_counts_sets_all_relation_values(self) -> None:
         records = [
             {
@@ -47,6 +60,14 @@ class TestJszahzTopicRelationService(unittest.TestCase):
             enhanced = jszahz_topic_relation_service.attach_relation_counts(records)
 
         self.assertEqual(enhanced[0]["关联飙车炸街"], 0)
+
+    def test_initialize_relation_placeholders_sets_none_columns(self) -> None:
+        records = [{"身份证号": "440123199001011111", "姓名": "张三"}]
+        initialized = jszahz_topic_relation_service.initialize_relation_placeholders(records)
+
+        self.assertIsNone(initialized[0]["关联案件"])
+        self.assertIsNone(initialized[0]["关联警情"])
+        self.assertIsNone(initialized[0]["关联飙车炸街"])
 
     def test_build_relation_page_payload_returns_empty_message(self) -> None:
         with patch.object(

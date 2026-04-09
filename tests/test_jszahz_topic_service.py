@@ -200,6 +200,54 @@ class TestJszahzTopicService(unittest.TestCase):
         mock_query.assert_called_once()
         mock_attach.assert_called_once_with(base_records)
 
+    def test_query_detail_payload_can_skip_relation_counts(self) -> None:
+        base_records = [
+            {
+                "姓名": "张三",
+                "身份证号": "440123199001011111",
+                "列管时间": "2026-04-01 08:00:00",
+                "列管单位": "云城派出所",
+            }
+        ]
+        initialized_records = [
+            {
+                **base_records[0],
+                "关联案件": None,
+                "关联警情": None,
+                "关联机动车": None,
+                "关联视频云": None,
+                "关联门诊": None,
+                "关联飙车炸街": None,
+            }
+        ]
+        with patch.object(
+            jszahz_topic_service.jszahz_topic_dao,
+            "get_active_batch",
+            return_value={"id": 5, "source_file_name": "demo.xlsx", "created_at": None, "activated_at": None},
+        ), patch.object(
+            jszahz_topic_service.jszahz_topic_dao,
+            "query_detail_rows",
+            return_value=base_records,
+        ), patch(
+            "jszahzyj.service.jszahz_topic_service.initialize_relation_placeholders",
+            return_value=initialized_records,
+        ) as mock_initialize, patch(
+            "jszahzyj.service.jszahz_topic_service.attach_relation_counts",
+        ) as mock_attach:
+            payload = jszahz_topic_service.query_detail_payload(
+                branch_code="445302000000",
+                start_time="2026-04-01 00:00:00",
+                end_time="2026-04-08 00:00:00",
+                person_types=[],
+                risk_labels=[],
+                include_relation_counts=False,
+            )
+
+        self.assertTrue(payload["success"])
+        self.assertIsNone(payload["records"][0]["关联警情"])
+        mock_initialize.assert_called_once_with(base_records)
+        mock_attach.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

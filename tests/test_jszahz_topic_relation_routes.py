@@ -151,12 +151,12 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
                     "分局": "云城分局",
                     "人员风险": "1级患者",
                     "人员类型": "弱监护",
-                    "关联案件": 0,
-                    "关联警情": 1,
-                    "关联机动车": 2,
-                    "关联视频云": 3,
-                    "关联门诊": 4,
-                    "关联飙车炸街": 5,
+                    "关联案件": None,
+                    "关联警情": None,
+                    "关联机动车": None,
+                    "关联视频云": None,
+                    "关联门诊": None,
+                    "关联飙车炸街": None,
                 }
             ],
             "message": "",
@@ -176,14 +176,31 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
 
         body = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn('class="relation-link relation-link-disabled"', body)
-        self.assertIn('aria-disabled="true"', body)
-        self.assertIn("查看(0)", body)
-        self.assertIn('class="relation-link relation-link-active"', body)
-        self.assertIn("查看(5)", body)
-        self.assertNotIn("relation_type=case", body)
-        self.assertIn("relation_type=clinic", body)
-        self.assertIn("relation_type=racing", body)
+        self.assertIn("统计中...", body)
+        self.assertIn('data-relation-placeholder="1"', body)
+        self.assertIn('data-relation-type="case"', body)
+        self.assertIn('data-relation-type="clinic"', body)
+        self.assertIn('data-relation-type="racing"', body)
+
+    def test_detail_relation_counts_api_returns_counts(self) -> None:
+        self._login()
+        with patch(
+            "jszahzyj.routes.jszahzyj_routes.get_database_connection",
+            return_value=_DummyConnection((1,)),
+        ), patch(
+            "jszahzyj.routes.jszahz_topic_routes_impl.build_relation_count_payload",
+            return_value={"alarm": {"440123199001011111": 2}},
+        ) as mock_build:
+            response = self.client.post(
+                "/jszahzyj/api/jszahzztk/detail_relation_counts",
+                json={"zjhms": ["440123199001011111"]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["counts"]["alarm"]["440123199001011111"], 2)
+        mock_build.assert_called_once_with(["440123199001011111"])
 
 
 if __name__ == "__main__":

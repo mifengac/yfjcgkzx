@@ -42,6 +42,7 @@ RELATION_COLUMN_TYPES: Dict[str, str] = {
     config["column"]: relation_type for relation_type, config in RELATION_TYPES.items()
 }
 
+
 def _normalize_zjhm(value: Any) -> str:
     return str(value or "").strip().upper()
 
@@ -64,18 +65,42 @@ def _get_relation_query_func(relation_type: str):
     }[relation_type]
 
 
-def attach_relation_counts(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    normalized_rows: List[Dict[str, Any]] = []
-    zjhms: List[str] = []
-
+def initialize_relation_placeholders(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    initialized: List[Dict[str, Any]] = []
     for row in records or []:
         item = dict(row)
+        for config in RELATION_TYPES.values():
+            item.setdefault(config["column"], None)
+        initialized.append(item)
+    return initialized
+
+
+def build_relation_count_payload(zjhms: List[str]) -> Dict[str, Dict[str, int]]:
+    normalized: List[str] = []
+    seen = set()
+    for value in zjhms or []:
+        zjhm = _normalize_zjhm(value)
+        if not zjhm or zjhm in seen:
+            continue
+        seen.add(zjhm)
+        normalized.append(zjhm)
+    count_maps = jszahz_topic_relation_dao.query_relation_count_maps(normalized)
+    return {
+        relation_type: {key: int(value) for key, value in (value_map or {}).items()}
+        for relation_type, value_map in count_maps.items()
+    }
+
+
+def attach_relation_counts(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    normalized_rows = initialize_relation_placeholders(records)
+    zjhms: List[str] = []
+
+    for item in normalized_rows:
         zjhm = _normalize_zjhm(item.get("身份证号"))
         if zjhm:
             zjhms.append(zjhm)
-        normalized_rows.append(item)
 
-    count_maps = jszahz_topic_relation_dao.query_relation_count_maps(zjhms)
+    count_maps = build_relation_count_payload(zjhms)
     for item in normalized_rows:
         zjhm = _normalize_zjhm(item.get("身份证号"))
         for relation_type, config in RELATION_TYPES.items():

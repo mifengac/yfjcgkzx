@@ -50,6 +50,11 @@
             border-color: #cbd5e1;
             cursor: not-allowed;
         }
+        .relation-link-loading {
+            color: #475569;
+            background: #eef2ff;
+            border-color: #c7d2fe;
+        }
         .empty { padding: 24px; color: #64748b; text-align: center; }
     </style>
 </head>
@@ -103,6 +108,15 @@
                 {% endif %}
                 <td class="{{ class_name }}" title="{{ '' if is_relation else (value if value is not none else '') }}">
                     {% if is_relation %}
+                    {% if value is none %}
+                    <span
+                        class="relation-link relation-link-loading"
+                        data-relation-placeholder="1"
+                        data-relation-type="{{ relation_column_types[key] }}"
+                        data-zjhm="{{ row.get('身份证号', '') }}"
+                        data-xm="{{ row.get('姓名', '') }}"
+                    >统计中...</span>
+                    {% else %}
                     {% set relation_count = (value if value is not none else 0)|int %}
                     {% if relation_count > 0 %}
                     <a
@@ -113,6 +127,7 @@
                     >查看({{ relation_count }})</a>
                     {% else %}
                     <span class="relation-link relation-link-disabled" aria-disabled="true">查看(0)</span>
+                    {% endif %}
                     {% endif %}
                     {% else %}
                     {{ value if value is not none else '' }}
@@ -156,8 +171,90 @@
         window.location.href = "{{ url_for('jszahzyj.download_jszahzztk_detail') }}?" + params.toString();
     }
 
+    function buildRelationHref(relationType, zjhm, xm) {
+        const params = new URLSearchParams({
+            relation_type: relationType || "",
+            zjhm: zjhm || "",
+            xm: xm || ""
+        });
+        return "{{ url_for('jszahzyj.jszahzztk_relation_page') }}?" + params.toString();
+    }
+
+    function renderRelationPlaceholder(el, count) {
+        const relationType = el.getAttribute("data-relation-type") || "";
+        const zjhm = el.getAttribute("data-zjhm") || "";
+        const xm = el.getAttribute("data-xm") || "";
+        const safeCount = Number(count) || 0;
+
+        if (safeCount > 0) {
+            const link = document.createElement("a");
+            link.className = "relation-link relation-link-active";
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.href = buildRelationHref(relationType, zjhm, xm);
+            link.textContent = "查看(" + safeCount + ")";
+            el.replaceWith(link);
+            return;
+        }
+
+        const span = document.createElement("span");
+        span.className = "relation-link relation-link-disabled";
+        span.setAttribute("aria-disabled", "true");
+        span.textContent = "查看(0)";
+        el.replaceWith(span);
+    }
+
+    async function loadRelationCounts() {
+        const placeholders = Array.from(document.querySelectorAll("[data-relation-placeholder='1']"));
+        if (!placeholders.length) {
+            reportPreferredWidth();
+            return;
+        }
+
+        const zjhms = Array.from(new Set(placeholders
+            .map(function (el) { return (el.getAttribute("data-zjhm") || "").trim(); })
+            .filter(Boolean)));
+
+        if (!zjhms.length) {
+            placeholders.forEach(function (el) { renderRelationPlaceholder(el, 0); });
+            reportPreferredWidth();
+            return;
+        }
+
+        try {
+            const response = await fetch("{{ url_for('jszahzyj.api_jszahzztk_detail_relation_counts') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ zjhms: zjhms })
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                throw new Error((payload && payload.message) || "关联统计加载失败");
+            }
+
+            const counts = payload.counts || {};
+            placeholders.forEach(function (el) {
+                const relationType = el.getAttribute("data-relation-type") || "";
+                const zjhm = (el.getAttribute("data-zjhm") || "").trim().toUpperCase();
+                const count = Number((((counts[relationType] || {})[zjhm]) || 0));
+                renderRelationPlaceholder(el, count);
+            });
+        } catch (_error) {
+            placeholders.forEach(function (el) {
+                const span = document.createElement("span");
+                span.className = "relation-link relation-link-disabled";
+                span.setAttribute("aria-disabled", "true");
+                span.textContent = "统计失败";
+                el.replaceWith(span);
+            });
+        } finally {
+            reportPreferredWidth();
+        }
+    }
+
     window.addEventListener("load", reportPreferredWidth);
     window.addEventListener("resize", reportPreferredWidth);
+    window.addEventListener("load", loadRelationCounts);
 </script>
 </body>
 </html>

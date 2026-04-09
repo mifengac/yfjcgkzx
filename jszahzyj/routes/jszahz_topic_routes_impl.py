@@ -6,7 +6,10 @@ from typing import Any, Dict, List
 from flask import Response, jsonify, render_template, request, send_file, session
 
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp
-from jszahzyj.service.jszahz_topic_relation_service import RELATION_COLUMN_TYPES
+from jszahzyj.service.jszahz_topic_relation_service import (
+    RELATION_COLUMN_TYPES,
+    build_relation_count_payload,
+)
 from jszahzyj.service.jszahz_topic_service import (
     defaults_payload,
     export_detail_xlsx,
@@ -106,6 +109,7 @@ def jszahzztk_detail_page() -> Response:
             end_time=end_time,
             person_types=person_types,
             risk_labels=risk_labels,
+            include_relation_counts=False,
         )
     except ValueError as exc:
         return Response(str(exc), status=400)
@@ -122,6 +126,23 @@ def jszahzztk_detail_page() -> Response:
         message=payload["message"],
         relation_column_types=RELATION_COLUMN_TYPES,
     )
+
+
+@jszahzyj_bp.route("/api/jszahzztk/detail_relation_counts", methods=["POST"])
+def api_jszahzztk_detail_relation_counts() -> Response:
+    payload: Dict[str, Any] = request.json or {}
+    try:
+        zjhms = payload.get("zjhms") or []
+        return jsonify(
+            {
+                "success": True,
+                "counts": build_relation_count_payload(list(zjhms)),
+            }
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"success": False, "message": str(exc)}), 500
 
 
 @jszahzyj_bp.route("/download/jszahzztk/detail", methods=["GET"])
