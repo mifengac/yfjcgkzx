@@ -70,7 +70,8 @@
 
         .module-link-fixed-task,
         .module-link-fixed-sms,
-        .module-link-fixed-sentinel {
+        .module-link-fixed-sentinel,
+        .module-link-fixed-voice {
             background: #2e7d32;
         }
 
@@ -79,7 +80,9 @@
         .module-link-fixed-sms:hover,
         .module-link-fixed-sms:focus,
         .module-link-fixed-sentinel:hover,
-        .module-link-fixed-sentinel:focus {
+        .module-link-fixed-sentinel:focus,
+        .module-link-fixed-voice:hover,
+        .module-link-fixed-voice:focus {
             background: #1f5a23;
         }
     </style>
@@ -121,6 +124,9 @@
                 <a class="module-button module-link module-link-fixed-sentinel" href="http://127.0.0.1:5001" target="_blank" rel="noopener noreferrer">
                     猎影哨兵
                 </a>
+                <a class="module-button module-link module-link-fixed-voice" href="http://68.253.16.144:5005" target="_blank" rel="noopener noreferrer">
+                    语音转文字
+                </a>
             </div>
             {% else %}
             <div class="module-grid">
@@ -132,6 +138,9 @@
                 </a>
                 <a class="module-button module-link module-link-fixed-sentinel" href="http://127.0.0.1:5001" target="_blank" rel="noopener noreferrer">
                     猎影哨兵
+                </a>
+                <a class="module-button module-link module-link-fixed-voice" href="http://68.253.16.144:5005" target="_blank" rel="noopener noreferrer">
+                    语音转文字
                 </a>
             </div>
             <p style="margin-top:12px;">当前 IP（{{ client_ip }}）未配置显示任何模块，请联系管理员。</p>

@@ -7,6 +7,12 @@ from psycopg2 import sql
 
 from gonggong.config.database import DB_CONFIG
 from hqzcsj.dao import jzqk_tongji_dao
+from hqzcsj.dao.wcnr_case_list_dao import (
+    build_minor_case_detail_rows,
+    count_minor_case_rows_by_region,
+    fetch_minor_case_rows,
+    filter_minor_case_rows_by_subclasses,
+)
 from hqzcsj.dao.zfba_jq_aj_dao import fetch_ay_patterns, fetch_leixing_list
 
 
@@ -83,42 +89,13 @@ def _cfzl_regex_condition(values: Sequence[str]) -> Tuple[sql.SQL, List[Any]]:
 
 def count_jq_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str]) -> Dict[str, int]:
     leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
-    where_type = sql.SQL("")
-    params: List[Any] = [start_time, end_time]
-    if leixing_list:
-        where_type = sql.SQL(
-            '''
-  AND jq.newcharasubclass IN (
-      SELECT unnest(ctc.newcharasubclass_list) 
-      FROM ywdata.case_type_config ctc 
-      WHERE ctc.leixing = ANY(%s)
-  )'''
-        )
-        params.append(leixing_list)
+    subclass_codes = fetch_newcharasubclass_list(conn, leixing_list=leixing_list) if leixing_list else None
+    if leixing_list and not subclass_codes:
+        return {}
 
-    q = (
-        sql.SQL(
-            """
-            SELECT LEFT(jq."cmdid", 6) AS diqu, COUNT(1) AS cnt
-            FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
-            WHERE jq."calltime" BETWEEN %s AND %s
-              AND (jq."casemark" ~ '未成年' OR jq."casemarkok" ~ '未成年')
-              AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
-              AND 1=1
-            """
-        )
-        + where_type
-        + sql.SQL(' GROUP BY LEFT(jq."cmdid", 6)')
-    )
-    with conn.cursor() as cur:
-        cur.execute(q, params)
-        rows = cur.fetchall()
-    out: Dict[str, int] = {}
-    for diqu, cnt in rows:
-        if not diqu:
-            continue
-        out[str(diqu)] = int(cnt or 0)
-    return out
+    rows = fetch_minor_case_rows(start_time=start_time, end_time=end_time)
+    filtered_rows = filter_minor_case_rows_by_subclasses(rows, subclass_codes=subclass_codes)
+    return count_minor_case_rows_by_region(filtered_rows)
 
 
 def count_zhuanan_by_diqu(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str]) -> Dict[str, int]:
@@ -768,6 +745,19 @@ def fetch_detail_rows(
     limit_n = int(limit) if limit and int(limit) > 0 else 0
     truncated = False
 
+    if metric == "警情":
+        subclass_codes = fetch_newcharasubclass_list(conn, leixing_list=leixing_list) if leixing_list else None
+        if leixing_list and not subclass_codes:
+            return [], False
+
+        rows = fetch_minor_case_rows(start_time=start_time, end_time=end_time)
+        filtered_rows = filter_minor_case_rows_by_subclasses(rows, subclass_codes=subclass_codes)
+        return build_minor_case_detail_rows(
+            filtered_rows,
+            diqu="__ALL__" if is_all else diqu,
+            limit=limit_n,
+        )
+
     # 复用“矫治情况统计”口径：嫌疑人/矫治文书/加强监督教育（行政+刑事拆分）/符合送校/送校
     if metric in jzqk_metrics:
         rows = fetch_wcnr_jzqk_rows(
@@ -819,52 +809,6 @@ def fetch_detail_rows(
         return rows, truncated
 
     with conn.cursor() as cur:
-        if metric == "警情":
-            params1: List[Any] = [start_time, end_time]
-            where_diqu = sql.SQL("")
-            if not is_all:
-                where_diqu = sql.SQL(' AND LEFT(jq."cmdid", 6) = %s')
-                params1.append(diqu)
-            where_type = sql.SQL("")
-            if leixing_list:
-                where_type = sql.SQL(
-                    '''
-  AND jq.newcharasubclass IN (
-      SELECT unnest(ctc.newcharasubclass_list) 
-      FROM ywdata.case_type_config ctc 
-      WHERE ctc.leixing = ANY(%s)
-  )'''
-                )
-                params1.append(leixing_list)
-
-            q = (
-                sql.SQL(
-                    """
-                    SELECT
-                      jq."calltime" AS "报警时间",
-                      jq."caseno" AS "警情编号",
-                      jq."dutydeptname" AS "管辖单位",
-                      jq."cmdname" AS "分局",
-                      jq."occuraddress" AS "警情地址",
-                      jq."casecontents" AS "报警内容",
-                      jq."replies" AS "处警情况",
-                      jq."casemark" AS "警情标注",
-                      jq."lngofcriterion" AS "经度",
-                      jq."latofcriterion" AS "纬度",
-                      LEFT(jq."cmdid", 6) AS "地区"
-                    FROM ywdata."zq_kshddpt_dsjfx_jq" jq
-                    WHERE jq."calltime" BETWEEN %s AND %s
-                      AND (jq."casemark" ~ '未成年' OR jq."casemarkok" ~ '未成年')
-                      AND LEFT(jq."newcharasubclass", 2) IN ('01','02')
-                      AND 1=1
-                    """
-                )
-                + where_type
-                + where_diqu
-                + sql.SQL(' ORDER BY jq."calltime" DESC')
-            )
-            return _exec(cur, q, params1)
-
         if metric == "转案数":
             params1: List[Any] = [start_time, end_time]
             where_diqu = sql.SQL("")

@@ -1,8 +1,10 @@
 import unittest
+from unittest.mock import patch
 
 from hqzcsj.dao.wcnr_10lv_dao import (
     _is_zmjz_ratio_den_row,
     _is_zmjz_ratio_num_row,
+    fetch_metric_detail_rows,
 )
 
 
@@ -66,6 +68,52 @@ class TestWcnr10lvDao(unittest.TestCase):
                 }
             )
         )
+
+    def test_jq_detail_still_uses_shared_jingqing_detail_loader(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_detail_rows",
+            return_value=([{"地区": "445302", "报警时间": "2026-01-01 00:00:00"}], False),
+        ) as mock_fetch_detail_rows:
+            rows = fetch_metric_detail_rows(
+                object(),
+                metric="jq",
+                part="value",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+            )
+
+        self.assertEqual(rows[0]["地区"], "云城")
+        self.assertEqual(rows[0]["地区代码"], "445302")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["metric"], "警情")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["diqu"], "__ALL__")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["limit"], 0)
+
+    def test_za_rate_denominator_uses_shared_jingqing_detail_loader(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_detail_rows",
+            return_value=([{"地区": "445302", "报警时间": "2026-01-01 00:00:00"}], False),
+        ) as mock_fetch_detail_rows:
+            rows = fetch_metric_detail_rows(
+                object(),
+                metric="za_rate",
+                part="denominator",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+            )
+
+        self.assertEqual(rows[0]["地区"], "云城")
+        self.assertEqual(rows[0]["地区代码"], "445302")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["metric"], "警情")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["diqu"], "__ALL__")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["limit"], 0)
 
 
 if __name__ == "__main__":
