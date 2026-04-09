@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from flask import Response, jsonify, render_template, request, send_file, session
 
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp
+from jszahzyj.service.jszahz_topic_relation_service import RELATION_COLUMN_TYPES
 from jszahzyj.service.jszahz_topic_service import (
     defaults_payload,
     export_detail_xlsx,
@@ -119,6 +120,7 @@ def jszahzztk_detail_page() -> Response:
         filters=payload["filters"],
         records=payload["records"],
         message=payload["message"],
+        relation_column_types=RELATION_COLUMN_TYPES,
     )
 
 

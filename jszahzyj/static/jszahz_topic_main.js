@@ -234,9 +234,12 @@
       return;
     }
 
-    const viewportWidth = Math.max(window.innerWidth - 24, 360);
+    const viewportWidth =
+      window.innerWidth <= 960
+        ? Math.max(window.innerWidth - 12, 360)
+        : Math.max(Math.floor(window.innerWidth * 0.75), 640);
     const preferredWidth = Math.min(
-      Math.max(Number(state.drawerContentWidth) + 40, 960),
+      Math.max(Number(state.drawerContentWidth) + 40, 640),
       viewportWidth
     );
     panel.style.setProperty("--jszahz-topic-drawer-width", preferredWidth + "px");

@@ -196,3 +196,4 @@ def export() -> Response:
 # 注册“精神病人警情案件统计”子功能路由（与 jszahzyj_bp 同一个蓝图）
 from jszahzyj.routes import jsbrjqajtj_routes_impl  # noqa: E402,F401
 from jszahzyj.routes import jszahz_topic_routes_impl  # noqa: E402,F401
+from jszahzyj.routes import jszahz_topic_relation_routes_impl  # noqa: E402,F401

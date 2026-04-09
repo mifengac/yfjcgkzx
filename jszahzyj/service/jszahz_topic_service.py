@@ -10,6 +10,7 @@ from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Tuple
 from openpyxl import Workbook, load_workbook
 
 from jszahzyj.dao import jszahz_topic_dao
+from jszahzyj.service.jszahz_topic_relation_service import attach_relation_counts
 
 
 logger = logging.getLogger(__name__)
@@ -332,11 +333,12 @@ def query_detail_payload(
         person_types=filters["person_types"],
         risk_labels=filters["risk_labels"],
     )
+    detail_records = attach_relation_counts(records)
     return {
         "success": True,
-        "records": records,
-        "count": len(records),
-        "message": "" if records else "当前筛选条件下暂无明细数据",
+        "records": detail_records,
+        "count": len(detail_records),
+        "message": "" if detail_records else "当前筛选条件下暂无明细数据",
         "filters": filters,
         "active_batch": _serialize_batch(active_batch),
     }

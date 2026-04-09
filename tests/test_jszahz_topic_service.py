@@ -154,6 +154,51 @@ class TestJszahzTopicService(unittest.TestCase):
         self.assertEqual(payload["records"], [])
         self.assertIn("请先上传", payload["message"])
 
+    def test_query_detail_payload_appends_relation_counts(self) -> None:
+        base_records = [
+            {
+                "姓名": "张三",
+                "身份证号": "440123199001011111",
+                "列管时间": "2026-04-01 08:00:00",
+                "列管单位": "云城派出所",
+            }
+        ]
+        enhanced_records = [
+            {
+                **base_records[0],
+                "关联案件": 2,
+                "关联警情": 1,
+                "关联机动车": 0,
+                "关联视频云": 3,
+                "关联门诊": 4,
+            }
+        ]
+        with patch.object(
+            jszahz_topic_service.jszahz_topic_dao,
+            "get_active_batch",
+            return_value={"id": 5, "source_file_name": "demo.xlsx", "created_at": None, "activated_at": None},
+        ), patch.object(
+            jszahz_topic_service.jszahz_topic_dao,
+            "query_detail_rows",
+            return_value=base_records,
+        ) as mock_query, patch(
+            "jszahzyj.service.jszahz_topic_service.attach_relation_counts",
+            return_value=enhanced_records,
+        ) as mock_attach:
+            payload = jszahz_topic_service.query_detail_payload(
+                branch_code="445302000000",
+                start_time="2026-04-01 00:00:00",
+                end_time="2026-04-08 00:00:00",
+                person_types=[],
+                risk_labels=[],
+            )
+
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["records"][0]["关联案件"], 2)
+        mock_query.assert_called_once()
+        mock_attach.assert_called_once_with(base_records)
+
 
 if __name__ == "__main__":
     unittest.main()

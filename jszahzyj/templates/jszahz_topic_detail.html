@@ -14,12 +14,31 @@
         .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .table-wrap { border: 1px solid #dbe3ef; border-radius: 10px; background: #fff; overflow: auto; max-height: calc(100vh - 120px); }
         table { width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; }
-        th, td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; text-align: left; font-size: 13px; white-space: nowrap; vertical-align: top; }
-        th { position: sticky; top: 0; background: #f8fbff; z-index: 2; }
-        thead th:nth-child(2), tbody td:nth-child(2) { min-width: 170px; }
-        thead th:nth-child(3), tbody td:nth-child(3) { min-width: 170px; }
-        thead th:nth-child(4), tbody td:nth-child(4) { min-width: 260px; }
-        thead th:nth-child(7), tbody td:nth-child(7) { min-width: 220px; }
+        th, td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; text-align: left; font-size: 13px; white-space: nowrap; vertical-align: top; background: #fff; }
+        th { position: sticky; top: 0; background: #f8fbff; z-index: 4; }
+        .sticky-col { position: sticky; z-index: 3; overflow: hidden; text-overflow: ellipsis; }
+        tbody .sticky-col { background: #fff; }
+        thead .sticky-col { background: #f8fbff; }
+        .sticky-col-1 { left: 0; min-width: 120px; width: 120px; max-width: 120px; }
+        .sticky-col-2 { left: 120px; min-width: 190px; width: 190px; max-width: 190px; }
+        .sticky-col-3 { left: 310px; min-width: 190px; width: 190px; max-width: 190px; }
+        .sticky-col-4 { left: 500px; min-width: 280px; width: 280px; max-width: 280px; }
+        .relation-col { min-width: 104px; text-align: center; }
+        .type-col { min-width: 220px; }
+        .relation-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 78px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            text-decoration: none;
+            color: #0f4c81;
+            background: #edf5ff;
+            border: 1px solid #c8ddf6;
+            font-weight: 600;
+        }
+        .relation-link:hover { background: #dbeafe; }
         .empty { padding: 24px; color: #64748b; text-align: center; }
     </style>
 </head>
@@ -41,19 +60,48 @@
 
     <div class="table-wrap">
         {% if records %}
+        {% set headers = records[0].keys()|list %}
         <table>
             <thead>
             <tr>
-                {% for key in records[0].keys() %}
-                <th>{{ key }}</th>
+                {% for key in headers %}
+                {% set is_relation = key in relation_column_types %}
+                {% set class_name = 'relation-col' if is_relation else '' %}
+                {% if loop.index <= 4 %}
+                {% set class_name = (class_name + ' sticky-col sticky-col-' + loop.index|string).strip() %}
+                {% endif %}
+                {% if key == '人员类型' %}
+                {% set class_name = (class_name + ' type-col').strip() %}
+                {% endif %}
+                <th class="{{ class_name }}" title="{{ key }}">{{ key }}</th>
                 {% endfor %}
             </tr>
             </thead>
             <tbody>
             {% for row in records %}
             <tr>
-                {% for value in row.values() %}
-                <td>{{ value if value is not none else '' }}</td>
+                {% for key in headers %}
+                {% set value = row.get(key) %}
+                {% set is_relation = key in relation_column_types %}
+                {% set class_name = 'relation-col' if is_relation else '' %}
+                {% if loop.index <= 4 %}
+                {% set class_name = (class_name + ' sticky-col sticky-col-' + loop.index|string).strip() %}
+                {% endif %}
+                {% if key == '人员类型' %}
+                {% set class_name = (class_name + ' type-col').strip() %}
+                {% endif %}
+                <td class="{{ class_name }}" title="{{ '' if is_relation else (value if value is not none else '') }}">
+                    {% if is_relation %}
+                    <a
+                        class="relation-link"
+                        href="{{ url_for('jszahzyj.jszahzztk_relation_page', relation_type=relation_column_types[key], zjhm=row.get('身份证号', ''), xm=row.get('姓名', '')) }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >查看({{ value if value is not none else 0 }})</a>
+                    {% else %}
+                    {{ value if value is not none else '' }}
+                    {% endif %}
+                </td>
                 {% endfor %}
             </tr>
             {% endfor %}
@@ -71,7 +119,7 @@
         const contentWidth = Math.max(
             tableWrap ? tableWrap.scrollWidth : 0,
             page ? page.scrollWidth : 0,
-            960
+            640
         );
         if (window.parent && window.parent !== window) {
             window.parent.postMessage({
