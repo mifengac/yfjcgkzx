@@ -7,15 +7,19 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/water.css') }}">
     <style>
         body { margin: 0; background: #f8fafc; color: #1f2937; }
-        .page { padding: 16px; }
+        .page { padding: 16px; width: max-content; min-width: 100%; box-sizing: border-box; }
         .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
         .head h1 { margin: 0; font-size: 18px; }
         .sub { color: #64748b; font-size: 12px; }
         .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .table-wrap { border: 1px solid #dbe3ef; border-radius: 10px; background: #fff; overflow: auto; max-height: calc(100vh - 120px); }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; text-align: left; font-size: 13px; white-space: nowrap; }
+        table { width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; }
+        th, td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; text-align: left; font-size: 13px; white-space: nowrap; vertical-align: top; }
         th { position: sticky; top: 0; background: #f8fbff; z-index: 2; }
+        thead th:nth-child(2), tbody td:nth-child(2) { min-width: 170px; }
+        thead th:nth-child(3), tbody td:nth-child(3) { min-width: 170px; }
+        thead th:nth-child(4), tbody td:nth-child(4) { min-width: 260px; }
+        thead th:nth-child(7), tbody td:nth-child(7) { min-width: 220px; }
         .empty { padding: 24px; color: #64748b; text-align: center; }
     </style>
 </head>
@@ -61,6 +65,22 @@
     </div>
 </div>
 <script>
+    function reportPreferredWidth() {
+        const tableWrap = document.querySelector(".table-wrap");
+        const page = document.querySelector(".page");
+        const contentWidth = Math.max(
+            tableWrap ? tableWrap.scrollWidth : 0,
+            page ? page.scrollWidth : 0,
+            960
+        );
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({
+                type: "jszahz-topic-detail-width",
+                width: contentWidth
+            }, "*");
+        }
+    }
+
     function downloadDetail() {
         const params = new URLSearchParams({
             branch_code: "{{ branch_code }}",
@@ -71,6 +91,9 @@
         });
         window.location.href = "{{ url_for('jszahzyj.download_jszahzztk_detail') }}?" + params.toString();
     }
+
+    window.addEventListener("load", reportPreferredWidth);
+    window.addEventListener("resize", reportPreferredWidth);
 </script>
 </body>
 </html>

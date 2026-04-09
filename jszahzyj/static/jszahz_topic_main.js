@@ -11,6 +11,7 @@
     selectedTypes: [],
     selectedRisks: [],
     lastFilters: null,
+    drawerContentWidth: null,
   };
 
   function toInputDateTime(value) {
@@ -201,6 +202,9 @@
       title.textContent = (branchName || "汇总") + " - 详细数据";
     }
 
+    state.drawerContentWidth = null;
+    applyDrawerWidth();
+
     const params = new URLSearchParams({
       branch_code: branchCode || "__ALL__",
       branch_name: branchName || "汇总",
@@ -216,8 +220,35 @@
   function closeDrawer() {
     const drawer = $("jszahzTopicDrawer");
     const frame = $("jszahzTopicDrawerFrame");
+    state.drawerContentWidth = null;
+    applyDrawerWidth();
     if (frame) frame.src = "about:blank";
     if (drawer) drawer.classList.remove("open");
+  }
+
+  function applyDrawerWidth() {
+    const panel = $("jszahzTopicDrawerPanel");
+    if (!panel) return;
+    if (!state.drawerContentWidth) {
+      panel.style.removeProperty("--jszahz-topic-drawer-width");
+      return;
+    }
+
+    const viewportWidth = Math.max(window.innerWidth - 24, 360);
+    const preferredWidth = Math.min(
+      Math.max(Number(state.drawerContentWidth) + 40, 960),
+      viewportWidth
+    );
+    panel.style.setProperty("--jszahz-topic-drawer-width", preferredWidth + "px");
+  }
+
+  function handleDrawerMessage(event) {
+    const frame = $("jszahzTopicDrawerFrame");
+    if (!frame || event.source !== frame.contentWindow) return;
+    const data = event.data || {};
+    if (data.type !== "jszahz-topic-detail-width") return;
+    state.drawerContentWidth = Number(data.width) || null;
+    applyDrawerWidth();
   }
 
   async function loadDefaults() {
@@ -315,6 +346,8 @@
     const mask = $("jszahzTopicDrawerMask");
     if (closeBtn) closeBtn.addEventListener("click", closeDrawer);
     if (mask) mask.addEventListener("click", closeDrawer);
+    window.addEventListener("message", handleDrawerMessage);
+    window.addEventListener("resize", applyDrawerWidth);
   }
 
   function init() {
