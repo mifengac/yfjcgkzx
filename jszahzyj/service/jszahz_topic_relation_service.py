@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+from time import perf_counter
 from typing import Any, Dict, List
 
 from jszahzyj.dao import jszahz_topic_relation_dao
+
+logger = logging.getLogger(__name__)
 
 
 RELATION_TYPES: Dict[str, Dict[str, str]] = {
@@ -75,7 +79,12 @@ def initialize_relation_placeholders(records: List[Dict[str, Any]]) -> List[Dict
     return initialized
 
 
-def build_relation_count_payload(zjhms: List[str]) -> Dict[str, Dict[str, int]]:
+def build_relation_count_payload(
+    zjhms: List[str],
+    *,
+    debug_token: str = "",
+) -> Dict[str, Dict[str, int]]:
+    started_at = perf_counter()
     normalized: List[str] = []
     seen = set()
     for value in zjhms or []:
@@ -84,11 +93,29 @@ def build_relation_count_payload(zjhms: List[str]) -> Dict[str, Dict[str, int]]:
             continue
         seen.add(zjhm)
         normalized.append(zjhm)
+    logger.warning(
+        "[JSZAHZ_BACKEND][%s] service.build_relation_count_payload:start raw_count=%s normalized_count=%s",
+        debug_token or "no-token",
+        len(zjhms or []),
+        len(normalized),
+    )
     count_maps = jszahz_topic_relation_dao.query_relation_count_maps(normalized)
-    return {
+    result = {
         relation_type: {key: int(value) for key, value in (value_map or {}).items()}
         for relation_type, value_map in count_maps.items()
     }
+    logger.warning(
+        "[JSZAHZ_BACKEND][%s] service.build_relation_count_payload:done duration=%.3fs case=%s alarm=%s vehicle=%s video=%s clinic=%s racing=%s",
+        debug_token or "no-token",
+        perf_counter() - started_at,
+        len(result.get("case") or {}),
+        len(result.get("alarm") or {}),
+        len(result.get("vehicle") or {}),
+        len(result.get("video") or {}),
+        len(result.get("clinic") or {}),
+        len(result.get("racing") or {}),
+    )
+    return result
 
 
 def attach_relation_counts(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

@@ -13,7 +13,21 @@
     lastFilters: null,
     drawerContentWidth: null,
     drawerSlowTimer: null,
+    currentDrawerDebugToken: null,
   };
+
+  function createDebugToken() {
+    return "jszahz-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function logDrawer(eventName, payload) {
+    const token = state.currentDrawerDebugToken || "no-token";
+    if (payload === undefined) {
+      console.log("[JSZAHZ_DRAWER][" + token + "] " + eventName);
+      return;
+    }
+    console.log("[JSZAHZ_DRAWER][" + token + "] " + eventName, payload);
+  }
 
   function toInputDateTime(value) {
     const text = String(value || "").trim();
@@ -205,6 +219,7 @@
     const hint = $("jszahzTopicDrawerLoadingHint");
     if (!loading) return;
     clearDrawerLoadingTimer();
+    logDrawer("show-loading");
     if (title) {
       title.textContent = "正在查询详细数据及关联统计，请稍候...";
     }
@@ -216,6 +231,7 @@
       if (hint && !loading.classList.contains("jszahz-topic-hidden")) {
         hint.textContent = "查询时间较长，正在统计关联数据，请继续等待";
       }
+      logDrawer("loading-slow");
     }, 3000);
   }
 
@@ -225,6 +241,7 @@
     if (loading) {
       loading.classList.add("jszahz-topic-hidden");
     }
+    logDrawer("hide-loading");
   }
 
   function openDrawer(branchCode, branchName) {
@@ -239,9 +256,15 @@
     }
 
     state.drawerContentWidth = null;
+    state.currentDrawerDebugToken = createDebugToken();
     applyDrawerWidth();
     showDrawerLoading();
     drawer.classList.add("open");
+    logDrawer("open-drawer", {
+      branchCode: branchCode || "__ALL__",
+      branchName: branchName || "汇总",
+      filters: filters,
+    });
 
     const params = new URLSearchParams({
       branch_code: branchCode || "__ALL__",
@@ -251,8 +274,11 @@
       person_types: (filters.person_types || []).join(","),
       risk_labels: (filters.risk_labels || []).join(","),
       _ts: String(Date.now()),
+      _debug_token: state.currentDrawerDebugToken,
     });
-    frame.src = "/jszahzyj/jszahzztk/detail_page?" + params.toString();
+    const targetUrl = "/jszahzyj/jszahzztk/detail_page?" + params.toString();
+    logDrawer("set-iframe-src", targetUrl);
+    frame.src = targetUrl;
   }
 
   function closeDrawer() {
@@ -263,6 +289,8 @@
     hideDrawerLoading();
     if (frame) frame.src = "about:blank";
     if (drawer) drawer.classList.remove("open");
+    logDrawer("close-drawer");
+    state.currentDrawerDebugToken = null;
   }
 
   function applyDrawerWidth() {
@@ -289,17 +317,20 @@
     if (!frame || event.source !== frame.contentWindow) return;
     const data = event.data || {};
     if (data.type === "jszahz-topic-detail-ready") {
+      logDrawer("message-detail-ready", data);
       hideDrawerLoading();
       return;
     }
     if (data.type === "jszahz-topic-detail-width") {
       state.drawerContentWidth = Number(data.width) || null;
       applyDrawerWidth();
+      logDrawer("message-detail-width", data);
       hideDrawerLoading();
     }
   }
 
   function handleDrawerFrameLoad() {
+    logDrawer("iframe-load");
     hideDrawerLoading();
   }
 

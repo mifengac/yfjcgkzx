@@ -200,7 +200,10 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
         payload = response.get_json()
         self.assertTrue(payload["success"])
         self.assertEqual(payload["counts"]["alarm"]["440123199001011111"], 2)
-        mock_build.assert_called_once_with(["440123199001011111"])
+        mock_build.assert_called_once_with(
+            ["440123199001011111"],
+            debug_token="",
+        )
 
 
 if __name__ == "__main__":
