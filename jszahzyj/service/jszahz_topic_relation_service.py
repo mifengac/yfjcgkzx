@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 from jszahzyj.dao import jszahz_topic_relation_dao
 
@@ -49,26 +49,12 @@ def get_relation_type_config(relation_type: str) -> Dict[str, str]:
     return config
 
 
-def attach_relation_counts(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    if not records:
-        return []
-
-    zjhms = []
-    seen = set()
-    for row in records:
-        zjhm = _normalize_zjhm(row.get("身份证号"))
-        if not zjhm or zjhm in seen:
-            continue
-        seen.add(zjhm)
-        zjhms.append(zjhm)
-
-    count_maps = jszahz_topic_relation_dao.query_relation_count_maps(zjhms)
+def append_relation_columns(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     enhanced_rows: List[Dict[str, Any]] = []
-    for row in records:
+    for row in records or []:
         item = dict(row)
-        zjhm = _normalize_zjhm(item.get("身份证号"))
-        for relation_type, config in RELATION_TYPES.items():
-            item[config["column"]] = int(count_maps.get(relation_type, {}).get(zjhm, 0))
+        for config in RELATION_TYPES.values():
+            item.setdefault(config["column"], None)
         enhanced_rows.append(item)
     return enhanced_rows
 

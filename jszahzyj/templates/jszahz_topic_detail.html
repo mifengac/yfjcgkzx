@@ -97,7 +97,7 @@
                         href="{{ url_for('jszahzyj.jszahzztk_relation_page', relation_type=relation_column_types[key], zjhm=row.get('身份证号', ''), xm=row.get('姓名', '')) }}"
                         target="_blank"
                         rel="noopener noreferrer"
-                    >查看({{ value if value is not none else 0 }})</a>
+                    >查看</a>
                     {% else %}
                     {{ value if value is not none else '' }}
                     {% endif %}

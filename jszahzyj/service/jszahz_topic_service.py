@@ -10,7 +10,7 @@ from typing import Any, BinaryIO, Dict, Iterable, List, Optional, Tuple
 from openpyxl import Workbook, load_workbook
 
 from jszahzyj.dao import jszahz_topic_dao
-from jszahzyj.service.jszahz_topic_relation_service import attach_relation_counts
+from jszahzyj.service.jszahz_topic_relation_service import append_relation_columns
 
 
 logger = logging.getLogger(__name__)
@@ -333,7 +333,7 @@ def query_detail_payload(
         person_types=filters["person_types"],
         risk_labels=filters["risk_labels"],
     )
-    detail_records = attach_relation_counts(records)
+    detail_records = append_relation_columns(records)
     return {
         "success": True,
         "records": detail_records,

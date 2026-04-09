@@ -125,11 +125,11 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
                     "分局": "云城分局",
                     "人员风险": "1级患者",
                     "人员类型": "弱监护",
-                    "关联案件": 2,
-                    "关联警情": 0,
-                    "关联机动车": 1,
-                    "关联视频云": 3,
-                    "关联门诊": 4,
+                    "关联案件": None,
+                    "关联警情": None,
+                    "关联机动车": None,
+                    "关联视频云": None,
+                    "关联门诊": None,
                 }
             ],
             "message": "",
@@ -149,7 +149,8 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
 
         body = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn("查看(2)", body)
+        self.assertIn("查看", body)
+        self.assertNotIn("查看(", body)
         self.assertIn("relation_type=case", body)
         self.assertIn("relation_type=clinic", body)
 
