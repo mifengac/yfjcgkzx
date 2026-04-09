@@ -207,7 +207,12 @@ def query_video_rows(zjhm: str) -> List[Dict[str, Any]]:
           ON spy."device_id" = dev."sbbm"
         WHERE spy."libname" = '精神病人'
           AND spy."id_number" = %s
-        ORDER BY spy."shot_time" DESC NULLS LAST
+        ORDER BY
+            CASE
+                WHEN spy."shot_time" ~ '^\\d{14}$' THEN ywdata.str_to_ts(spy."shot_time")
+                ELSE NULL
+            END DESC NULLS LAST,
+            spy."shot_time" DESC NULLS LAST
         """,
         (zjhm,),
     )
