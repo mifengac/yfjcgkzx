@@ -250,6 +250,7 @@
       end_time: filters.end_time || "",
       person_types: (filters.person_types || []).join(","),
       risk_labels: (filters.risk_labels || []).join(","),
+      _ts: String(Date.now()),
     });
     frame.src = "/jszahzyj/jszahzztk/detail_page?" + params.toString();
   }
@@ -287,9 +288,15 @@
     const frame = $("jszahzTopicDrawerFrame");
     if (!frame || event.source !== frame.contentWindow) return;
     const data = event.data || {};
-    if (data.type !== "jszahz-topic-detail-width") return;
-    state.drawerContentWidth = Number(data.width) || null;
-    applyDrawerWidth();
+    if (data.type === "jszahz-topic-detail-ready") {
+      hideDrawerLoading();
+      return;
+    }
+    if (data.type === "jszahz-topic-detail-width") {
+      state.drawerContentWidth = Number(data.width) || null;
+      applyDrawerWidth();
+      hideDrawerLoading();
+    }
   }
 
   function handleDrawerFrameLoad() {

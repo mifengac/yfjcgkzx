@@ -144,6 +144,14 @@
     </div>
 </div>
 <script>
+    function notifyParentReady() {
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({
+                type: "jszahz-topic-detail-ready"
+            }, "*");
+        }
+    }
+
     function reportPreferredWidth() {
         const tableWrap = document.querySelector(".table-wrap");
         const page = document.querySelector(".page");
@@ -252,6 +260,9 @@
         }
     }
 
+    window.addEventListener("DOMContentLoaded", notifyParentReady);
+    window.addEventListener("DOMContentLoaded", reportPreferredWidth);
+    window.addEventListener("load", notifyParentReady);
     window.addEventListener("load", reportPreferredWidth);
     window.addEventListener("resize", reportPreferredWidth);
     window.addEventListener("load", loadRelationCounts);
