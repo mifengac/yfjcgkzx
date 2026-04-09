@@ -31,12 +31,16 @@ RELATION_TYPES: Dict[str, Dict[str, str]] = {
         "title": "关联门诊明细",
         "empty_message": "未查询到该人员的关联门诊数据",
     },
+    "racing": {
+        "column": "关联飙车炸街",
+        "title": "关联飙车炸街明细",
+        "empty_message": "未查询到该人员的关联飙车炸街数据",
+    },
 }
 
 RELATION_COLUMN_TYPES: Dict[str, str] = {
     config["column"]: relation_type for relation_type, config in RELATION_TYPES.items()
 }
-
 
 def _normalize_zjhm(value: Any) -> str:
     return str(value or "").strip().upper()
@@ -49,14 +53,34 @@ def get_relation_type_config(relation_type: str) -> Dict[str, str]:
     return config
 
 
-def append_relation_columns(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    enhanced_rows: List[Dict[str, Any]] = []
+def _get_relation_query_func(relation_type: str):
+    return {
+        "case": jszahz_topic_relation_dao.query_case_rows,
+        "alarm": jszahz_topic_relation_dao.query_alarm_rows,
+        "vehicle": jszahz_topic_relation_dao.query_vehicle_rows,
+        "video": jszahz_topic_relation_dao.query_video_rows,
+        "clinic": jszahz_topic_relation_dao.query_clinic_rows,
+        "racing": jszahz_topic_relation_dao.query_racing_rows,
+    }[relation_type]
+
+
+def attach_relation_counts(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    normalized_rows: List[Dict[str, Any]] = []
+    zjhms: List[str] = []
+
     for row in records or []:
         item = dict(row)
-        for config in RELATION_TYPES.values():
-            item.setdefault(config["column"], None)
-        enhanced_rows.append(item)
-    return enhanced_rows
+        zjhm = _normalize_zjhm(item.get("身份证号"))
+        if zjhm:
+            zjhms.append(zjhm)
+        normalized_rows.append(item)
+
+    count_maps = jszahz_topic_relation_dao.query_relation_count_maps(zjhms)
+    for item in normalized_rows:
+        zjhm = _normalize_zjhm(item.get("身份证号"))
+        for relation_type, config in RELATION_TYPES.items():
+            item[config["column"]] = int(count_maps.get(relation_type, {}).get(zjhm, 0))
+    return normalized_rows
 
 
 def build_relation_page_payload(*, relation_type: str, zjhm: str, xm: str) -> Dict[str, Any]:
@@ -65,14 +89,7 @@ def build_relation_page_payload(*, relation_type: str, zjhm: str, xm: str) -> Di
         raise ValueError("身份证号不能为空")
 
     config = get_relation_type_config(relation_type)
-    query_func = {
-        "case": jszahz_topic_relation_dao.query_case_rows,
-        "alarm": jszahz_topic_relation_dao.query_alarm_rows,
-        "vehicle": jszahz_topic_relation_dao.query_vehicle_rows,
-        "video": jszahz_topic_relation_dao.query_video_rows,
-        "clinic": jszahz_topic_relation_dao.query_clinic_rows,
-    }[relation_type]
-    records = query_func(normalized_zjhm)
+    records = _get_relation_query_func(relation_type)(normalized_zjhm)
     return {
         "title": config["title"],
         "relation_type": relation_type,

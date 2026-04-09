@@ -154,7 +154,7 @@ class TestJszahzTopicService(unittest.TestCase):
         self.assertEqual(payload["records"], [])
         self.assertIn("请先上传", payload["message"])
 
-    def test_query_detail_payload_appends_relation_columns(self) -> None:
+    def test_query_detail_payload_attaches_relation_counts(self) -> None:
         base_records = [
             {
                 "姓名": "张三",
@@ -163,7 +163,17 @@ class TestJszahzTopicService(unittest.TestCase):
                 "列管单位": "云城派出所",
             }
         ]
-        enhanced_records = [{**base_records[0], "关联案件": None, "关联警情": None, "关联机动车": None, "关联视频云": None, "关联门诊": None}]
+        enhanced_records = [
+            {
+                **base_records[0],
+                "关联案件": 0,
+                "关联警情": 1,
+                "关联机动车": 2,
+                "关联视频云": 3,
+                "关联门诊": 4,
+                "关联飙车炸街": 5,
+            }
+        ]
         with patch.object(
             jszahz_topic_service.jszahz_topic_dao,
             "get_active_batch",
@@ -173,9 +183,9 @@ class TestJszahzTopicService(unittest.TestCase):
             "query_detail_rows",
             return_value=base_records,
         ) as mock_query, patch(
-            "jszahzyj.service.jszahz_topic_service.append_relation_columns",
+            "jszahzyj.service.jszahz_topic_service.attach_relation_counts",
             return_value=enhanced_records,
-        ) as mock_append:
+        ) as mock_attach:
             payload = jszahz_topic_service.query_detail_payload(
                 branch_code="445302000000",
                 start_time="2026-04-01 00:00:00",
@@ -186,9 +196,9 @@ class TestJszahzTopicService(unittest.TestCase):
 
         self.assertTrue(payload["success"])
         self.assertEqual(payload["count"], 1)
-        self.assertIsNone(payload["records"][0]["关联案件"])
+        self.assertEqual(payload["records"][0]["关联飙车炸街"], 5)
         mock_query.assert_called_once()
-        mock_append.assert_called_once_with(base_records)
+        mock_attach.assert_called_once_with(base_records)
 
 
 if __name__ == "__main__":

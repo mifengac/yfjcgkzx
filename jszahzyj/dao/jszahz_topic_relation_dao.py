@@ -1,8 +1,142 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Any, Dict, Iterable, List
 
 from gonggong.config.database import execute_query
+
+
+def _normalize_zjhms(zjhms: Iterable[str]) -> List[str]:
+    seen = set()
+    normalized: List[str] = []
+    for value in zjhms or []:
+        text = str(value or "").strip().upper()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        normalized.append(text)
+    return normalized
+
+
+def _query_count_map(sql: str, params: tuple[Any, ...]) -> Dict[str, int]:
+    rows = execute_query(sql, params)
+    counts: Dict[str, int] = {}
+    for row in rows:
+        zjhm = str(row.get("身份证号") or "").strip().upper()
+        if not zjhm:
+            continue
+        counts[zjhm] = int(row.get("数量") or 0)
+    return counts
+
+
+def query_relation_count_maps(zjhms: Iterable[str]) -> Dict[str, Dict[str, int]]:
+    normalized = _normalize_zjhms(zjhms)
+    empty = {
+        "case": {},
+        "alarm": {},
+        "vehicle": {},
+        "video": {},
+        "clinic": {},
+        "racing": {},
+    }
+    if not normalized:
+        return empty
+
+    return {
+        "case": _query_count_map(
+            """
+            WITH ids AS (
+                SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
+            )
+            SELECT
+                ids.zjhm AS "身份证号",
+                COUNT(*) AS "数量"
+            FROM ids
+            JOIN "ywdata"."zq_zfba_xyrxx" zzx
+              ON zzx."xyrxx_sfzh" = ids.zjhm
+            WHERE zzx."ajxx_join_ajxx_ajbh" IS NOT NULL
+            GROUP BY ids.zjhm
+            """,
+            (normalized,),
+        ),
+        "alarm": _query_count_map(
+            """
+            WITH ids AS (
+                SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
+            )
+            SELECT
+                ids.zjhm AS "身份证号",
+                COUNT(*) AS "数量"
+            FROM ids
+            JOIN "ywdata"."zq_kshddpt_dsjfx_jq" jq
+              ON COALESCE(jq."replies", '') LIKE ('%%' || ids.zjhm || '%%')
+            GROUP BY ids.zjhm
+            """,
+            (normalized,),
+        ),
+        "vehicle": _query_count_map(
+            """
+            WITH ids AS (
+                SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
+            )
+            SELECT
+                ids.zjhm AS "身份证号",
+                COUNT(*) AS "数量"
+            FROM ids
+            JOIN "ywdata"."t_qsjdc_jbxx" jdc
+              ON jdc."sfzmhm" = ids.zjhm
+            GROUP BY ids.zjhm
+            """,
+            (normalized,),
+        ),
+        "video": _query_count_map(
+            """
+            WITH ids AS (
+                SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
+            )
+            SELECT
+                ids.zjhm AS "身份证号",
+                COUNT(*) AS "数量"
+            FROM ids
+            JOIN "ywdata"."t_spy_ryrlgj_xx" spy
+              ON spy."id_number" = ids.zjhm
+            WHERE spy."libname" = '精神病人'
+            GROUP BY ids.zjhm
+            """,
+            (normalized,),
+        ),
+        "clinic": _query_count_map(
+            """
+            WITH ids AS (
+                SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
+            )
+            SELECT
+                ids.zjhm AS "身份证号",
+                COUNT(*) AS "数量"
+            FROM ids
+            JOIN "ywdata"."sh_yf_mz_djxx" mz
+              ON mz."zjhm" = ids.zjhm
+            GROUP BY ids.zjhm
+            """,
+            (normalized,),
+        ),
+        "racing": _query_count_map(
+            """
+            WITH ids AS (
+                SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
+            )
+            SELECT
+                ids.zjhm AS "身份证号",
+                COUNT(*) AS "数量"
+            FROM ids
+            JOIN "ywdata"."b_evt_jjzdbczjajxx" jz
+              ON jz."dsrsfzmhm" = ids.zjhm
+            GROUP BY ids.zjhm
+            """,
+            (normalized,),
+        ),
+    }
+
+
 def query_case_rows(zjhm: str) -> List[Dict[str, Any]]:
     return execute_query(
         """
@@ -31,7 +165,7 @@ def query_alarm_rows(zjhm: str) -> List[Dict[str, Any]]:
             jq."casecontents" AS "报警内容",
             jq."newcharasubclassname" AS "警情性质"
         FROM "ywdata"."zq_kshddpt_dsjfx_jq" jq
-        WHERE POSITION(%s IN COALESCE(jq."replies", '')) > 0
+        WHERE COALESCE(jq."replies", '') LIKE ('%%' || %s || '%%')
         ORDER BY jq."calltime" DESC NULLS LAST
         """,
         (zjhm,),
@@ -94,6 +228,24 @@ def query_clinic_rows(zjhm: str) -> List[Dict[str, Any]]:
         FROM "ywdata"."sh_yf_mz_djxx" mz
         WHERE mz."zjhm" = %s
         ORDER BY mz."mzxx_jzsj" DESC NULLS LAST
+        """,
+        (zjhm,),
+    )
+
+
+def query_racing_rows(zjhm: str) -> List[Dict[str, Any]]:
+    return execute_query(
+        """
+        SELECT
+            jz."wsbh" AS "文书编号",
+            jz."wfsj" AS "违法时间",
+            jz."wfdd" AS "违法地点",
+            jz."hphm" AS "号牌号码",
+            jz."wfxw" AS "违法行为",
+            jz."shyj" AS "审核意见"
+        FROM "ywdata"."b_evt_jjzdbczjajxx" jz
+        WHERE jz."dsrsfzmhm" = %s
+        ORDER BY jz."wfsj" DESC NULLS LAST
         """,
         (zjhm,),
     )
