@@ -23,9 +23,9 @@ COL_WORK_TIME = "工作日志开展工作时间"
 
 
 RISK_RULES: Dict[str, Dict[str, int]] = {
-    "高风险": {"warn": 3, "remind": 2},
-    "中风险": {"warn": 7, "remind": 5},
-    "低风险": {"warn": 14, "remind": 11},
+    "高风险": {"warn": 7, "remind": 6},
+    "中风险": {"warn": 15, "remind": 13},
+    "低风险": {"warn": 30, "remind": 20},
 }
 
 
