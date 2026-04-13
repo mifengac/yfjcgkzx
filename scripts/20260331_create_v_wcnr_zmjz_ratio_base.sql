@@ -61,7 +61,7 @@ wf_xz_filtered AS MATERIALIZED (
             SELECT 1
             FROM "ywdata"."zq_zfba_wenshu" ws
             WHERE ws."ajbh" = v."ajxx_join_ajxx_ajbh"
-              AND ws."xgry_xm" = v."xyrxx_xm"
+              AND TRIM(ws."xgry_xm") = v."xyrxx_xm"
         )
 
     UNION ALL
@@ -184,7 +184,7 @@ twice_same_ay_with_doc_cte AS MATERIALIZED (
                 SELECT 1
                 FROM "ywdata"."zq_zfba_xjs2" xj
                 WHERE xj."ajbh" = f.ajxx_join_ajxx_ajbh
-                  AND xj."xgry_xm" = f.xyrxx_xm
+                  AND TRIM(xj."xgry_xm") = f.xyrxx_xm
             )
          OR EXISTS (
                 SELECT 1
@@ -223,7 +223,7 @@ criminal_no_detain_no_stop_cte AS MATERIALIZED (
             SELECT 1
             FROM "ywdata"."zq_zfba_wenshu" ws
             WHERE ws."ajbh" = b.ajxx_join_ajxx_ajbh
-              AND ws."xgry_xm" = b.xyrxx_xm
+              AND TRIM(ws."xgry_xm") = b.xyrxx_xm
               AND COALESCE(ws."wsmc", '') ~ '终止侦查决定书'
         )
 ),
@@ -269,7 +269,7 @@ tqzmjy_people AS MATERIALIZED (
     FROM qualified_latest_case q
     INNER JOIN "ywdata"."zq_zfba_tqzmjy" t
         ON  t."ajbh" = q."ajxx_join_ajxx_ajbh"
-        AND t."xgry_xm" = q."xyrxx_xm"
+        AND TRIM(t."xgry_xm") = q."xyrxx_xm"
 ),
 final_flags AS MATERIALIZED (
     SELECT

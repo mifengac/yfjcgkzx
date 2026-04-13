@@ -16,7 +16,7 @@ jzws_agg AS MATERIALIZED (
     FROM wenshu_pre w
     JOIN "ywdata"."zq_zfba_xyrxx" xy
       ON w.ajbh = xy.ajxx_join_ajxx_ajbh
-     AND w.xgry_xm = xy.xyrxx_xm
+     AND TRIM(w.xgry_xm) = TRIM(xy.xyrxx_xm)
     GROUP BY xy.xyrxx_sfzh
 )
 SELECT

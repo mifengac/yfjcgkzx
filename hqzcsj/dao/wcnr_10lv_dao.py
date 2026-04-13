@@ -693,6 +693,29 @@ def _fetch_zljiaqjh_detail_rows(
     end_time: str,
     leixing_list: Sequence[str],
 ) -> List[Dict[str, Any]]:
+    use_base_view = _relation_exists(
+        conn,
+        schema="ywdata",
+        name="v_wcnr_zljiaqjh_ratio_base",
+        relkinds=("v", "m"),
+    )
+
+    if use_base_view:
+        type_condition, type_params = _build_ay_similar_filter('src."案由名称"', leixing_list)
+        q = f"""
+            SELECT src.*
+            FROM "ywdata"."v_wcnr_zljiaqjh_ratio_base" src
+            WHERE src."录入时间" BETWEEN %s AND %s
+              {type_condition}
+            ORDER BY src."立案时间" DESC NULLS LAST, src."案件编号"
+        """
+        params: List[Any] = [start_time, end_time] + type_params
+        with conn.cursor() as cur:
+            cur.execute(q, params)
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        return _attach_region_fields(rows)
+
     type_condition, type_params = _build_ay_similar_filter('"ajxx_join_ajxx_ay"', leixing_list)
     q = f"""
         WITH minor_agg AS MATERIALIZED (
@@ -986,7 +1009,7 @@ def _fetch_jzqk_compact_rows(
                         FROM "ywdata"."zq_zfba_wcnr_xyr" w
                         JOIN "ywdata"."zq_zfba_xjs2" x
                           ON w."ajxx_join_ajxx_ajbh" = x.ajbh
-                         AND w.xyrxx_xm = x.xgry_xm
+                         AND w.xyrxx_xm = TRIM(x.xgry_xm)
                         WHERE w.xyrxx_sfzh = vw.身份证号
                           AND w."ajxx_join_ajxx_ajbh" <> vw.案件编号
                           AND COALESCE(NULLIF(w."xyrxx_isdel_dm", ''), '0')::integer = 0
@@ -1059,13 +1082,13 @@ def _fetch_jzqk_compact_rows(
                     WHERE z.zltzs_ajbh = bd.案件编号 AND z.zltzs_rybh = bd.人员编号
                 ) OR EXISTS (
                     SELECT 1 FROM "ywdata"."zq_zfba_xjs2" x
-                    WHERE x.ajbh = bd.案件编号 AND x.xgry_xm = bd.姓名
+                    WHERE x.ajbh = bd.案件编号 AND TRIM(x.xgry_xm) = bd.姓名
                 ) THEN 1 ELSE 0
             END AS is_jiaozhi_wenshu,
             CASE
                 WHEN EXISTS (
                     SELECT 1 FROM "ywdata"."zq_zfba_tqzmjy" t
-                    WHERE t.ajbh = bd.案件编号 AND t.xgry_xm = bd.姓名
+                    WHERE t.ajbh = bd.案件编号 AND TRIM(t.xgry_xm) = bd.姓名
                 ) THEN 1 ELSE 0
             END AS is_zhuanmen_shenqingshu,
             CASE
@@ -1154,7 +1177,7 @@ def _fetch_yzbl_ratio_rows(
             FROM wenshu_pre w
             JOIN "ywdata"."zq_zfba_xyrxx" xy
               ON w.ajbh = xy.ajxx_join_ajxx_ajbh
-             AND w.xgry_xm = xy.xyrxx_xm
+             AND TRIM(w.xgry_xm) = xy.xyrxx_xm
             GROUP BY xy.xyrxx_sfzh
         )
         SELECT
@@ -1258,10 +1281,10 @@ def _fetch_sx_songjiao_rows(
                     AND p.ajbh = l."ajxx_join_ajxx_ajbh")
                 OR (p.wsmc ~ '不予行政处罚决定书'
                     AND p.ajbh = l."ajxx_join_ajxx_ajbh"
-                    AND p.xgry_xm = l."xyrxx_xm")
+                    AND TRIM(p.xgry_xm) = l."xyrxx_xm")
                 OR (p.wsmc ~ '提请专门'
                     AND p.ajbh = l."ajxx_join_ajxx_ajbh"
-                    AND p.xgry_xm = l."xyrxx_xm")
+                    AND TRIM(p.xgry_xm) = l."xyrxx_xm")
             )
             GROUP BY l."xyrxx_sfzh"
         )
@@ -1369,7 +1392,7 @@ def _fetch_sx_songjiao_rows(
                     SELECT 1
                     FROM ws_sx s
                     WHERE s.ajbh    = m."ajxx_join_ajxx_ajbh"
-                      AND s.xgry_xm = m."xyrxx_xm"
+                      AND TRIM(s.xgry_xm) = m."xyrxx_xm"
                 ) AS is_songxue
             FROM sx_age16 m
             WHERE EXISTS (
@@ -1379,7 +1402,7 @@ def _fetch_sx_songjiao_rows(
                OR EXISTS (
                       SELECT 1 FROM ws_b b
                       WHERE b.ajbh    = m."ajxx_join_ajxx_ajbh"
-                        AND b.xgry_xm = m."xyrxx_xm"
+                        AND TRIM(b.xgry_xm) = m."xyrxx_xm"
                   )
         ),
         sx_wsmc AS MATERIALIZED (
@@ -1392,10 +1415,10 @@ def _fetch_sx_songjiao_rows(
                     AND p.ajbh = l."ajxx_join_ajxx_ajbh")
                 OR (p.wsmc ~ '不予行政处罚决定书'
                     AND p.ajbh    = l."ajxx_join_ajxx_ajbh"
-                    AND p.xgry_xm = l."xyrxx_xm")
+                    AND TRIM(p.xgry_xm) = l."xyrxx_xm")
                 OR (p.wsmc ~ '提请专门'
                     AND p.ajbh    = l."ajxx_join_ajxx_ajbh"
-                    AND p.xgry_xm = l."xyrxx_xm")
+                    AND TRIM(p.xgry_xm) = l."xyrxx_xm")
             )
             GROUP BY l."xyrxx_sfzh"
         )
@@ -1546,7 +1569,7 @@ def _fetch_zmjz_ratio_rows(
                     SELECT 1
                     FROM "ywdata"."zq_zfba_wenshu" ws
                     WHERE ws."ajbh" = v."ajxx_join_ajxx_ajbh"
-                      AND ws."xgry_xm" = v."xyrxx_xm"
+                      AND TRIM(ws."xgry_xm") = v."xyrxx_xm"
                 )
 
             UNION ALL
@@ -1676,7 +1699,7 @@ def _fetch_zmjz_ratio_rows(
                         SELECT 1
                         FROM "ywdata"."zq_zfba_xjs2" xj
                         WHERE xj."ajbh" = f.ajxx_join_ajxx_ajbh
-                          AND xj."xgry_xm" = f.xyrxx_xm
+                          AND TRIM(xj."xgry_xm") = f.xyrxx_xm
                     )
                  OR EXISTS (
                         SELECT 1
@@ -1715,7 +1738,7 @@ def _fetch_zmjz_ratio_rows(
                     SELECT 1
                     FROM "ywdata"."zq_zfba_wenshu" ws
                     WHERE ws."ajbh" = b.ajxx_join_ajxx_ajbh
-                      AND ws."xgry_xm" = b.xyrxx_xm
+                      AND TRIM(ws."xgry_xm") = b.xyrxx_xm
                       AND COALESCE(ws."wsmc", '') ~ '终止侦查决定书'
                 )
         ),
@@ -1760,7 +1783,7 @@ def _fetch_zmjz_ratio_rows(
             FROM qualified_latest_case q
             INNER JOIN "ywdata"."zq_zfba_tqzmjy" t
                 ON  t."ajbh" = q."ajxx_join_ajxx_ajbh"
-                AND t."xgry_xm" = q."xyrxx_xm"
+                AND TRIM(t."xgry_xm") = q."xyrxx_xm"
         ),
         final_flags AS MATERIALIZED (
             SELECT

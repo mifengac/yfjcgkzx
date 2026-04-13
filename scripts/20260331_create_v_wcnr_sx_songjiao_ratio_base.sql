@@ -69,7 +69,7 @@ sx_labeled AS MATERIALIZED (
             SELECT 1
             FROM ws_sx s
             WHERE s.ajbh = m."ajxx_join_ajxx_ajbh"
-              AND s.xgry_xm = m."xyrxx_xm"
+              AND TRIM(s.xgry_xm) = m."xyrxx_xm"
         ) AS is_songxue
     FROM sx_age16 m
     WHERE EXISTS (
@@ -81,7 +81,7 @@ sx_labeled AS MATERIALIZED (
               SELECT 1
               FROM ws_b b
               WHERE b.ajbh = m."ajxx_join_ajxx_ajbh"
-                AND b.xgry_xm = m."xyrxx_xm"
+                AND TRIM(b.xgry_xm) = m."xyrxx_xm"
           )
 )
 SELECT
