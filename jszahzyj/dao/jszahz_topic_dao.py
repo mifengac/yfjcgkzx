@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from psycopg2.extras import execute_values
 
 from gonggong.config.database import execute_query, get_database_connection
+from jszahzyj.jszahz_topic_constants import TOPIC_BRANCH_CODES
 
 
-PERSON_TYPES_TEXT_EMPTY_SENTINEL = ' '
+SOURCE_KIND_BASE = "base"
+SOURCE_KIND_TAG = "tag"
 
 
 def _apply_import_timeouts(cur, conn) -> None:
@@ -34,21 +36,22 @@ def normalize_datetime_text(value: str) -> str:
 
 def query_branch_options() -> List[Dict[str, Any]]:
     sql = """
-    SELECT DISTINCT
-        ssfjdm AS value,
-        ssfj AS label
-    FROM "stdata"."b_dic_zzjgdm"
-    WHERE ssfjdm IS NOT NULL
-      AND ssfj IS NOT NULL
-    ORDER BY ssfj
+    SELECT DISTINCT ON (d.ssfjdm)
+        d.ssfjdm AS value,
+        d.ssfj AS label
+    FROM "stdata"."b_dic_zzjgdm" d
+    WHERE d.ssfjdm = ANY(%s)
+      AND d.ssfj IS NOT NULL
+    ORDER BY d.ssfjdm, d.ssfj NULLS LAST
     """
-    return execute_query(sql)
+    return execute_query(sql, (list(TOPIC_BRANCH_CODES),))
 
 
-def get_active_batch() -> Optional[Dict[str, Any]]:
+def get_active_batch(source_kind: str) -> Optional[Dict[str, Any]]:
     sql = """
     SELECT
         id,
+        source_kind,
         source_file_name,
         sheet_name,
         import_status,
@@ -61,13 +64,21 @@ def get_active_batch() -> Optional[Dict[str, Any]]:
         created_at,
         activated_at
     FROM "jcgkzx_monitor"."jszahz_topic_batch"
-    WHERE is_active = TRUE
+    WHERE source_kind = %s
+      AND is_active = TRUE
       AND import_status = 'success'
     ORDER BY activated_at DESC NULLS LAST, created_at DESC, id DESC
     LIMIT 1
     """
-    rows = execute_query(sql)
+    rows = execute_query(sql, (source_kind,))
     return rows[0] if rows else None
+
+
+def get_active_batches() -> Dict[str, Optional[Dict[str, Any]]]:
+    return {
+        "base_batch": get_active_batch(SOURCE_KIND_BASE),
+        "tag_batch": get_active_batch(SOURCE_KIND_TAG),
+    }
 
 
 def create_pending_batch(
@@ -75,6 +86,7 @@ def create_pending_batch(
     source_file_name: str,
     sheet_name: str,
     created_by: str,
+    source_kind: str,
 ) -> int:
     conn = get_database_connection()
     try:
@@ -82,6 +94,7 @@ def create_pending_batch(
             cur.execute(
                 """
                 INSERT INTO "jcgkzx_monitor"."jszahz_topic_batch" (
+                    source_kind,
                     source_file_name,
                     sheet_name,
                     import_status,
@@ -92,10 +105,10 @@ def create_pending_batch(
                     created_by,
                     created_at
                 )
-                VALUES (%s, %s, 'pending', FALSE, 0, 0, 0, %s, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, 'pending', FALSE, 0, 0, 0, %s, CURRENT_TIMESTAMP)
                 RETURNING id
                 """,
-                (source_file_name, sheet_name, created_by),
+                (source_kind, source_file_name, sheet_name, created_by),
             )
             batch_id = int(cur.fetchone()[0])
         conn.commit()
@@ -132,148 +145,157 @@ def mark_batch_failed(
         conn.close()
 
 
-def save_batch_data_and_activate(
-    *,
-    batch_id: int,
-    imported_row_count: int,
-    person_type_rows: Iterable[Dict[str, Any]],
-    zjhm_list: List[str],
-) -> int:
-    rows = list(person_type_rows)
-    generated_tag_count = len(rows)
-    conn = get_database_connection()
-    try:
-        with conn.cursor() as cur:
-            _apply_import_timeouts(cur, conn)
-            insert_person_types_on_cursor(cur, batch_id, rows)
-            rebuild_snapshot_on_cursor(cur, batch_id, zjhm_list)
-            matched_person_count = update_snapshot_tags_on_cursor(cur, batch_id)
-            activate_batch_on_cursor(
-                cur,
-                batch_id,
-                imported_row_count,
-                generated_tag_count,
-                matched_person_count,
-            )
-        conn.commit()
-        return matched_person_count
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-def query_summary_rows(
-    *,
-    batch_id: int,
-    start_time: str,
-    end_time: str,
-    branch_codes: Iterable[str] | None = None,
-    person_types: Iterable[str] | None = None,
-    risk_labels: Iterable[str] | None = None,
-) -> List[Dict[str, Any]]:
-    branch_list = [x.strip() for x in (branch_codes or []) if x and x.strip()]
-    person_type_list = [x.strip() for x in (person_types or []) if x and x.strip()]
-    risk_list = [x.strip() for x in (risk_labels or []) if x and x.strip()]
+def query_base_person_rows(batch_id: Optional[int]) -> List[Dict[str, Any]]:
+    if not batch_id:
+        return []
 
     sql = """
     SELECT
-        COALESCE(s.ssfjdm, '__UNMATCHED__') AS "分局代码",
-        COALESCE(s.ssfj, '未匹配分局') AS "分局名称",
-        COUNT(DISTINCT s.zjhm) AS "去重患者数"
-    FROM "jcgkzx_monitor"."jszahz_topic_snapshot" s
-    WHERE s.batch_id = %s
-      AND s.lgsj >= %s
-      AND s.lgsj <= %s
+        p.zjhm AS zjhm,
+        COALESCE(p.xm, '') AS xm,
+        p.ssfjdm AS ssfjdm,
+        COALESCE(d.ssfj, p.source_sheet_name) AS ssfj,
+        COALESCE(p.source_sheet_name, '') AS source_sheet_name
+    FROM "jcgkzx_monitor"."jszahz_topic_base_person" p
+    LEFT JOIN (
+        SELECT DISTINCT ON (d.ssfjdm)
+            d.ssfjdm,
+            d.ssfj
+        FROM "stdata"."b_dic_zzjgdm" d
+        WHERE d.ssfjdm IS NOT NULL
+        ORDER BY d.ssfjdm, d.ssfj NULLS LAST
+    ) d
+        ON d.ssfjdm = p.ssfjdm
+    WHERE p.batch_id = %s
+    ORDER BY p.id
     """
-    params: List[Any] = [batch_id, start_time, end_time]
+    return execute_query(sql, (batch_id,))
 
-    if branch_list:
-        sql += ' AND COALESCE(s.ssfjdm, \'__UNMATCHED__\') = ANY(%s)'
-        params.append(branch_list)
-    if risk_list:
-        sql += ' AND s.fxdj_label = ANY(%s)'
-        params.append(risk_list)
-    if person_type_list:
-        sql += """
-          AND EXISTS (
-              SELECT 1
-              FROM "jcgkzx_monitor"."jszahz_topic_person_type" pt
-              WHERE pt.batch_id = s.batch_id
-                AND pt.zjhm = s.zjhm
-                AND pt.person_type = ANY(%s)
-          )
-        """
-        params.append(person_type_list)
 
-    sql += """
-    GROUP BY COALESCE(s.ssfjdm, '__UNMATCHED__'), COALESCE(s.ssfj, '未匹配分局')
-    ORDER BY COUNT(DISTINCT s.zjhm) DESC, COALESCE(s.ssfj, '未匹配分局')
+def query_live_person_rows(managed_only: bool) -> List[Dict[str, Any]]:
+    sql = """
+    WITH live_people AS (
+        SELECT
+            UPPER(BTRIM(p.zjhm)) AS zjhm,
+            COALESCE(BTRIM(p.xm), '') AS xm,
+            p.lgsj AS lgsj,
+            p.xgsj AS xgsj,
+            p.djsj AS djsj,
+            p.systemid AS systemid,
+            COALESCE(BTRIM(p.lgdw), '') AS lgdw,
+            COALESCE(BTRIM(p.sflg), '') AS sflg,
+            CASE
+                WHEN p.fxdj = '00' THEN '0级患者'
+                WHEN p.fxdj = '01' THEN '1级患者'
+                WHEN p.fxdj = '02' THEN '2级患者'
+                WHEN p.fxdj = '03' THEN '3级患者'
+                WHEN p.fxdj = '04' THEN '4级患者'
+                WHEN p.fxdj = '05' THEN '5级患者'
+                ELSE '无数据'
+            END AS fxdj_label,
+            COALESCE(d1.ssfjdm, d2.ssfjdm) AS ssfjdm,
+            COALESCE(d1.ssfj, d2.ssfj) AS ssfj
+        FROM "stdata"."b_per_jszahzryxxwh" p
+        LEFT JOIN (
+            SELECT DISTINCT ON (d.sspcsdm)
+                d.sspcsdm,
+                d.ssfjdm,
+                d.ssfj
+            FROM "stdata"."b_dic_zzjgdm" d
+            WHERE d.sspcsdm IS NOT NULL
+            ORDER BY d.sspcsdm, d.ssfjdm NULLS LAST, d.ssfj NULLS LAST
+        ) d1
+            ON p.lgdw = d1.sspcsdm
+        LEFT JOIN (
+            SELECT DISTINCT ON (d.ssfjdm)
+                d.ssfjdm,
+                d.ssfj
+            FROM "stdata"."b_dic_zzjgdm" d
+            WHERE d.ssfjdm IS NOT NULL
+            ORDER BY d.ssfjdm, d.ssfj NULLS LAST
+        ) d2
+            ON (substring(COALESCE(p.lgdw, ''), 1, 6) || '000000') = d2.ssfjdm
+        WHERE p.deleteflag = '0'
+          AND p.zjhm IS NOT NULL
+          AND BTRIM(p.zjhm) <> ''
+          AND (NOT %s OR p.sflg = '1')
+    )
+    SELECT DISTINCT ON (lp.zjhm)
+        lp.zjhm,
+        lp.xm,
+        lp.lgsj,
+        lp.xgsj,
+        lp.djsj,
+        lp.systemid,
+        lp.lgdw,
+        lp.sflg,
+        lp.fxdj_label,
+        lp.ssfjdm,
+        lp.ssfj
+    FROM live_people lp
+    ORDER BY lp.zjhm,
+             lp.lgsj DESC NULLS LAST,
+             lp.xgsj DESC NULLS LAST,
+             lp.djsj DESC NULLS LAST,
+             lp.systemid DESC
     """
-    return execute_query(sql, tuple(params))
+    return execute_query(sql, (managed_only,))
 
 
-def query_detail_rows(
-    *,
-    batch_id: int,
-    start_time: str,
-    end_time: str,
-    branch_code: Optional[str],
-    person_types: Iterable[str] | None = None,
-    risk_labels: Iterable[str] | None = None,
-) -> List[Dict[str, Any]]:
-    person_type_list = [x.strip() for x in (person_types or []) if x and x.strip()]
-    risk_list = [x.strip() for x in (risk_labels or []) if x and x.strip()]
+def query_tag_rows(batch_id: Optional[int]) -> List[Dict[str, Any]]:
+    if not batch_id:
+        return []
 
     sql = """
     SELECT
-        COALESCE(s.xm, '') AS "姓名",
-        COALESCE(s.zjhm, '') AS "身份证号",
-        s.lgsj AS "列管时间",
-        COALESCE(s.lgdw, '') AS "列管单位",
-        COALESCE(s.ssfj, '未匹配分局') AS "分局",
-        COALESCE(s.fxdj_label, '无数据') AS "人员风险",
-        COALESCE(NULLIF(BTRIM(s.person_types_text), ''), '') AS "人员类型"
-    FROM "jcgkzx_monitor"."jszahz_topic_snapshot" s
-    WHERE s.batch_id = %s
-      AND s.lgsj >= %s
-      AND s.lgsj <= %s
+        UPPER(BTRIM(zjhm)) AS zjhm,
+        person_type,
+        source_row_no
+    FROM "jcgkzx_monitor"."jszahz_topic_person_type"
+    WHERE batch_id = %s
+    ORDER BY UPPER(BTRIM(zjhm)), source_row_no, id
     """
-    params: List[Any] = [batch_id, start_time, end_time]
-
-    if branch_code and branch_code != "__ALL__":
-        sql += ' AND COALESCE(s.ssfjdm, \'__UNMATCHED__\') = %s'
-        params.append(branch_code)
-    if risk_list:
-        sql += ' AND s.fxdj_label = ANY(%s)'
-        params.append(risk_list)
-    if person_type_list:
-        sql += """
-          AND EXISTS (
-              SELECT 1
-              FROM "jcgkzx_monitor"."jszahz_topic_person_type" pt
-              WHERE pt.batch_id = s.batch_id
-                AND pt.zjhm = s.zjhm
-                AND pt.person_type = ANY(%s)
-          )
-        """
-        params.append(person_type_list)
-
-    sql += """
-    ORDER BY COALESCE(s.ssfj, '未匹配分局'), s.lgsj DESC NULLS LAST, s.xm, s.zjhm
-    """
-    return execute_query(sql, tuple(params))
+    return execute_query(sql, (batch_id,))
 
 
-# ---------------------------------------------------------------------------
-# Cursor-level step functions for streaming import
-# ---------------------------------------------------------------------------
-
-
-def insert_person_types_on_cursor(cur, batch_id: int, rows: list) -> None:
+def replace_base_people_on_cursor(cur, batch_id: int, rows: List[Dict[str, Any]]) -> None:
     if not rows:
         return
+
+    execute_values(
+        cur,
+        """
+        INSERT INTO "jcgkzx_monitor"."jszahz_topic_base_person" (
+            batch_id, zjhm, xm, ssfjdm, source_sheet_name, source_row_no, source_seq_no
+        )
+        VALUES %s
+        ON CONFLICT (batch_id, zjhm) DO UPDATE
+        SET xm = EXCLUDED.xm,
+            ssfjdm = EXCLUDED.ssfjdm,
+            source_sheet_name = EXCLUDED.source_sheet_name,
+            source_row_no = EXCLUDED.source_row_no,
+            source_seq_no = EXCLUDED.source_seq_no
+        """,
+        [
+            (
+                batch_id,
+                str(item["zjhm"]),
+                str(item.get("xm") or ""),
+                str(item.get("ssfjdm") or ""),
+                str(item.get("source_sheet_name") or ""),
+                int(item.get("source_row_no") or 0),
+                str(item.get("source_seq_no") or ""),
+            )
+            for item in rows
+        ],
+        page_size=500,
+    )
+
+
+def insert_person_types_on_cursor(cur, batch_id: int, rows: List[Dict[str, Any]]) -> None:
+    if not rows:
+        return
+
     execute_values(
         cur,
         """
@@ -284,135 +306,37 @@ def insert_person_types_on_cursor(cur, batch_id: int, rows: list) -> None:
         ON CONFLICT (batch_id, zjhm, person_type) DO NOTHING
         """,
         [
-            (batch_id, str(item["zjhm"]), str(item["person_type"]), int(item["source_row_no"]))
+            (
+                batch_id,
+                str(item["zjhm"]),
+                str(item["person_type"]),
+                int(item["source_row_no"]),
+            )
             for item in rows
         ],
         page_size=500,
     )
 
 
-def rebuild_snapshot_on_cursor(cur, batch_id: int, zjhm_list: list) -> int:
-    cur.execute(
-        'DELETE FROM "jcgkzx_monitor"."jszahz_topic_snapshot" WHERE batch_id = %s',
-        (batch_id,),
-    )
-    if not zjhm_list:
-        return 0
-    cur.execute(
-        """
-        INSERT INTO "jcgkzx_monitor"."jszahz_topic_snapshot" (
-            batch_id, zjhm, xm, lgsj, lgdw, fxdj, fxdj_label,
-            person_types_text, ssfjdm, ssfj, created_at
-        )
-        SELECT DISTINCT ON (excel.zjhm)
-            %s,
-            excel.zjhm,
-            COALESCE(b.xm, ''),
-            b.lgsj,
-            COALESCE(b.lgdw, ''),
-            COALESCE(b.fxdj, ''),
-            CASE
-                WHEN b.fxdj = '00' THEN '0级患者'
-                WHEN b.fxdj = '01' THEN '1级患者'
-                WHEN b.fxdj = '02' THEN '2级患者'
-                WHEN b.fxdj = '03' THEN '3级患者'
-                WHEN b.fxdj = '04' THEN '4级患者'
-                WHEN b.fxdj = '05' THEN '5级患者'
-                ELSE '无数据'
-            END,
-            %s,
-            COALESCE(d1.ssfjdm, d2.ssfjdm),
-            COALESCE(d1.ssfj, d2.ssfj),
-            CURRENT_TIMESTAMP
-        FROM (
-            SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
-        ) excel
-        LEFT JOIN (
-            SELECT DISTINCT ON (p.zjhm)
-                p.zjhm, p.xm, p.lgsj, p.lgdw, p.fxdj
-            FROM "stdata"."b_per_jszahzryxxwh" p
-            WHERE p.sflg = '1'
-              AND p.deleteflag = '0'
-              AND p.zjhm = ANY(%s::text[])
-            ORDER BY p.zjhm,
-                     p.lgsj DESC NULLS LAST,
-                     p.xgsj DESC NULLS LAST,
-                     p.djsj DESC NULLS LAST,
-                     p.systemid DESC
-        ) b ON b.zjhm = excel.zjhm
-        LEFT JOIN (
-            SELECT DISTINCT ON (d.sspcsdm)
-                d.sspcsdm,
-                d.ssfjdm,
-                d.ssfj
-            FROM "stdata"."b_dic_zzjgdm" d
-            WHERE d.sspcsdm IS NOT NULL
-            ORDER BY d.sspcsdm, d.ssfjdm NULLS LAST, d.ssfj NULLS LAST
-        ) d1
-            ON b.lgdw = d1.sspcsdm
-        LEFT JOIN (
-            SELECT DISTINCT ON (d.ssfjdm)
-                d.ssfjdm,
-                d.ssfj
-            FROM "stdata"."b_dic_zzjgdm" d
-            WHERE d.ssfjdm IS NOT NULL
-            ORDER BY d.ssfjdm, d.ssfj NULLS LAST
-        ) d2
-            ON (substring(COALESCE(b.lgdw, ''), 1, 6) || '000000') = d2.ssfjdm
-        ORDER BY excel.zjhm,
-                 CASE WHEN d1.ssfjdm IS NULL THEN 1 ELSE 0 END,
-                 COALESCE(d1.ssfjdm, d2.ssfjdm),
-                 COALESCE(d1.ssfj, d2.ssfj)
-        """,
-        (batch_id, PERSON_TYPES_TEXT_EMPTY_SENTINEL, zjhm_list, zjhm_list),
-    )
-    return cur.rowcount or 0
-
-
-def update_snapshot_tags_on_cursor(cur, batch_id: int) -> int:
-    cur.execute(
-        """
-        UPDATE "jcgkzx_monitor"."jszahz_topic_snapshot" s
-        SET person_types_text = pt.person_types_text
-        FROM (
-            SELECT
-                zjhm,
-                string_agg(
-                    person_type,
-                    ',' ORDER BY
-                        CASE person_type
-                            WHEN '不规律服药' THEN 1
-                            WHEN '弱监护' THEN 2
-                            WHEN '无监护' THEN 3
-                            WHEN '既往有严重自杀或伤人行为' THEN 4
-                            ELSE 99
-                        END,
-                        person_type
-                ) AS person_types_text
-            FROM "jcgkzx_monitor"."jszahz_topic_person_type"
-            WHERE batch_id = %s
-            GROUP BY zjhm
-        ) pt
-        WHERE s.batch_id = %s
-          AND s.zjhm = pt.zjhm
-        """,
-        (batch_id, batch_id),
-    )
-    return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-
-
 def activate_batch_on_cursor(
-    cur, batch_id: int, imported_row_count: int, generated_tag_count: int, matched_person_count: int
+    cur,
+    *,
+    batch_id: int,
+    source_kind: str,
+    imported_row_count: int,
+    generated_tag_count: int,
+    matched_person_count: int,
 ) -> None:
     cur.execute(
         """
         UPDATE "jcgkzx_monitor"."jszahz_topic_batch"
         SET is_active = FALSE
-        WHERE is_active = TRUE
+        WHERE source_kind = %s
+          AND is_active = TRUE
           AND import_status = 'success'
           AND id <> %s
         """,
-        (batch_id,),
+        (source_kind, batch_id),
     )
     cur.execute(
         """
@@ -428,3 +352,62 @@ def activate_batch_on_cursor(
         """,
         (imported_row_count, generated_tag_count, matched_person_count, batch_id),
     )
+
+
+def save_base_batch_data_and_activate(
+    *,
+    batch_id: int,
+    imported_row_count: int,
+    deduplicated_person_count: int,
+    base_rows: List[Dict[str, Any]],
+) -> int:
+    conn = get_database_connection()
+    try:
+        with conn.cursor() as cur:
+            _apply_import_timeouts(cur, conn)
+            replace_base_people_on_cursor(cur, batch_id, base_rows)
+            activate_batch_on_cursor(
+                cur,
+                batch_id=batch_id,
+                source_kind=SOURCE_KIND_BASE,
+                imported_row_count=imported_row_count,
+                generated_tag_count=0,
+                matched_person_count=deduplicated_person_count,
+            )
+        conn.commit()
+        return deduplicated_person_count
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def save_tag_batch_data_and_activate(
+    *,
+    batch_id: int,
+    imported_row_count: int,
+    generated_tag_count: int,
+    tagged_person_count: int,
+    person_type_rows: List[Dict[str, Any]],
+) -> int:
+    conn = get_database_connection()
+    try:
+        with conn.cursor() as cur:
+            _apply_import_timeouts(cur, conn)
+            insert_person_types_on_cursor(cur, batch_id, person_type_rows)
+            activate_batch_on_cursor(
+                cur,
+                batch_id=batch_id,
+                source_kind=SOURCE_KIND_TAG,
+                imported_row_count=imported_row_count,
+                generated_tag_count=generated_tag_count,
+                matched_person_count=tagged_person_count,
+            )
+        conn.commit()
+        return tagged_person_count
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

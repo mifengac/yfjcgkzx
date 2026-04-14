@@ -7,22 +7,29 @@
         </div>
     </div>
     <div class="jszahz-topic-toolbar">
-        <div class="jszahz-topic-batch" id="jszahzTopicBatchInfo">当前无生效批次，请先上传 Excel。</div>
-        <div class="jszahz-topic-upload">
-            <input type="file" id="jszahzTopicFile" accept=".xlsx,.xlsm">
-            <button type="button" class="module-button" id="jszahzTopicUploadBtn">上传 Excel</button>
+        <div class="jszahz-topic-batch" id="jszahzTopicBatchInfo">当前未上传基础/标签 Excel，查询时仅使用列管数据源。</div>
+        <div class="jszahz-topic-upload-stack">
+            <div class="jszahz-topic-upload-group">
+                <span class="jszahz-topic-upload-label">基础数据</span>
+                <input type="file" id="jszahzTopicBaseFile" accept=".xlsx,.xlsm">
+                <button type="button" class="module-button" id="jszahzTopicBaseUploadBtn">上传基础 Excel</button>
+            </div>
+            <div class="jszahz-topic-upload-group">
+                <span class="jszahz-topic-upload-label">标签数据</span>
+                <input type="file" id="jszahzTopicTagFile" accept=".xlsx,.xlsm">
+                <button type="button" class="module-button" id="jszahzTopicTagUploadBtn">上传标签 Excel</button>
+            </div>
         </div>
     </div>
 
     <section class="filter-form">
         <div class="filter-row">
             <div class="filter-group">
-                <label for="jszahzTopicStartTime">列管开始时间</label>
-                <input id="jszahzTopicStartTime" type="datetime-local" step="1">
-            </div>
-            <div class="filter-group">
-                <label for="jszahzTopicEndTime">列管结束时间</label>
-                <input id="jszahzTopicEndTime" type="datetime-local" step="1">
+                <label for="jszahzTopicManagedOnly">列管</label>
+                <label class="jszahz-topic-check">
+                    <input id="jszahzTopicManagedOnly" type="checkbox" checked>
+                    <span>仅看已列管人员</span>
+                </label>
             </div>
             <div class="filter-group">
                 <label>分局</label>
@@ -63,7 +70,7 @@
             </thead>
             <tbody>
                 <tr>
-                    <td colspan="3" class="no-data">初始化不展示数据，请先上传 Excel 并点击查询。</td>
+                    <td colspan="3" class="no-data">初始化不展示数据，请点击查询。基础/标签 Excel 为可选增强数据源。</td>
                 </tr>
             </tbody>
         </table>

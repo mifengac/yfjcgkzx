@@ -77,10 +77,9 @@
     params = new URLSearchParams({
       branch_code: branchCode || "__ALL__",
       branch_name: branchName || "汇总",
-      start_time: filters.start_time || "",
-      end_time: filters.end_time || "",
       person_types: (filters.person_types || []).join(","),
       risk_labels: (filters.risk_labels || []).join(","),
+      managed_only: filters.managed_only ? "1" : "0",
       _ts: String(Date.now()),
     });
     frame.src = "/jszahzyj/jszahzztk/detail_page?" + params.toString();

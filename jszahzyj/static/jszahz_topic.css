@@ -37,8 +37,45 @@
   flex-wrap: wrap;
 }
 
+.jszahz-topic-upload-stack {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.jszahz-topic-upload-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #d9e5f3;
+  border-radius: 8px;
+}
+
+.jszahz-topic-upload-label {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .jszahz-topic-upload input[type="file"] {
   max-width: 280px;
+}
+
+.jszahz-topic-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  color: #334155;
+}
+
+.jszahz-topic-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
 }
 
 .jszahz-topic-actions {
@@ -252,8 +289,14 @@
   }
 
   .jszahz-topic-upload,
+  .jszahz-topic-upload-stack,
   .jszahz-topic-actions {
     width: 100%;
+  }
+
+  .jszahz-topic-upload-group {
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .jszahz-topic-drawer-panel {

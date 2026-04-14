@@ -8,6 +8,7 @@
     selectedBranches: [],
     selectedTypes: [],
     selectedRisks: [],
+    managedOnly: true,
     lastFilters: null,
     drawerContentWidth: null,
     drawerSlowTimer: null,
@@ -56,20 +57,43 @@
 
   ns.setBatchInfo = function (batch) {
     var el = ns.$("jszahzTopicBatchInfo");
+    var baseBatch;
+    var tagBatch;
+    var parts = [];
     if (!el) return;
-    if (!batch) {
-      el.textContent = "当前无生效批次，请先上传 Excel。";
+    if (!batch || (!batch.base_batch && !batch.tag_batch)) {
+      el.textContent = "当前未上传基础/标签 Excel，查询时仅使用列管数据源。";
       return;
     }
-    el.textContent =
-      "当前生效批次：" +
-      (batch.source_file_name || "未知文件") +
-      " | 导入行数：" +
-      (batch.imported_row_count || 0) +
-      " | 生成标签数：" +
-      (batch.generated_tag_count || 0) +
-      " | 匹配主表人数：" +
-      (batch.matched_person_count || 0);
+    baseBatch = batch.base_batch || null;
+    tagBatch = batch.tag_batch || null;
+    if (baseBatch) {
+      parts.push(
+        "基础数据：" +
+        (baseBatch.source_file_name || "未知文件") +
+        " | 原始行数：" +
+        (baseBatch.imported_row_count || 0) +
+        " | 去重人数：" +
+        (baseBatch.matched_person_count || 0)
+      );
+    } else {
+      parts.push("基础数据：未上传");
+    }
+    if (tagBatch) {
+      parts.push(
+        "标签数据：" +
+        (tagBatch.source_file_name || "未知文件") +
+        " | 原始行数：" +
+        (tagBatch.imported_row_count || 0) +
+        " | 标签条数：" +
+        (tagBatch.generated_tag_count || 0) +
+        " | 标记人数：" +
+        (tagBatch.matched_person_count || 0)
+      );
+    } else {
+      parts.push("标签数据：未上传");
+    }
+    el.textContent = parts.join(" ; ");
   };
 
   ns.updateMultiDisplay = function (displayId, selected, total) {
@@ -155,12 +179,12 @@
   };
 
   ns.buildFilters = function () {
+    var managedOnlyEl = ns.$("jszahzTopicManagedOnly");
     return {
-      start_time: ns.normalizeDateTime((ns.$("jszahzTopicStartTime") || {}).value || ""),
-      end_time: ns.normalizeDateTime((ns.$("jszahzTopicEndTime") || {}).value || ""),
       branch_codes: ns.state.selectedBranches.slice(),
       person_types: ns.state.selectedTypes.slice(),
       risk_labels: ns.state.selectedRisks.slice(),
+      managed_only: managedOnlyEl ? !!managedOnlyEl.checked : true,
     };
   };
 
@@ -201,22 +225,26 @@
   ns.loadDefaults = async function () {
     var response = await fetch("/jszahzyj/api/jszahzztk/defaults");
     var payload = await response.json();
+    var managedOnlyEl;
     if (!response.ok || !payload.success) {
       throw new Error((payload && payload.message) || "加载默认值失败");
     }
 
-    ns.$("jszahzTopicStartTime").value = ns.toInputDateTime(payload.start_time || "");
-    ns.$("jszahzTopicEndTime").value = ns.toInputDateTime(payload.end_time || "");
     ns.state.branchOptions = payload.branch_options || [];
     ns.state.typeOptions = payload.person_type_options || [];
     ns.state.riskOptions = payload.risk_options || [];
+    ns.state.managedOnly = payload.managed_only !== false;
     ns.state.selectedBranches = [];
     ns.state.selectedTypes = [];
     ns.state.selectedRisks = [];
+    managedOnlyEl = ns.$("jszahzTopicManagedOnly");
+    if (managedOnlyEl) {
+      managedOnlyEl.checked = ns.state.managedOnly;
+    }
     ns.renderOptions("jszahzTopicBranchMenu", ns.state.branchOptions, ns.state.selectedBranches, "jszahzTopicBranchDisplay");
     ns.renderOptions("jszahzTopicTypeMenu", ns.state.typeOptions, ns.state.selectedTypes, "jszahzTopicTypeDisplay");
     ns.renderOptions("jszahzTopicRiskMenu", ns.state.riskOptions, ns.state.selectedRisks, "jszahzTopicRiskDisplay");
-    ns.setBatchInfo(payload.active_batch || null);
+    ns.setBatchInfo(payload.active_batches || null);
   };
 
   ns.querySummary = async function () {
@@ -235,7 +263,7 @@
       throw new Error((payload && payload.message) || "查询失败");
     }
     ns.state.lastFilters = payload.filters || filters;
-    ns.setBatchInfo(payload.active_batch || null);
+    ns.setBatchInfo(payload.active_batches || null);
     ns.renderSummary(payload.records || [], payload.count || 0, payload.message || "");
     ns.setStatus(payload.message || "查询完成。");
   };
@@ -243,11 +271,10 @@
   ns.exportSummary = function () {
     var filters = ns.state.lastFilters || ns.buildFilters();
     var params = new URLSearchParams({
-      start_time: filters.start_time || "",
-      end_time: filters.end_time || "",
       branch_codes: (filters.branch_codes || []).join(","),
       person_types: (filters.person_types || []).join(","),
       risk_labels: (filters.risk_labels || []).join(","),
+      managed_only: filters.managed_only ? "1" : "0",
     });
     root.location.href = "/jszahzyj/download/jszahzztk?" + params.toString();
   };

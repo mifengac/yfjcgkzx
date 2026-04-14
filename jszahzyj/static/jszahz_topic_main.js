@@ -3,7 +3,8 @@
 
   function init() {
     var queryBtn;
-    var uploadBtn;
+    var baseUploadBtn;
+    var tagUploadBtn;
     var exportBtn;
     if (!ns.$ || !ns.$("jszahzTopicApp")) return;
 
@@ -13,13 +14,22 @@
     ns.bindMenuClose();
     ns.initDrawerEvents();
 
-    uploadBtn = ns.$("jszahzTopicUploadBtn");
+    baseUploadBtn = ns.$("jszahzTopicBaseUploadBtn");
+    tagUploadBtn = ns.$("jszahzTopicTagUploadBtn");
     queryBtn = ns.$("jszahzTopicQueryBtn");
     exportBtn = ns.$("jszahzTopicExportBtn");
 
-    if (uploadBtn) {
-      uploadBtn.addEventListener("click", function () {
-        ns.uploadExcel().catch(function (error) {
+    if (baseUploadBtn) {
+      baseUploadBtn.addEventListener("click", function () {
+        ns.uploadBaseExcel().catch(function (error) {
+          ns.setError(String(error));
+          ns.setStatus("");
+        });
+      });
+    }
+    if (tagUploadBtn) {
+      tagUploadBtn.addEventListener("click", function () {
+        ns.uploadTagExcel().catch(function (error) {
           ns.setError(String(error));
           ns.setStatus("");
         });

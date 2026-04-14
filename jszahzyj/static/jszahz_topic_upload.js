@@ -22,8 +22,8 @@
     if (overlay) overlay.classList.add("jszahz-topic-hidden");
   };
 
-  ns.uploadExcel = function () {
-    var input = ns.$("jszahzTopicFile");
+  ns.uploadExcel = function (options) {
+    var input = ns.$(options.inputId);
     if (!input || !input.files || !input.files[0]) {
       ns.setError("请先选择 Excel 文件。");
       return Promise.resolve();
@@ -33,7 +33,7 @@
     formData.append("file", input.files[0]);
     ns.setError("");
     ns.setStatus("");
-    ns.showUploadOverlay("正在上传文件...", "");
+    ns.showUploadOverlay(options.overlayTitle || "正在上传文件...", "");
 
     return new Promise(function (resolve, reject) {
       var xhr = new XMLHttpRequest();
@@ -102,7 +102,7 @@
         }
       }
 
-      xhr.open("POST", "/jszahzyj/api/jszahzztk/upload");
+      xhr.open("POST", options.url);
       xhr.onprogress = function () {
         if (xhr.responseText) processText(xhr.responseText, false);
       };
@@ -120,9 +120,9 @@
           return;
         }
         input.value = "";
-        ns.setBatchInfo(lastPayload.active_batch || null);
+        ns.setBatchInfo(lastPayload.active_batches || null);
         ns.setStatus(
-          "上传成功，已切换为最新生效批次。" +
+          (options.successText || "上传成功。") +
           (uploadVersion ? " 接口版本: " + uploadVersion : "")
         );
         resolve();
@@ -138,6 +138,24 @@
         reject(new Error("上传超过 3 分钟仍未完成，后端可能正在等待数据库锁或执行长查询。"));
       };
       xhr.send(formData);
+    });
+  };
+
+  ns.uploadBaseExcel = function () {
+    return ns.uploadExcel({
+      inputId: "jszahzTopicBaseFile",
+      url: "/jszahzyj/api/jszahzztk/upload_base",
+      overlayTitle: "正在上传基础数据 Excel...",
+      successText: "基础数据上传成功，已切换为最新基础批次。",
+    });
+  };
+
+  ns.uploadTagExcel = function () {
+    return ns.uploadExcel({
+      inputId: "jszahzTopicTagFile",
+      url: "/jszahzyj/api/jszahzztk/upload_tags",
+      overlayTitle: "正在上传标签 Excel...",
+      successText: "标签数据上传成功，已切换为最新标签批次。",
     });
   };
 })(window);

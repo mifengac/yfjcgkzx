@@ -171,10 +171,9 @@
     function downloadDetail() {
         const params = new URLSearchParams({
             branch_code: "{{ branch_code }}",
-            start_time: "{{ filters.start_time }}",
-            end_time: "{{ filters.end_time }}",
             person_types: "{{ filters.person_types|join(',') }}",
-            risk_labels: "{{ filters.risk_labels|join(',') }}"
+            risk_labels: "{{ filters.risk_labels|join(',') }}",
+            managed_only: "{{ '1' if filters.managed_only else '0' }}"
         });
         window.location.href = "{{ url_for('jszahzyj.download_jszahzztk_detail') }}?" + params.toString();
     }

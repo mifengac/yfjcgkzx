@@ -73,12 +73,11 @@ class TestJszahzTopicRoutes(unittest.TestCase):
         self._login()
         fake_payload = {
             "success": True,
-            "start_time": "2026-04-01 00:00:00",
-            "end_time": "2026-04-08 00:00:00",
+            "managed_only": True,
             "branch_options": [{"value": "445302000000", "label": "云城分局"}],
             "person_type_options": [],
             "risk_options": [],
-            "active_batch": None,
+            "active_batches": {"base_batch": None, "tag_batch": None},
         }
         with patch(
             "jszahzyj.routes.jszahzyj_routes.get_database_connection",
@@ -94,7 +93,7 @@ class TestJszahzTopicRoutes(unittest.TestCase):
         self.assertTrue(payload["success"])
         self.assertEqual(payload["branch_options"][0]["value"], "445302000000")
 
-    def test_upload_uses_session_username(self) -> None:
+    def test_upload_base_uses_session_username(self) -> None:
         self._login()
 
         def _fake_stream(*, file_bytes, filename, created_by):
@@ -105,11 +104,11 @@ class TestJszahzTopicRoutes(unittest.TestCase):
             "jszahzyj.routes.jszahzyj_routes.get_database_connection",
             return_value=_DummyConnection((1,)),
         ), patch(
-            "jszahzyj.routes.jszahz_topic_routes_impl.import_jszahz_topic_excel_stream",
+            "jszahzyj.routes.jszahz_topic_routes_impl.import_jszahz_base_excel_stream",
             side_effect=_fake_stream,
         ) as mock_stream:
             response = self.client.post(
-                "/jszahzyj/api/jszahzztk/upload",
+                "/jszahzyj/api/jszahzztk/upload_base",
                 data={"file": (io.BytesIO(b"demo"), "demo.xlsx")},
                 content_type="multipart/form-data",
             )
@@ -129,6 +128,30 @@ class TestJszahzTopicRoutes(unittest.TestCase):
         self.assertEqual(mock_stream.call_args.kwargs["filename"], "demo.xlsx")
         self.assertEqual(mock_stream.call_args.kwargs["created_by"], "tester")
 
+    def test_upload_tags_uses_session_username(self) -> None:
+        self._login()
+
+        def _fake_stream(*, file_bytes, filename, created_by):
+            yield {"progress": True, "title": "解析中", "api_version": jszahz_topic_service.UPLOAD_API_VERSION}
+            yield {"success": True, "batch_id": 10, "api_version": jszahz_topic_service.UPLOAD_API_VERSION}
+
+        with patch(
+            "jszahzyj.routes.jszahzyj_routes.get_database_connection",
+            return_value=_DummyConnection((1,)),
+        ), patch(
+            "jszahzyj.routes.jszahz_topic_routes_impl.import_jszahz_tag_excel_stream",
+            side_effect=_fake_stream,
+        ) as mock_stream:
+            response = self.client.post(
+                "/jszahzyj/api/jszahzztk/upload_tags",
+                data={"file": (io.BytesIO(b"demo"), "tags.xlsx")},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_stream.call_args.kwargs["filename"], "tags.xlsx")
+        self.assertEqual(mock_stream.call_args.kwargs["created_by"], "tester")
+
     def test_query_returns_summary_payload(self) -> None:
         self._login()
         fake_payload = {
@@ -137,13 +160,12 @@ class TestJszahzTopicRoutes(unittest.TestCase):
             "count": 2,
             "message": "",
             "filters": {
-                "start_time": "2026-04-01 00:00:00",
-                "end_time": "2026-04-08 00:00:00",
                 "branch_codes": [],
                 "person_types": [],
                 "risk_labels": [],
+                "managed_only": True,
             },
-            "active_batch": {"id": 3},
+            "active_batches": {"base_batch": None, "tag_batch": {"id": 3}},
         }
         with patch(
             "jszahzyj.routes.jszahzyj_routes.get_database_connection",
@@ -155,11 +177,10 @@ class TestJszahzTopicRoutes(unittest.TestCase):
             response = self.client.post(
                 "/jszahzyj/api/jszahzztk/query",
                 json={
-                    "start_time": "2026-04-01 00:00:00",
-                    "end_time": "2026-04-08 00:00:00",
                     "branch_codes": ["445302000000"],
                     "person_types": ["弱监护"],
                     "risk_labels": ["1级患者"],
+                    "managed_only": True,
                 },
             )
 
@@ -177,19 +198,19 @@ class TestJszahzTopicRoutes(unittest.TestCase):
         ), patch(
             "jszahzyj.routes.jszahz_topic_routes_impl.export_summary_xlsx",
             return_value=(b"xlsx-bytes", "summary.xlsx"),
-        ):
+        ) as mock_export:
             response = self.client.get(
-                "/jszahzyj/download/jszahzztk"
-                "?start_time=2026-04-01%2000:00:00"
-                "&end_time=2026-04-08%2000:00:00"
+                "/jszahzyj/download/jszahzztk?"
                 "&branch_codes=445302000000"
                 "&person_types=%E5%BC%B1%E7%9B%91%E6%8A%A4"
                 "&risk_labels=1%E7%BA%A7%E6%82%A3%E8%80%85"
+                "&managed_only=1"
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment;", response.headers["Content-Disposition"])
         self.assertIn("summary.xlsx", response.headers["Content-Disposition"])
+        self.assertTrue(mock_export.call_args.kwargs["managed_only"])
 
 
 if __name__ == "__main__":

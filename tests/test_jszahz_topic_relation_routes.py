@@ -137,10 +137,9 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
         self._login()
         fake_payload = {
             "filters": {
-                "start_time": "2026-04-01 00:00:00",
-                "end_time": "2026-04-08 00:00:00",
                 "person_types": [],
                 "risk_labels": [],
+                "managed_only": True,
             },
             "records": [
                 {
@@ -171,7 +170,7 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
             response = self.client.get(
                 "/jszahzyj/jszahzztk/detail_page"
                 "?branch_code=445302000000&branch_name=%E4%BA%91%E5%9F%8E%E5%88%86%E5%B1%80"
-                "&start_time=2026-04-01%2000:00:00&end_time=2026-04-08%2000:00:00"
+                "&managed_only=1"
             )
 
         body = response.get_data(as_text=True)
