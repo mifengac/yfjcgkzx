@@ -25,6 +25,8 @@ COUNT_METRICS: List[Dict[str, str]] = [
     {"label": "刑事", "key": "xingshi", "unit": "起"},
     {"label": "案件(被侵害)", "key": "bqh_case", "unit": "起"},
     {"label": "违法犯罪人员", "key": "wfzf_people", "unit": "人"},
+    {"label": "警情(场所)", "key": "jq_changsuo", "unit": "起"},
+    {"label": "案件(场所)", "key": "aj_changsuo", "unit": "起"},
     {"label": "案件(场所被侵害)", "key": "cs_bqh_case", "unit": "起"},
 ]
 
@@ -89,11 +91,13 @@ COMPOSITE_METRICS: List[Dict[str, str]] = [
 
 DETAIL_METRIC_LABEL: Dict[str, str] = {
     "jq": "警情",
+    "jq_changsuo": "警情(场所)",
     "za_rate": "转案率",
     "xingzheng": "行政",
     "xingshi": "刑事",
     "bqh_case": "案件(被侵害)",
     "wfzf_people": "违法犯罪人员",
+    "aj_changsuo": "案件(场所)",
     "zmy_reoff": "专门教育学生结业后犯罪数",
     "zmjz_reoff": "专门(矫治)教育学生结业后再犯数",
     "cs_bqh_case": "案件(场所被侵害)",
@@ -345,10 +349,13 @@ def build_summary(
         row["同比转案率"] = calc_percent_text(yoy_za, yoy_jq)
         row["环比转案率"] = calc_percent_text(hb_za, hb_jq)
 
+        add_count_metric(row, code=code, label="警情(场所)", key="jq_changsuo", unit="起")
+
         add_count_metric(row, code=code, label="行政", key="xingzheng", unit="起")
         add_count_metric(row, code=code, label="刑事", key="xingshi", unit="起")
         add_count_metric(row, code=code, label="案件(被侵害)", key="bqh_case", unit="起")
         add_count_metric(row, code=code, label="违法犯罪人员", key="wfzf_people", unit="人")
+        add_count_metric(row, code=code, label="案件(场所)", key="aj_changsuo", unit="起")
 
         add_composite_metric(
             row,
@@ -474,10 +481,12 @@ def get_display_columns(*, show_hb: bool, show_ratio: bool) -> List[str]:
 
     add_count("警情")
     add_rate("转案率")
+    add_count("警情(场所)")
     add_count("行政")
     add_count("刑事")
     add_count("案件(被侵害)")
     add_count("违法犯罪人员")
+    add_count("案件(场所)")
     add_composite("专门教育学生结业后犯罪数", "专门教育学生结业后再犯率")
     add_composite("专门(矫治)教育学生结业后再犯数", "专门(矫治)教育学生结业后再犯率")
     add_count("案件(场所被侵害)")
@@ -638,10 +647,12 @@ def build_detail_export_sheets(
     export_order = [
         "jq",
         "za_rate",
+        "jq_changsuo",
         "xingzheng",
         "xingshi",
         "bqh_case",
         "wfzf_people",
+        "aj_changsuo",
         "zmy_reoff",
         "zmjz_reoff",
         "cs_bqh_case",

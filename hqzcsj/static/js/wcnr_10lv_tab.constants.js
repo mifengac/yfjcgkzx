@@ -2,10 +2,12 @@
     const METRICS = [
         { key: "jq", label: "警情", type: "count", unit: "起" },
         { key: "za_rate", label: "转案率", type: "ratio" },
+        { key: "jq_changsuo", label: "警情(场所)", type: "count", unit: "起" },
         { key: "xingzheng", label: "行政", type: "count", unit: "起" },
         { key: "xingshi", label: "刑事", type: "count", unit: "起" },
         { key: "bqh_case", label: "案件(被侵害)", type: "count", unit: "起" },
         { key: "wfzf_people", label: "违法犯罪人员", type: "count", unit: "人" },
+        { key: "aj_changsuo", label: "案件(场所)", type: "count", unit: "起" },
         {
             key: "zmy_reoff",
             label: "专门教育学生结业后犯罪数",
@@ -65,9 +67,11 @@
     const METRIC_LOGIC_BY_LABEL = {
         "警情": "1. 确认警情性质:刑事治安\n2. 警情标注:未成年人",
         "转案率": "查询到的警情中最终受立为刑事/行政案件比例(有案件编号)",
+        "警情(场所)": "按处警情况(replies)关键词过滤：KTV、酒吧、夜总会、迪厅、网吧、清吧、台球、桌球、俱乐部、棋牌、麻将、打牌、打扑克。",
         "行政": "1. 发案时年龄1-18岁(不包含18)\n2. 时间:立案时间\n3. 案件状态不包含:已合并、已撤销、已移交、不予立案\n4. 办案单位不包含:交通",
         "刑事": "1. 发案时年龄1-18岁(不包含18)\n2. 时间:立案时间\n3. 案件状态不包含:已合并、已撤销、已移交、不予立案\n4. 办案单位不包含:交通",
         "违法犯罪人员": "1. 行政刑事案件中违法犯罪嫌疑人案发时年龄小于18岁的未成年人",
+        "案件(场所)": "按简要案情关键词过滤：KTV、酒吧、夜总会、迪厅、网吧、清吧、台球、桌球、俱乐部、棋牌、麻将、打牌、打扑克。",
         "专门教育学生结业后犯罪数": "方正学校矫治<6个月；离校人数取 ywdata.zq_zfba_wcnr_sfzxx_lxxx，统计期内离校后再次犯罪人数/离校人数。",
         "专门(矫治)教育学生结业后再犯数": "方正学校离校人数取 ywdata.zq_zfba_wcnr_sfzxx_lxxx，统计期内离校后再次违法犯罪人数/离校人数。",
         "案件(场所被侵害)": "按 ajxx_jyaq 关键词过滤：KTV、酒吧、夜总会、迪厅、网吧、清吧、台球、桌球、俱乐部、棋牌、麻将、打牌、打扑克。",

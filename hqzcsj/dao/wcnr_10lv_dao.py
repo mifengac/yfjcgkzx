@@ -37,6 +37,7 @@ _CHANGSUO_JYAQ_KEYWORDS: Tuple[Tuple[str, str], ...] = (
     ("打牌", "打牌"),
     ("打扑克", "打扑克"),
 )
+_PLACE_TEXT_KEYWORDS: Tuple[str, ...] = tuple(keyword.lower() for keyword, _label in _CHANGSUO_JYAQ_KEYWORDS)
 _KEY_INDUSTRY_ADDR_KEYWORDS = (
     "ktv",
     "酒吧",
@@ -331,6 +332,35 @@ def _filter_changsuo_bqh_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, 
         item = dict(row)
         item["匹配关键词"] = "、".join(hits)
         out.append(item)
+    return out
+
+
+def _text_has_place_keyword(text: Any) -> bool:
+    lowered = str(text or "").strip().lower()
+    if not lowered:
+        return False
+    return any(keyword in lowered for keyword in _PLACE_TEXT_KEYWORDS)
+
+
+def _filter_rows_by_place_keywords(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    field_names: Sequence[str],
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        text = ""
+        for field in field_names or []:
+            value = row.get(field)
+            if value is None:
+                continue
+            candidate = str(value).strip()
+            if candidate:
+                text = candidate
+                break
+        if not _text_has_place_keyword(text):
+            continue
+        out.append(dict(row))
     return out
 
 
@@ -1838,6 +1868,35 @@ def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Seq
         )
         return _attach_region_fields(rows)
 
+    if metric == "警情(场所)":
+        rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
+            conn,
+            metric="警情",
+            diqu="__ALL__",
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+            za_types=[],
+            limit=0,
+        )
+        rows = _attach_region_fields(rows)
+        return _filter_rows_by_place_keywords(rows, field_names=("处警情况",))
+
+    if metric == "案件(场所)":
+        leixing = _normalize_leixing_for_query(conn, leixing_list)
+        patterns = zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing)
+        if leixing and not patterns:
+            return []
+        rows = zfba_wcnr_jqaj_dao.fetch_wcnr_ajxx_changsuo_base_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            patterns=patterns,
+            diqu=None,
+        )
+        rows = _attach_region_fields(rows)
+        return _filter_rows_by_place_keywords(rows, field_names=("简要案情",))
+
     if metric in ("案件数(被侵害)", "刑事(未成年人)"):
         m = "案件数(被侵害)" if metric == "案件数(被侵害)" else "刑事"
         rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
@@ -1881,6 +1940,11 @@ def fetch_metric_detail_rows(
                                  leixing_list=leixing, metric="警情")
         return normalize_rows_for_output(rows)
 
+    if metric == "jq_changsuo":
+        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
+                                 leixing_list=leixing, metric="警情(场所)")
+        return normalize_rows_for_output(rows)
+
     # ── 2. 转案率 ───────────────────────────────────────────────────────────
     if metric == "za_rate":
         m = "警情" if part == "denominator" else "转案数"
@@ -1898,6 +1962,14 @@ def fetch_metric_detail_rows(
     if metric == "xingshi":
         rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
                                  leixing_list=leixing, metric="刑事")
+        return normalize_rows_for_output(rows)
+
+    if metric == "aj_changsuo":
+        _, empty = _patterns_and_empty()
+        if empty:
+            return []
+        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
+                                 leixing_list=leixing, metric="案件(场所)")
         return normalize_rows_for_output(rows)
 
     # 刑事占比：分子取 wcnr 刑事，分母取 jq_aj 总刑事
@@ -2070,6 +2142,8 @@ def fetch_period_data(
     flags = {"addr_model_degraded": False}
     bqh_rows: List[Dict[str, Any]] = []
     cs_bqh_rows: List[Dict[str, Any]] = []
+    jq_changsuo_rows: List[Dict[str, Any]] = []
+    aj_changsuo_rows: List[Dict[str, Any]] = []
 
     t = time.perf_counter()
     jq_counts = zfba_wcnr_jqaj_dao.count_jq_by_diqu(
@@ -2081,6 +2155,25 @@ def fetch_period_data(
     _mark("count_jq_za_ms", t)
     counts["jq"] = _normalize_count_map(jq_counts)
     counts["zhuanan"] = _normalize_count_map(za_counts)
+
+    t = time.perf_counter()
+    jq_changsuo_rows = _load_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing,
+        metric="警情(场所)",
+    )
+    aj_changsuo_rows = _load_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing,
+        metric="案件(场所)",
+    )
+    counts["jq_changsuo"] = _count_rows_by_region(jq_changsuo_rows)
+    counts["aj_changsuo"] = _count_rows_by_region(aj_changsuo_rows)
+    _mark("place_detail_ms", t)
 
     if typed_patterns_empty:
         counts["xingzheng"] = _normalize_count_map({})
@@ -2345,6 +2438,7 @@ def fetch_period_data(
             leixing_list=leixing,
             metric="警情",
         )
+        details["jq_changsuo:value"] = jq_changsuo_rows
         details["za_rate:numerator"] = _load_detail_rows(
             conn,
             start_time=start_time,
@@ -2370,6 +2464,7 @@ def fetch_period_data(
         )
 
         details["bqh_case:value"] = bqh_rows
+        details["aj_changsuo:value"] = aj_changsuo_rows
         details["wfzf_people:value"] = wfzf_rows
         details["cs_bqh_case:value"] = cs_bqh_rows
 

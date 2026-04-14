@@ -115,6 +115,67 @@ class TestWcnr10lvDao(unittest.TestCase):
         self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["diqu"], "__ALL__")
         self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["limit"], 0)
 
+    def test_jq_changsuo_detail_filters_replies_keywords(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_detail_rows",
+            return_value=(
+                [
+                    {"地区": "445302", "报警时间": "2026-01-01 00:00:00", "处警情况": "夜总会聚集"},
+                    {"地区": "445303", "报警时间": "2026-01-02 00:00:00", "处警情况": "普通处警"},
+                ],
+                False,
+            ),
+        ) as mock_fetch_detail_rows:
+            rows = fetch_metric_detail_rows(
+                object(),
+                metric="jq_changsuo",
+                part="value",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+            )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["地区"], "云城")
+        self.assertEqual(rows[0]["地区代码"], "445302")
+        self.assertEqual(rows[0]["处警情况"], "夜总会聚集")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["metric"], "警情")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["diqu"], "__ALL__")
+        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["limit"], 0)
+
+    def test_aj_changsuo_detail_filters_ajxx_jyaq_keywords(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_jq_aj_dao.fetch_ay_patterns",
+            return_value=[".*"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_ajxx_changsuo_base_rows",
+            return_value=[
+                {"地区": "445303", "案件编号": "A1", "简要案情": "KTV内发生争执"},
+                {"地区": "445302", "案件编号": "A2", "简要案情": "普通治安案件"},
+            ],
+        ) as mock_fetch_rows:
+            rows = fetch_metric_detail_rows(
+                object(),
+                metric="aj_changsuo",
+                part="value",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+            )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["地区"], "云安")
+        self.assertEqual(rows[0]["地区代码"], "445303")
+        self.assertEqual(rows[0]["简要案情"], "KTV内发生争执")
+        self.assertEqual(mock_fetch_rows.call_args.kwargs["patterns"], [".*"])
+        self.assertIsNone(mock_fetch_rows.call_args.kwargs["diqu"])
+
 
 if __name__ == "__main__":
     unittest.main()
