@@ -11,7 +11,6 @@ from flask import (
     Blueprint,
     Response,
     abort,
-    jsonify,
     redirect,
     render_template,
     request,
@@ -28,10 +27,7 @@ from jszahzyj.service.jszahzyj_service import (
     export_to_xlsx
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
+logger = logging.getLogger(__name__)
 
 # 创建蓝图
 jszahzyj_bp = Blueprint(
@@ -42,8 +38,32 @@ jszahzyj_bp = Blueprint(
 )
 
 
+def _parse_positive_int(value: str, default: int) -> int:
+    try:
+        return max(int(value), 1)
+    except (TypeError, ValueError):
+        return default
+
+
+def _render_index_page(**context) -> str:
+    defaults = {
+        "rows": [],
+        "total": 0,
+        "page": 1,
+        "page_size": 20,
+        "total_pages": 1,
+        "liguan_start": "",
+        "liguan_end": "",
+        "maodun_start": "",
+        "maodun_end": "",
+        "fenju_selected": [],
+    }
+    defaults.update(context)
+    return render_template("jszahzyj.html", **defaults)
+
+
 @jszahzyj_bp.before_request
-def _check_access() -> None:
+def _check_access() -> Response | None:
     """
     访问控制：
     - 需已登录
@@ -52,6 +72,7 @@ def _check_access() -> None:
     if not session.get("username"):
         return redirect(url_for("login"))
 
+    conn = None
     try:
         conn = get_database_connection()
         with conn.cursor() as cur:
@@ -60,15 +81,17 @@ def _check_access() -> None:
                 (session["username"], "精神障碍"),
             )
             row = cur.fetchone()
-        conn.close()
 
         if not row:
             abort(403)
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"权限检查失败: {e}")
+        logger.error("权限检查失败: %s", e)
         abort(500)
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 @jszahzyj_bp.route("/")
@@ -86,28 +109,15 @@ def index() -> str:
     - page_size: 每页记录数（默认20）
     """
     try:
-        # 获取查询参数（所有参数都是可选的）
         liguan_start = request.args.get("liguan_start", "").strip() or None
         liguan_end = request.args.get("liguan_end", "").strip() or None
         maodun_start = request.args.get("maodun_start", "").strip() or None
         maodun_end = request.args.get("maodun_end", "").strip() or None
         fenju_list = request.args.getlist("fenju") or None
 
-        # 分页参数
-        page_str = request.args.get("page", "1")
-        page_size_str = request.args.get("page_size", "20")
+        page = _parse_positive_int(request.args.get("page", "1"), 1)
+        page_size = _parse_positive_int(request.args.get("page_size", "20"), 20)
 
-        try:
-            page = max(int(page_str), 1)
-        except ValueError:
-            page = 1
-
-        try:
-            page_size = max(int(page_size_str), 1)
-        except ValueError:
-            page_size = 20
-
-        # 查询数据（不再检查是否有查询条件，允许无条件查询）
         rows, total = get_jszahzyj_data(
             liguan_start=liguan_start,
             liguan_end=liguan_end,
@@ -118,11 +128,9 @@ def index() -> str:
             page_size=page_size
         )
 
-        # 计算总页数
         total_pages = (total + page_size - 1) // page_size if total > 0 else 1
 
-        return render_template(
-            "jszahzyj.html",
+        return _render_index_page(
             rows=rows,
             total=total,
             page=page,
@@ -136,16 +144,8 @@ def index() -> str:
         )
 
     except Exception as e:
-        logging.error(f"查询数据失败: {e}")
-        return render_template(
-            "jszahzyj.html",
-            rows=[],
-            total=0,
-            page=1,
-            page_size=20,
-            total_pages=0,
-            error_message=f"查询失败: {str(e)}"
-        )
+        logger.error("查询数据失败: %s", e)
+        return _render_index_page(total_pages=0, error_message=f"查询失败: {str(e)}")
 
 
 @jszahzyj_bp.route("/export")
@@ -162,7 +162,6 @@ def export() -> Response:
     - fenju: 分局（多选）
     """
     try:
-        # 获取查询参数（所有参数都是可选的）
         export_format = request.args.get("format", "csv").lower()
         liguan_start = request.args.get("liguan_start", "").strip() or None
         liguan_end = request.args.get("liguan_end", "").strip() or None
@@ -170,7 +169,6 @@ def export() -> Response:
         maodun_end = request.args.get("maodun_end", "").strip() or None
         fenju_list = request.args.getlist("fenju") or None
 
-        # 根据格式导出（不再验证必填参数，允许无条件导出）
         if export_format == "xlsx":
             return export_to_xlsx(
                 liguan_start=liguan_start,
@@ -189,7 +187,7 @@ def export() -> Response:
             )
 
     except Exception as e:
-        logging.error(f"导出数据失败: {e}")
+        logger.error("导出数据失败: %s", e)
         abort(500, description=f"导出失败: {str(e)}")
 
 

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from io import BytesIO
 from typing import Any, Dict, List
 
-from flask import Response, jsonify, render_template, request, send_file, session
+from flask import Response, jsonify, render_template, request, send_file, session, stream_with_context
 
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp
 from jszahzyj.service.jszahz_topic_relation_service import (
@@ -11,10 +12,11 @@ from jszahzyj.service.jszahz_topic_relation_service import (
     build_relation_count_payload,
 )
 from jszahzyj.service.jszahz_topic_service import (
+    UPLOAD_API_VERSION,
     defaults_payload,
     export_detail_xlsx,
     export_summary_xlsx,
-    import_jszahz_topic_excel,
+    import_jszahz_topic_excel_stream,
     query_detail_payload,
     query_summary_payload,
 )
@@ -37,17 +39,39 @@ def api_jszahzztk_upload() -> Response:
     file = request.files.get("file")
     if not file or not file.filename:
         return jsonify({"success": False, "message": "请先选择 Excel 文件"}), 400
-    try:
-        payload = import_jszahz_topic_excel(
-            file_obj=file.stream,
-            filename=file.filename,
-            created_by=str(session.get("username") or ""),
-        )
-        return jsonify(payload)
-    except ValueError as exc:
-        return jsonify({"success": False, "message": str(exc)}), 400
-    except Exception as exc:
-        return jsonify({"success": False, "message": str(exc)}), 500
+
+    file_bytes = file.stream.read()
+    filename = file.filename
+    created_by = str(session.get("username") or "")
+
+    def generate():
+        try:
+            for event in import_jszahz_topic_excel_stream(
+                file_bytes=file_bytes,
+                filename=filename,
+                created_by=created_by,
+            ):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        except ValueError as exc:
+            yield json.dumps(
+                {"success": False, "message": str(exc), "api_version": UPLOAD_API_VERSION},
+                ensure_ascii=False,
+            ) + "\n"
+        except Exception as exc:
+            yield json.dumps(
+                {"success": False, "message": str(exc), "api_version": UPLOAD_API_VERSION},
+                ensure_ascii=False,
+            ) + "\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="application/x-ndjson",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache, no-transform",
+            "X-JSZAHZ-Upload-Version": UPLOAD_API_VERSION,
+        },
+    )
 
 
 @jszahzyj_bp.route("/api/jszahzztk/query", methods=["POST"])

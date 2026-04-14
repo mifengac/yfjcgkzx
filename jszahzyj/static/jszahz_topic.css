@@ -205,6 +205,47 @@
   }
 }
 
+.jszahz-topic-upload-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.jszahz-topic-upload-overlay.jszahz-topic-hidden {
+  display: none;
+}
+
+.jszahz-topic-upload-overlay-card {
+  min-width: min(380px, 90vw);
+  max-width: 480px;
+  padding: 28px 32px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
+  text-align: center;
+}
+
+.jszahz-topic-upload-overlay-title {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.jszahz-topic-upload-overlay-detail {
+  margin-top: 8px;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 22px;
+}
+
 @media (max-width: 960px) {
   .jszahz-topic-toolbar {
     align-items: stretch;

@@ -6,16 +6,44 @@ from typing import Dict, Any, List, Tuple
 from datetime import datetime
 from io import BytesIO, StringIO
 import csv
+import json
 import logging
 from openpyxl import Workbook
 from flask import Response, send_file
 
 from jszahzyj.dao.jszahzyj_dao import query_jszahzyj_data, get_all_jszahzyj_data
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
+logger = logging.getLogger(__name__)
+
+
+def _build_export_filename(extension: str) -> str:
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    return f"精神障碍患者预警{timestamp}.{extension}"
+
+
+def _fetch_export_rows(
+    *,
+    liguan_start: str = None,
+    liguan_end: str = None,
+    maodun_start: str = None,
+    maodun_end: str = None,
+    fenju_list: List[str] = None,
+) -> List[Dict[str, Any]]:
+    return get_all_jszahzyj_data(
+        liguan_start=liguan_start,
+        liguan_end=liguan_end,
+        maodun_start=maodun_start,
+        maodun_end=maodun_end,
+        fenju_list=fenju_list,
+    )
+
+
+def _serialize_xlsx_cell(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False)
+    return value
 
 
 def get_jszahzyj_data(
@@ -54,7 +82,7 @@ def get_jszahzyj_data(
         )
         return rows, total
     except Exception as e:
-        logging.error(f"获取数据失败: {e}")
+        logger.error("获取数据失败: %s", e)
         raise
 
 
@@ -79,16 +107,14 @@ def export_to_csv(
         Flask Response对象（CSV文件）
     """
     try:
-        # 获取所有数据（不分页）
-        rows = get_all_jszahzyj_data(
+        rows = _fetch_export_rows(
             liguan_start=liguan_start,
             liguan_end=liguan_end,
             maodun_start=maodun_start,
             maodun_end=maodun_end,
-            fenju_list=fenju_list
+            fenju_list=fenju_list,
         )
 
-        # 创建CSV内容
         output = StringIO()
         if rows:
             headers = list(rows[0].keys())
@@ -99,15 +125,12 @@ def export_to_csv(
         else:
             output.write("无数据\n")
 
-        # 生成文件名（带时间戳）
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        filename = f"精神障碍患者预警{timestamp}.csv"
+        filename = _build_export_filename("csv")
 
-        # 转换为字节流（使用UTF-8-BOM编码，确保Excel正确显示中文）
         buffer = BytesIO(output.getvalue().encode("utf-8-sig"))
         buffer.seek(0)
 
-        logging.info(f"导出CSV成功，文件名: {filename}，记录数: {len(rows)}")
+        logger.info("导出CSV成功，文件名: %s，记录数: %s", filename, len(rows))
 
         return send_file(
             buffer,
@@ -117,7 +140,7 @@ def export_to_csv(
         )
 
     except Exception as e:
-        logging.error(f"导出CSV失败: {e}")
+        logger.error("导出CSV失败: %s", e)
         raise
 
 
@@ -142,52 +165,34 @@ def export_to_xlsx(
         Flask Response对象（Excel文件）
     """
     try:
-        # 获取所有数据（不分页）
-        rows = get_all_jszahzyj_data(
+        rows = _fetch_export_rows(
             liguan_start=liguan_start,
             liguan_end=liguan_end,
             maodun_start=maodun_start,
             maodun_end=maodun_end,
-            fenju_list=fenju_list
+            fenju_list=fenju_list,
         )
 
-        # 创建Excel工作簿
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "精神障碍患者预警"
 
         if rows:
-            # 写入表头
             headers = list(rows[0].keys())
             sheet.append(headers)
 
-            # 写入数据行
             for row in rows:
-                cleaned_row = []
-                for key in headers:
-                    value = row.get(key)
-                    # 处理None值
-                    if value is None:
-                        value = ""
-                    # 处理列表和字典类型（转为字符串）
-                    elif isinstance(value, (list, dict)):
-                        import json
-                        value = json.dumps(value, ensure_ascii=False)
-                    cleaned_row.append(value)
-                sheet.append(cleaned_row)
+                sheet.append([_serialize_xlsx_cell(row.get(key)) for key in headers])
         else:
             sheet.append(["无数据"])
 
-        # 生成文件名（带时间戳）
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        filename = f"精神障碍患者预警{timestamp}.xlsx"
+        filename = _build_export_filename("xlsx")
 
-        # 保存到字节流
         buffer = BytesIO()
         workbook.save(buffer)
         buffer.seek(0)
 
-        logging.info(f"导出Excel成功，文件名: {filename}，记录数: {len(rows)}")
+        logger.info("导出Excel成功，文件名: %s，记录数: %s", filename, len(rows))
 
         return send_file(
             buffer,
@@ -197,5 +202,5 @@ def export_to_xlsx(
         )
 
     except Exception as e:
-        logging.error(f"导出Excel失败: {e}")
+        logger.error("导出Excel失败: %s", e)
         raise

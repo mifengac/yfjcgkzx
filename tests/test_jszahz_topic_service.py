@@ -88,6 +88,7 @@ class TestJszahzTopicService(unittest.TestCase):
         self.assertEqual(payload.imported_row_count, 3)
         self.assertEqual(payload.generated_tag_count, 4)
         self.assertEqual(payload.tagged_person_count, 2)
+        self.assertEqual(sorted(payload.all_zjhms), ["440123199001011111", "440123199001011112"])
         self.assertIn(("440123199001011111", "\u4e0d\u89c4\u5f8b\u670d\u836f"), labels)
         self.assertIn(("440123199001011111", "\u5f31\u76d1\u62a4"), labels)
         self.assertIn(("440123199001011111", "\u65e2\u5f80\u6709\u4e25\u91cd\u81ea\u6740\u6216\u4f24\u4eba\u884c\u4e3a"), labels)
@@ -99,6 +100,7 @@ class TestJszahzTopicService(unittest.TestCase):
         labels = {(row["zjhm"], row["person_type"]) for row in payload.rows}
         self.assertEqual(payload.imported_row_count, 1)
         self.assertEqual(payload.generated_tag_count, 3)
+        self.assertEqual(payload.all_zjhms, ["440123199001011111"])
         self.assertIn(("440123199001011111", "\u4e0d\u89c4\u5f8b\u670d\u836f"), labels)
         self.assertIn(("440123199001011111", "\u5f31\u76d1\u62a4"), labels)
         self.assertIn(("440123199001011111", "\u65e2\u5f80\u6709\u4e25\u91cd\u81ea\u6740\u6216\u4f24\u4eba\u884c\u4e3a"), labels)

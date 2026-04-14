@@ -13,6 +13,7 @@ class TestJszahzTopicRelationDao(unittest.TestCase):
             [{"身份证号": "440123199001011111", "数量": 1}],
             [],
             [],
+            [],
         ]
 
         with patch(
@@ -25,7 +26,7 @@ class TestJszahzTopicRelationDao(unittest.TestCase):
 
         self.assertEqual(result["alarm"]["440123199001011111"], 2)
         self.assertEqual(result["video"]["440123199001011111"], 1)
-        self.assertEqual(mock_execute.call_count, 6)
+        self.assertEqual(mock_execute.call_count, 7)
 
         alarm_sql, alarm_params = mock_execute.call_args_list[1][0]
         self.assertIn('"jcgkzx_monitor"."jszahz_jq_sfzh_map"', alarm_sql)

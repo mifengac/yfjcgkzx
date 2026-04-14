@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import io
-import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -13,6 +12,7 @@ from jszahzyj.dao.jsbrjqajtj_dao import (
     query_branch_options,
     query_jsbrjqajtj,
 )
+from jszahzyj.service.common import normalize_option_rows, sanitize_filename_text
 
 
 def default_time_range() -> Tuple[str, str]:
@@ -23,19 +23,6 @@ def default_time_range() -> Tuple[str, str]:
         start_dt.strftime("%Y-%m-%d %H:%M:%S"),
         end_dt.strftime("%Y-%m-%d %H:%M:%S"),
     )
-
-
-def _normalize_branch_options(raw_rows: List[Dict[str, Any]]) -> List[Dict[str, str]]:
-    out: List[Dict[str, str]] = []
-    seen = set()
-    for row in raw_rows or []:
-        value = str((row.get("value") or "")).strip()
-        label = str((row.get("label") or "")).strip()
-        if not value or not label or value in seen:
-            continue
-        seen.add(value)
-        out.append({"value": value, "label": label})
-    return out
 
 
 def query_jsbrjqajtj_records(
@@ -52,7 +39,7 @@ def query_jsbrjqajtj_records(
         end_time=end_text,
         branches=branch_list,
     )
-    branch_options = _normalize_branch_options(query_branch_options())
+    branch_options = normalize_option_rows(query_branch_options())
     return {
         "success": True,
         "records": records,
@@ -73,12 +60,8 @@ def defaults_payload() -> Dict[str, Any]:
         "start_time": start_time,
         "end_time": end_time,
         "branches": [],
-        "branch_options": _normalize_branch_options(query_branch_options()),
+        "branch_options": normalize_option_rows(query_branch_options()),
     }
-
-
-def _sanitize_filename_text(text: str) -> str:
-    return re.sub(r'[\\/:*?"<>|]', "-", (text or "").strip())
 
 
 def _to_csv_bytes(records: List[Dict[str, Any]]) -> bytes:
@@ -128,7 +111,7 @@ def export_jsbrjqajtj_records(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = (
-        f"{_sanitize_filename_text(start_text)}至{_sanitize_filename_text(end_text)}"
+        f"{sanitize_filename_text(start_text)}至{sanitize_filename_text(end_text)}"
         f"_涉精神病人警情_{timestamp}.{fmt_text}"
     )
     if fmt_text == "csv":

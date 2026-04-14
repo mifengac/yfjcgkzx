@@ -36,15 +36,42 @@ RELATION_TYPES: Dict[str, Dict[str, str]] = {
         "title": "关联飙车炸街明细",
         "empty_message": "未查询到该人员的关联飙车炸街数据",
     },
+    "traffic": {
+        "column": "关联交通违法",
+        "title": "关联交通违法明细",
+        "empty_message": "未查询到该人员的关联交通违法数据",
+    },
 }
 
 RELATION_COLUMN_TYPES: Dict[str, str] = {
     config["column"]: relation_type for relation_type, config in RELATION_TYPES.items()
 }
 
+RELATION_QUERY_FUNC_NAMES = {
+    "case": "query_case_rows",
+    "alarm": "query_alarm_rows",
+    "vehicle": "query_vehicle_rows",
+    "video": "query_video_rows",
+    "clinic": "query_clinic_rows",
+    "racing": "query_racing_rows",
+    "traffic": "query_traffic_rows",
+}
+
 
 def _normalize_zjhm(value: Any) -> str:
     return str(value or "").strip().upper()
+
+
+def _normalize_unique_zjhms(values: List[str]) -> List[str]:
+    normalized: List[str] = []
+    seen = set()
+    for value in values or []:
+        zjhm = _normalize_zjhm(value)
+        if not zjhm or zjhm in seen:
+            continue
+        seen.add(zjhm)
+        normalized.append(zjhm)
+    return normalized
 
 
 def get_relation_type_config(relation_type: str) -> Dict[str, str]:
@@ -55,14 +82,7 @@ def get_relation_type_config(relation_type: str) -> Dict[str, str]:
 
 
 def _get_relation_query_func(relation_type: str):
-    return {
-        "case": jszahz_topic_relation_dao.query_case_rows,
-        "alarm": jszahz_topic_relation_dao.query_alarm_rows,
-        "vehicle": jszahz_topic_relation_dao.query_vehicle_rows,
-        "video": jszahz_topic_relation_dao.query_video_rows,
-        "clinic": jszahz_topic_relation_dao.query_clinic_rows,
-        "racing": jszahz_topic_relation_dao.query_racing_rows,
-    }[relation_type]
+    return getattr(jszahz_topic_relation_dao, RELATION_QUERY_FUNC_NAMES[relation_type])
 
 
 def initialize_relation_placeholders(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -78,14 +98,7 @@ def initialize_relation_placeholders(records: List[Dict[str, Any]]) -> List[Dict
 def build_relation_count_payload(
     zjhms: List[str],
 ) -> Dict[str, Dict[str, int]]:
-    normalized: List[str] = []
-    seen = set()
-    for value in zjhms or []:
-        zjhm = _normalize_zjhm(value)
-        if not zjhm or zjhm in seen:
-            continue
-        seen.add(zjhm)
-        normalized.append(zjhm)
+    normalized = _normalize_unique_zjhms(zjhms)
     count_maps = jszahz_topic_relation_dao.query_relation_count_maps(normalized)
     return {
         relation_type: {key: int(value) for key, value in (value_map or {}).items()}

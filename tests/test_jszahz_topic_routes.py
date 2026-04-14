@@ -1,10 +1,12 @@
 import io
+import json
 import unittest
 from unittest.mock import patch
 
 from flask import Flask
 
 from jszahzyj.routes.jszahzyj_routes import jszahzyj_bp
+from jszahzyj.service import jszahz_topic_service
 
 
 class _DummyCursor:
@@ -94,24 +96,38 @@ class TestJszahzTopicRoutes(unittest.TestCase):
 
     def test_upload_uses_session_username(self) -> None:
         self._login()
+
+        def _fake_stream(*, file_bytes, filename, created_by):
+            yield {"progress": True, "title": "解析中", "api_version": jszahz_topic_service.UPLOAD_API_VERSION}
+            yield {"success": True, "batch_id": 9, "api_version": jszahz_topic_service.UPLOAD_API_VERSION}
+
         with patch(
             "jszahzyj.routes.jszahzyj_routes.get_database_connection",
             return_value=_DummyConnection((1,)),
         ), patch(
-            "jszahzyj.routes.jszahz_topic_routes_impl.import_jszahz_topic_excel",
-            return_value={"success": True, "batch_id": 9},
-        ) as mock_import:
+            "jszahzyj.routes.jszahz_topic_routes_impl.import_jszahz_topic_excel_stream",
+            side_effect=_fake_stream,
+        ) as mock_stream:
             response = self.client.post(
                 "/jszahzyj/api/jszahzztk/upload",
                 data={"file": (io.BytesIO(b"demo"), "demo.xlsx")},
                 content_type="multipart/form-data",
             )
 
-        payload = response.get_json()
+        lines = [
+            json.loads(line)
+            for line in response.data.decode("utf-8").strip().split("\n")
+            if line.strip()
+        ]
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(payload["success"])
-        self.assertEqual(mock_import.call_args.kwargs["filename"], "demo.xlsx")
-        self.assertEqual(mock_import.call_args.kwargs["created_by"], "tester")
+        self.assertEqual(
+            response.headers.get("X-JSZAHZ-Upload-Version"),
+            jszahz_topic_service.UPLOAD_API_VERSION,
+        )
+        self.assertTrue(lines[-1]["success"])
+        self.assertEqual(lines[-1]["api_version"], jszahz_topic_service.UPLOAD_API_VERSION)
+        self.assertEqual(mock_stream.call_args.kwargs["filename"], "demo.xlsx")
+        self.assertEqual(mock_stream.call_args.kwargs["created_by"], "tester")
 
     def test_query_returns_summary_payload(self) -> None:
         self._login()

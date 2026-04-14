@@ -3,7 +3,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
+from psycopg2.extras import execute_values
+
 from gonggong.config.database import execute_query, get_database_connection
+
+
+PERSON_TYPES_TEXT_EMPTY_SENTINEL = ' '
+
+
+def _apply_import_timeouts(cur, conn) -> None:
+    try:
+        cur.execute("SET LOCAL lock_timeout = '5000ms'")
+        cur.execute("SET LOCAL statement_timeout = '120000ms'")
+    except Exception:
+        conn.rollback()
 
 
 def normalize_datetime_text(value: str) -> str:
@@ -124,155 +137,23 @@ def save_batch_data_and_activate(
     batch_id: int,
     imported_row_count: int,
     person_type_rows: Iterable[Dict[str, Any]],
+    zjhm_list: List[str],
 ) -> int:
     rows = list(person_type_rows)
     generated_tag_count = len(rows)
     conn = get_database_connection()
     try:
         with conn.cursor() as cur:
-            try:
-                cur.execute("SET LOCAL lock_timeout = '5000ms'")
-                cur.execute("SET LOCAL statement_timeout = '30000ms'")
-            except Exception:
-                conn.rollback()
-            if rows:
-                cur.executemany(
-                    """
-                    INSERT INTO "jcgkzx_monitor"."jszahz_topic_person_type" (
-                        batch_id,
-                        zjhm,
-                        person_type,
-                        source_row_no
-                    )
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (batch_id, zjhm, person_type) DO NOTHING
-                    """,
-                    [
-                        (
-                            batch_id,
-                            str(item["zjhm"]),
-                            str(item["person_type"]),
-                            int(item["source_row_no"]),
-                        )
-                        for item in rows
-                    ],
-                )
-
-            cur.execute(
-                'DELETE FROM "jcgkzx_monitor"."jszahz_topic_snapshot" WHERE batch_id = %s',
-                (batch_id,),
-            )
-            cur.execute(
-                """
-                WITH person_types AS (
-                    SELECT
-                        batch_id,
-                        zjhm,
-                        string_agg(
-                            person_type,
-                            ',' ORDER BY
-                                CASE person_type
-                                    WHEN '不规律服药' THEN 1
-                                    WHEN '弱监护' THEN 2
-                                    WHEN '无监护' THEN 3
-                                    WHEN '既往有严重自杀或伤人行为' THEN 4
-                                    ELSE 99
-                                END,
-                                person_type
-                        ) AS person_types_text
-                    FROM "jcgkzx_monitor"."jszahz_topic_person_type"
-                    WHERE batch_id = %s
-                    GROUP BY batch_id, zjhm
-                ),
-                target_ids AS (
-                    SELECT zjhm
-                    FROM person_types
-                ),
-                risk_source AS (
-                    SELECT DISTINCT ON (p.zjhm)
-                        p.zjhm,
-                        p.xm,
-                        p.lgsj,
-                        p.lgdw,
-                        p.fxdj,
-                        CASE
-                            WHEN p.fxdj = '00' THEN '0级患者'
-                            WHEN p.fxdj = '01' THEN '1级患者'
-                            WHEN p.fxdj = '02' THEN '2级患者'
-                            WHEN p.fxdj = '03' THEN '3级患者'
-                            WHEN p.fxdj = '04' THEN '4级患者'
-                            WHEN p.fxdj = '05' THEN '5级患者'
-                            ELSE '无数据'
-                        END AS fxdj_label,
-                        COALESCE(d1.ssfjdm, d2.ssfjdm) AS ssfjdm,
-                        COALESCE(d1.ssfj, d2.ssfj) AS ssfj
-                    FROM "stdata"."b_per_jszahzryxxwh" p
-                    JOIN target_ids t
-                        ON t.zjhm = p.zjhm
-                    LEFT JOIN "stdata"."b_dic_zzjgdm" d1
-                        ON p.lgdw = d1.sspcsdm
-                    LEFT JOIN "stdata"."b_dic_zzjgdm" d2
-                        ON (substring(COALESCE(p.lgdw, ''), 1, 6) || '000000') = d2.ssfjdm
-                    WHERE p.sflg = '1'
-                      AND p.deleteflag = '0'
-                    ORDER BY p.zjhm, p.lgsj DESC NULLS LAST, p.xgsj DESC NULLS LAST, p.djsj DESC NULLS LAST, p.systemid DESC
-                )
-                INSERT INTO "jcgkzx_monitor"."jszahz_topic_snapshot" (
-                    batch_id,
-                    zjhm,
-                    xm,
-                    lgsj,
-                    lgdw,
-                    fxdj,
-                    fxdj_label,
-                    person_types_text,
-                    ssfjdm,
-                    ssfj,
-                    created_at
-                )
-                SELECT
-                    %s,
-                    r.zjhm,
-                    r.xm,
-                    r.lgsj,
-                    r.lgdw,
-                    r.fxdj,
-                    r.fxdj_label,
-                    p.person_types_text,
-                    r.ssfjdm,
-                    r.ssfj,
-                    CURRENT_TIMESTAMP
-                FROM person_types p
-                JOIN risk_source r
-                  ON r.zjhm = p.zjhm
-                """,
-                (batch_id, batch_id),
-            )
-            matched_person_count = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-
-            cur.execute(
-                """
-                UPDATE "jcgkzx_monitor"."jszahz_topic_batch"
-                SET is_active = FALSE
-                WHERE is_active = TRUE
-                  AND import_status = 'success'
-                  AND id <> %s
-                """,
-                (batch_id,),
-            )
-            cur.execute(
-                """
-                UPDATE "jcgkzx_monitor"."jszahz_topic_batch"
-                SET import_status = 'success',
-                    is_active = TRUE,
-                    imported_row_count = %s,
-                    generated_tag_count = %s,
-                    matched_person_count = %s,
-                    error_message = NULL,
-                    activated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-                """,
-                (imported_row_count, generated_tag_count, matched_person_count, batch_id),
+            _apply_import_timeouts(cur, conn)
+            insert_person_types_on_cursor(cur, batch_id, rows)
+            rebuild_snapshot_on_cursor(cur, batch_id, zjhm_list)
+            matched_person_count = update_snapshot_tags_on_cursor(cur, batch_id)
+            activate_batch_on_cursor(
+                cur,
+                batch_id,
+                imported_row_count,
+                generated_tag_count,
+                matched_person_count,
             )
         conn.commit()
         return matched_person_count
@@ -353,7 +234,7 @@ def query_detail_rows(
         COALESCE(s.lgdw, '') AS "列管单位",
         COALESCE(s.ssfj, '未匹配分局') AS "分局",
         COALESCE(s.fxdj_label, '无数据') AS "人员风险",
-        COALESCE(s.person_types_text, '') AS "人员类型"
+        COALESCE(NULLIF(BTRIM(s.person_types_text), ''), '') AS "人员类型"
     FROM "jcgkzx_monitor"."jszahz_topic_snapshot" s
     WHERE s.batch_id = %s
       AND s.lgsj >= %s
@@ -383,3 +264,167 @@ def query_detail_rows(
     ORDER BY COALESCE(s.ssfj, '未匹配分局'), s.lgsj DESC NULLS LAST, s.xm, s.zjhm
     """
     return execute_query(sql, tuple(params))
+
+
+# ---------------------------------------------------------------------------
+# Cursor-level step functions for streaming import
+# ---------------------------------------------------------------------------
+
+
+def insert_person_types_on_cursor(cur, batch_id: int, rows: list) -> None:
+    if not rows:
+        return
+    execute_values(
+        cur,
+        """
+        INSERT INTO "jcgkzx_monitor"."jszahz_topic_person_type" (
+            batch_id, zjhm, person_type, source_row_no
+        )
+        VALUES %s
+        ON CONFLICT (batch_id, zjhm, person_type) DO NOTHING
+        """,
+        [
+            (batch_id, str(item["zjhm"]), str(item["person_type"]), int(item["source_row_no"]))
+            for item in rows
+        ],
+        page_size=500,
+    )
+
+
+def rebuild_snapshot_on_cursor(cur, batch_id: int, zjhm_list: list) -> int:
+    cur.execute(
+        'DELETE FROM "jcgkzx_monitor"."jszahz_topic_snapshot" WHERE batch_id = %s',
+        (batch_id,),
+    )
+    if not zjhm_list:
+        return 0
+    cur.execute(
+        """
+        INSERT INTO "jcgkzx_monitor"."jszahz_topic_snapshot" (
+            batch_id, zjhm, xm, lgsj, lgdw, fxdj, fxdj_label,
+            person_types_text, ssfjdm, ssfj, created_at
+        )
+        SELECT DISTINCT ON (excel.zjhm)
+            %s,
+            excel.zjhm,
+            COALESCE(b.xm, ''),
+            b.lgsj,
+            COALESCE(b.lgdw, ''),
+            COALESCE(b.fxdj, ''),
+            CASE
+                WHEN b.fxdj = '00' THEN '0级患者'
+                WHEN b.fxdj = '01' THEN '1级患者'
+                WHEN b.fxdj = '02' THEN '2级患者'
+                WHEN b.fxdj = '03' THEN '3级患者'
+                WHEN b.fxdj = '04' THEN '4级患者'
+                WHEN b.fxdj = '05' THEN '5级患者'
+                ELSE '无数据'
+            END,
+            %s,
+            COALESCE(d1.ssfjdm, d2.ssfjdm),
+            COALESCE(d1.ssfj, d2.ssfj),
+            CURRENT_TIMESTAMP
+        FROM (
+            SELECT DISTINCT UNNEST(%s::text[]) AS zjhm
+        ) excel
+        LEFT JOIN (
+            SELECT DISTINCT ON (p.zjhm)
+                p.zjhm, p.xm, p.lgsj, p.lgdw, p.fxdj
+            FROM "stdata"."b_per_jszahzryxxwh" p
+            WHERE p.sflg = '1'
+              AND p.deleteflag = '0'
+              AND p.zjhm = ANY(%s::text[])
+            ORDER BY p.zjhm,
+                     p.lgsj DESC NULLS LAST,
+                     p.xgsj DESC NULLS LAST,
+                     p.djsj DESC NULLS LAST,
+                     p.systemid DESC
+        ) b ON b.zjhm = excel.zjhm
+        LEFT JOIN (
+            SELECT DISTINCT ON (d.sspcsdm)
+                d.sspcsdm,
+                d.ssfjdm,
+                d.ssfj
+            FROM "stdata"."b_dic_zzjgdm" d
+            WHERE d.sspcsdm IS NOT NULL
+            ORDER BY d.sspcsdm, d.ssfjdm NULLS LAST, d.ssfj NULLS LAST
+        ) d1
+            ON b.lgdw = d1.sspcsdm
+        LEFT JOIN (
+            SELECT DISTINCT ON (d.ssfjdm)
+                d.ssfjdm,
+                d.ssfj
+            FROM "stdata"."b_dic_zzjgdm" d
+            WHERE d.ssfjdm IS NOT NULL
+            ORDER BY d.ssfjdm, d.ssfj NULLS LAST
+        ) d2
+            ON (substring(COALESCE(b.lgdw, ''), 1, 6) || '000000') = d2.ssfjdm
+        ORDER BY excel.zjhm,
+                 CASE WHEN d1.ssfjdm IS NULL THEN 1 ELSE 0 END,
+                 COALESCE(d1.ssfjdm, d2.ssfjdm),
+                 COALESCE(d1.ssfj, d2.ssfj)
+        """,
+        (batch_id, PERSON_TYPES_TEXT_EMPTY_SENTINEL, zjhm_list, zjhm_list),
+    )
+    return cur.rowcount or 0
+
+
+def update_snapshot_tags_on_cursor(cur, batch_id: int) -> int:
+    cur.execute(
+        """
+        UPDATE "jcgkzx_monitor"."jszahz_topic_snapshot" s
+        SET person_types_text = pt.person_types_text
+        FROM (
+            SELECT
+                zjhm,
+                string_agg(
+                    person_type,
+                    ',' ORDER BY
+                        CASE person_type
+                            WHEN '不规律服药' THEN 1
+                            WHEN '弱监护' THEN 2
+                            WHEN '无监护' THEN 3
+                            WHEN '既往有严重自杀或伤人行为' THEN 4
+                            ELSE 99
+                        END,
+                        person_type
+                ) AS person_types_text
+            FROM "jcgkzx_monitor"."jszahz_topic_person_type"
+            WHERE batch_id = %s
+            GROUP BY zjhm
+        ) pt
+        WHERE s.batch_id = %s
+          AND s.zjhm = pt.zjhm
+        """,
+        (batch_id, batch_id),
+    )
+    return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+
+def activate_batch_on_cursor(
+    cur, batch_id: int, imported_row_count: int, generated_tag_count: int, matched_person_count: int
+) -> None:
+    cur.execute(
+        """
+        UPDATE "jcgkzx_monitor"."jszahz_topic_batch"
+        SET is_active = FALSE
+        WHERE is_active = TRUE
+          AND import_status = 'success'
+          AND id <> %s
+        """,
+        (batch_id,),
+    )
+    cur.execute(
+        """
+        UPDATE "jcgkzx_monitor"."jszahz_topic_batch"
+        SET import_status = 'success',
+            is_active = TRUE,
+            imported_row_count = %s,
+            generated_tag_count = %s,
+            matched_person_count = %s,
+            error_message = NULL,
+            activated_at = CURRENT_TIMESTAMP
+        WHERE id = %s
+        """,
+        (imported_row_count, generated_tag_count, matched_person_count, batch_id),
+    )

@@ -1,4 +1,11 @@
 <section class="jszahz-topic" id="jszahzTopicApp">
+    <div class="jszahz-topic-upload-overlay jszahz-topic-hidden" id="jszahzTopicUploadOverlay">
+        <div class="jszahz-topic-upload-overlay-card">
+            <div class="jszahz-topic-drawer-spinner" aria-hidden="true"></div>
+            <div class="jszahz-topic-upload-overlay-title" id="jszahzTopicUploadOverlayTitle">正在处理上传...</div>
+            <div class="jszahz-topic-upload-overlay-detail" id="jszahzTopicUploadOverlayDetail"></div>
+        </div>
+    </div>
     <div class="jszahz-topic-toolbar">
         <div class="jszahz-topic-batch" id="jszahzTopicBatchInfo">当前无生效批次，请先上传 Excel。</div>
         <div class="jszahz-topic-upload">
@@ -77,7 +84,7 @@
                     <div class="jszahz-topic-drawer-loading-card">
                         <div class="jszahz-topic-drawer-spinner" aria-hidden="true"></div>
                         <div class="jszahz-topic-drawer-loading-title" id="jszahzTopicDrawerLoadingTitle">正在查询详细数据及关联统计，请稍候...</div>
-                        <div class="jszahz-topic-drawer-loading-hint" id="jszahzTopicDrawerLoadingHint">当前会按身份证号去重加载明细，并统计 6 类关联数据</div>
+                        <div class="jszahz-topic-drawer-loading-hint" id="jszahzTopicDrawerLoadingHint">当前会按身份证号去重加载明细，并统计 7 类关联数据</div>
                     </div>
                 </div>
                 <iframe id="jszahzTopicDrawerFrame" title="精神患者主题库详细数据"></iframe>
