@@ -6,6 +6,7 @@ from hqzcsj.dao.wcnr_10lv_dao import (
     _is_zmjz_ratio_den_row,
     _is_zmjz_ratio_num_row,
     _normalize_person_name_sql,
+    fetch_period_data,
     fetch_metric_detail_rows,
 )
 
@@ -245,6 +246,85 @@ class TestWcnr10lvDao(unittest.TestCase):
             sql,
         )
         self.assertEqual(params[:2], ["2026-01-01 00:00:00", "2026-01-02 00:00:00"])
+
+    def test_fetch_period_data_keeps_pattern_dependent_metrics_empty_when_no_patterns_match(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_jq_aj_dao.fetch_ay_patterns",
+            return_value=[],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.count_jq_by_diqu",
+            return_value={"445302": 2},
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu",
+            return_value={"445302": 1},
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._load_detail_rows",
+            side_effect=[[{"地区代码": "445302"}], [{"地区代码": "445303"}]],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_wfzf_people_rows",
+            return_value=[],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_yzbl_ratio_rows",
+            return_value=[],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_sx_songjiao_den_rows",
+            return_value=[],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_sx_songjiao_num_rows",
+            return_value=[],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._count_naguan_base_by_region",
+            return_value={"445300": 0, "445302": 5, "445303": 0, "445381": 0, "445321": 0, "445322": 0, "__ALL__": 5},
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_zljiaqjh_detail_rows",
+            return_value=[],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_zmjz_ratio_rows",
+            side_effect=AssertionError("should not query zmjz ratio rows when patterns are empty"),
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._count_graduates_by_region",
+            side_effect=AssertionError("should not count graduates when patterns are empty"),
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._count_graduate_reoffend_by_region",
+            side_effect=AssertionError("should not count graduate reoffend rows when patterns are empty"),
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._count_naguan_reoffend_by_region",
+            side_effect=AssertionError("should not count naguan reoffend rows when patterns are empty"),
+        ):
+            payload = fetch_period_data(
+                object(),
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+                include_details=False,
+            )
+
+        counts = payload["counts"]
+        self.assertEqual(counts["jq"]["445302"], 2)
+        self.assertEqual(counts["jq"]["__ALL__"], 2)
+        self.assertEqual(counts["zhuanan"]["445302"], 1)
+        self.assertEqual(counts["zhuanan"]["__ALL__"], 1)
+        self.assertEqual(counts["jq_changsuo"]["445302"], 1)
+        self.assertEqual(counts["jq_changsuo"]["__ALL__"], 1)
+        self.assertEqual(counts["aj_changsuo"]["445303"], 1)
+        self.assertEqual(counts["aj_changsuo"]["__ALL__"], 1)
+        self.assertEqual(counts["xingzheng"]["__ALL__"], 0)
+        self.assertEqual(counts["xingshi"]["__ALL__"], 0)
+        self.assertEqual(counts["bqh_case"]["__ALL__"], 0)
+        self.assertEqual(counts["cs_bqh_case"]["__ALL__"], 0)
+        self.assertEqual(counts["zmjz_cover_num"]["__ALL__"], 0)
+        self.assertEqual(counts["zmjz_cover_den"]["__ALL__"], 0)
+        self.assertEqual(counts["zmy_den"]["__ALL__"], 0)
+        self.assertEqual(counts["zmy_num"]["__ALL__"], 0)
+        self.assertEqual(counts["zmjz_den"]["__ALL__"], 0)
+        self.assertEqual(counts["zmjz_num"]["__ALL__"], 0)
+        self.assertEqual(counts["naguan_den"]["445302"], 5)
+        self.assertEqual(counts["naguan_den"]["__ALL__"], 5)
+        self.assertEqual(counts["naguan_num"]["__ALL__"], 0)
+        self.assertEqual(payload["details"], {})
 
 
 if __name__ == "__main__":

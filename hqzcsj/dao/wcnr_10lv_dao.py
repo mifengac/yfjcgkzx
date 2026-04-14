@@ -1941,6 +1941,485 @@ def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Seq
     return []
 
 
+def _set_empty_count_maps(counts: Dict[str, Dict[str, int]], *keys: str) -> None:
+    for key in keys:
+        counts[key] = _normalize_count_map({})
+
+
+def _populate_base_counts_and_place_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    counts: Dict[str, Dict[str, int]],
+    mark_perf,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    t = time.perf_counter()
+    jq_counts = zfba_wcnr_jqaj_dao.count_jq_by_diqu(
+        conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
+    )
+    za_counts = zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu(
+        conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
+    )
+    mark_perf("count_jq_za_ms", t)
+    counts["jq"] = _normalize_count_map(jq_counts)
+    counts["zhuanan"] = _normalize_count_map(za_counts)
+
+    t = time.perf_counter()
+    jq_changsuo_rows = _load_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        metric="警情(场所)",
+    )
+    aj_changsuo_rows = _load_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        metric="案件(场所)",
+    )
+    counts["jq_changsuo"] = _count_rows_by_region(jq_changsuo_rows)
+    counts["aj_changsuo"] = _count_rows_by_region(aj_changsuo_rows)
+    mark_perf("place_detail_ms", t)
+    return jq_changsuo_rows, aj_changsuo_rows
+
+
+def _populate_case_counts(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    patterns: Sequence[str],
+    typed_patterns_empty: bool,
+    include_details: bool,
+    counts: Dict[str, Dict[str, int]],
+    mark_perf,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    if typed_patterns_empty:
+        _set_empty_count_maps(
+            counts,
+            "xingzheng",
+            "xingshi",
+            "bqh_case",
+            "cs_bqh_case",
+            "wcnr_xingshi",
+            "jqaj_xingshi",
+        )
+        return [], []
+
+    t = time.perf_counter()
+    ajxx = zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+    )
+    counts["xingzheng"] = _normalize_count_map(ajxx.get("行政", {}))
+    counts["xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
+    counts["wcnr_xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
+    jqaj_ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+    )
+    counts["jqaj_xingshi"] = _normalize_count_map(jqaj_ajxx.get("刑事", {}))
+    mark_perf("count_ajxx_ms", t)
+
+    if include_details:
+        t = time.perf_counter()
+        bqh_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            patterns=patterns,
+            diqu=None,
+        )
+        bqh_rows = _attach_region_fields(bqh_base_rows)
+        counts["bqh_case"] = _count_rows_by_region(bqh_rows)
+        cs_bqh_rows = _filter_changsuo_bqh_rows(bqh_rows)
+        counts["cs_bqh_case"] = _count_rows_by_region(cs_bqh_rows)
+        mark_perf("bqh_and_changsuo_detail_ms", t)
+        return bqh_rows, cs_bqh_rows
+
+    t = time.perf_counter()
+    bqh_counts = zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+    )
+    counts["bqh_case"] = _normalize_count_map(bqh_counts)
+    cs_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+        diqu=None,
+    )
+    cs_rows = _filter_changsuo_bqh_rows(_attach_region_fields(cs_base_rows))
+    counts["cs_bqh_case"] = _count_rows_by_region(cs_rows)
+    mark_perf("bqh_and_changsuo_summary_ms", t)
+    return [], []
+
+
+def _populate_zmjz_cover_counts(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    typed_patterns_empty: bool,
+    counts: Dict[str, Dict[str, int]],
+    mark_perf,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    if typed_patterns_empty:
+        _set_empty_count_maps(counts, "zmjz_cover_num", "zmjz_cover_den")
+        return [], []
+
+    t = time.perf_counter()
+    zmjz_ratio_rows = _fetch_zmjz_ratio_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+    )
+    den_rows = [row for row in zmjz_ratio_rows if _is_zmjz_ratio_den_row(row)]
+    num_rows = [row for row in den_rows if _is_zmjz_ratio_num_row(row)]
+    counts["zmjz_cover_num"] = _count_rows_by_region(num_rows)
+    counts["zmjz_cover_den"] = _count_rows_by_region(den_rows)
+    mark_perf("zmjz_ratio_rows_ms", t)
+    return num_rows, den_rows
+
+
+def _populate_wfzf_ratio_counts(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    counts: Dict[str, Dict[str, int]],
+    mark_perf,
+) -> Tuple[
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+]:
+    t = time.perf_counter()
+    wfzf_rows = _fetch_wfzf_people_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+    )
+    counts["wfzf_people"] = _count_rows_by_region(wfzf_rows)
+
+    yzbl_den_rows = _fetch_yzbl_ratio_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+    )
+    yzbl_den_rows = [row for row in yzbl_den_rows if _is_yes(row.get("是否应采取矫治教育措施"))]
+    yzbl_num_rows = [row for row in yzbl_den_rows if _is_yes(row.get("是否开具矫治文书"))]
+    counts["yzbl_num"] = _count_rows_by_region(yzbl_num_rows)
+    counts["yzbl_den"] = _count_rows_by_region(yzbl_den_rows)
+
+    sx_songjiao_den_rows = _fetch_sx_songjiao_den_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+    )
+    sx_songjiao_num_rows = _fetch_sx_songjiao_num_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+    )
+    counts["sx_songjiao_den"] = _count_rows_by_region(sx_songjiao_den_rows)
+    counts["sx_songjiao_num"] = _count_rows_by_region(sx_songjiao_num_rows)
+    mark_perf("wfzf_yzbl_sx_ms", t)
+    return wfzf_rows, yzbl_den_rows, yzbl_num_rows, sx_songjiao_den_rows, sx_songjiao_num_rows
+
+
+def _populate_graduate_counts(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    typed_patterns_empty: bool,
+    include_details: bool,
+    counts: Dict[str, Dict[str, int]],
+    mark_perf,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    if typed_patterns_empty:
+        _set_empty_count_maps(counts, "zmy_den", "zmy_num", "zmjz_den", "zmjz_num")
+        return [], [], [], []
+
+    if include_details:
+        t = time.perf_counter()
+        zmy_den_rows = _fetch_graduates(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+            jz_time_lt6=True,
+        )
+        zmy_num_rows = _fetch_graduate_reoffend(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+            jz_time_lt6=True,
+            xingshi_only=True,
+            minor_only=True,
+        )
+        zmjz_den_rows = _fetch_graduates(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+            jz_time_lt6=False,
+        )
+        zmjz_num_rows = _fetch_graduate_reoffend(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+            jz_time_lt6=False,
+            xingshi_only=False,
+            minor_only=False,
+        )
+        counts["zmy_den"] = _count_rows_by_region(zmy_den_rows)
+        counts["zmy_num"] = _count_distinct_by_region(zmy_num_rows, id_key="证件号码")
+        counts["zmjz_den"] = _count_rows_by_region(zmjz_den_rows)
+        counts["zmjz_num"] = _count_distinct_by_region(zmjz_num_rows, id_key="证件号码")
+        mark_perf("graduate_detail_ms", t)
+        return zmy_den_rows, zmy_num_rows, zmjz_den_rows, zmjz_num_rows
+
+    t = time.perf_counter()
+    counts["zmy_den"] = _count_graduates_by_region(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        jz_time_lt6=True,
+    )
+    counts["zmy_num"] = _count_graduate_reoffend_by_region(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        jz_time_lt6=True,
+        xingshi_only=True,
+        minor_only=True,
+    )
+    counts["zmjz_den"] = _count_graduates_by_region(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        jz_time_lt6=False,
+    )
+    counts["zmjz_num"] = _count_graduate_reoffend_by_region(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        jz_time_lt6=False,
+        xingshi_only=False,
+        minor_only=False,
+    )
+    mark_perf("graduate_summary_ms", t)
+    return [], [], [], []
+
+
+def _populate_naguan_counts(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    patterns: Sequence[str],
+    typed_patterns_empty: bool,
+    include_details: bool,
+    counts: Dict[str, Dict[str, int]],
+    mark_perf,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    if include_details:
+        naguan_den_rows = _fetch_naguan_base(conn)
+        counts["naguan_den"] = _count_rows_by_region(naguan_den_rows)
+    else:
+        naguan_den_rows = []
+        counts["naguan_den"] = _count_naguan_base_by_region(conn)
+
+    if typed_patterns_empty:
+        _set_empty_count_maps(counts, "naguan_num")
+        return naguan_den_rows, []
+
+    if include_details:
+        t = time.perf_counter()
+        naguan_num_rows = _fetch_naguan_reoffend(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+        )
+        counts["naguan_num"] = _count_distinct_by_region(naguan_num_rows, id_key="证件号码")
+        mark_perf("naguan_detail_ms", t)
+        return naguan_den_rows, naguan_num_rows
+
+    t = time.perf_counter()
+    counts["naguan_num"] = _count_naguan_reoffend_by_region(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+    )
+    mark_perf("naguan_summary_ms", t)
+    return [], []
+
+
+def _populate_zljiaqjh_counts(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    counts: Dict[str, Dict[str, int]],
+    mark_perf,
+) -> List[Dict[str, Any]]:
+    t = time.perf_counter()
+    zljiaqjh_detail_rows = _fetch_zljiaqjh_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+    )
+    counts["zljiaqjh_num"] = _sum_field_by_region(
+        zljiaqjh_detail_rows,
+        value_key="已责令加强监护数",
+    )
+    counts["zljiaqjh_den"] = _sum_field_by_region(
+        zljiaqjh_detail_rows,
+        value_key="应责令加强监护数",
+    )
+    mark_perf("zljiaqjh_ms", t)
+    return zljiaqjh_detail_rows
+
+
+def _build_period_details(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    jq_changsuo_rows: Sequence[Dict[str, Any]],
+    aj_changsuo_rows: Sequence[Dict[str, Any]],
+    bqh_rows: Sequence[Dict[str, Any]],
+    cs_bqh_rows: Sequence[Dict[str, Any]],
+    wfzf_rows: Sequence[Dict[str, Any]],
+    zmy_den_rows: Sequence[Dict[str, Any]],
+    zmy_num_rows: Sequence[Dict[str, Any]],
+    zmjz_den_rows: Sequence[Dict[str, Any]],
+    zmjz_num_rows: Sequence[Dict[str, Any]],
+    yzbl_den_rows: Sequence[Dict[str, Any]],
+    yzbl_num_rows: Sequence[Dict[str, Any]],
+    sx_songjiao_den_rows: Sequence[Dict[str, Any]],
+    sx_songjiao_num_rows: Sequence[Dict[str, Any]],
+    zmjz_cover_num_rows: Sequence[Dict[str, Any]],
+    zmjz_cover_den_rows: Sequence[Dict[str, Any]],
+    naguan_den_rows: Sequence[Dict[str, Any]],
+    naguan_num_rows: Sequence[Dict[str, Any]],
+    zljiaqjh_detail_rows: Sequence[Dict[str, Any]],
+    mark_perf,
+) -> Dict[str, List[Dict[str, Any]]]:
+    t = time.perf_counter()
+    details: Dict[str, List[Dict[str, Any]]] = {}
+    jq_rows = _load_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        metric="警情",
+    )
+    xingshi_rows = _load_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        metric="刑事",
+    )
+
+    details["jq:value"] = jq_rows
+    details["jq_changsuo:value"] = list(jq_changsuo_rows)
+    details["za_rate:numerator"] = _load_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        metric="转案数",
+    )
+    details["za_rate:denominator"] = jq_rows
+
+    details["xingzheng:value"] = _load_detail_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        metric="行政",
+    )
+    details["xingshi:value"] = xingshi_rows
+
+    details["bqh_case:value"] = list(bqh_rows)
+    details["aj_changsuo:value"] = list(aj_changsuo_rows)
+    details["wfzf_people:value"] = list(wfzf_rows)
+    details["cs_bqh_case:value"] = list(cs_bqh_rows)
+
+    details["zmy_reoff:numerator"] = list(zmy_num_rows)
+    details["zmy_reoff:denominator"] = list(zmy_den_rows)
+
+    details["zmjz_reoff:numerator"] = list(zmjz_num_rows)
+    details["zmjz_reoff:denominator"] = list(zmjz_den_rows)
+
+    details["xingshi_ratio:numerator"] = xingshi_rows
+    jqaj_xingshi_rows, _ = zfba_jq_aj_dao.fetch_detail_rows(
+        conn,
+        metric="刑事",
+        diqu="__ALL__",
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+        za_types=[],
+        limit=0,
+    )
+    details["xingshi_ratio:denominator"] = _attach_region_fields(jqaj_xingshi_rows)
+
+    details["yzbl_ratio:numerator"] = list(yzbl_num_rows)
+    details["yzbl_ratio:denominator"] = list(yzbl_den_rows)
+
+    details["sx_songjiao_ratio:numerator"] = list(sx_songjiao_num_rows)
+    details["sx_songjiao_ratio:denominator"] = list(sx_songjiao_den_rows)
+
+    details["zmjz_ratio:numerator"] = list(zmjz_cover_num_rows)
+    details["zmjz_ratio:denominator"] = list(zmjz_cover_den_rows)
+
+    details["naguan_ratio:numerator"] = list(naguan_num_rows)
+    details["naguan_ratio:denominator"] = list(naguan_den_rows)
+
+    details["zljiaqjh:numerator"] = list(zljiaqjh_detail_rows)
+    details["zljiaqjh:denominator"] = list(zljiaqjh_detail_rows)
+    mark_perf("assemble_details_ms", t)
+    return details
+
+
 def fetch_metric_detail_rows(
     conn,
     *,
@@ -2167,374 +2646,97 @@ def fetch_period_data(
     counts: Dict[str, Dict[str, int]] = {}
     details: Dict[str, List[Dict[str, Any]]] = {}
     flags = {"addr_model_degraded": False}
-    bqh_rows: List[Dict[str, Any]] = []
-    cs_bqh_rows: List[Dict[str, Any]] = []
-    jq_changsuo_rows: List[Dict[str, Any]] = []
-    aj_changsuo_rows: List[Dict[str, Any]] = []
-
-    t = time.perf_counter()
-    jq_counts = zfba_wcnr_jqaj_dao.count_jq_by_diqu(
-        conn, start_time=start_time, end_time=end_time, leixing_list=leixing
-    )
-    za_counts = zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu(
-        conn, start_time=start_time, end_time=end_time, leixing_list=leixing
-    )
-    _mark("count_jq_za_ms", t)
-    counts["jq"] = _normalize_count_map(jq_counts)
-    counts["zhuanan"] = _normalize_count_map(za_counts)
-
-    t = time.perf_counter()
-    jq_changsuo_rows = _load_detail_rows(
+    jq_changsuo_rows, aj_changsuo_rows = _populate_base_counts_and_place_rows(
         conn,
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing,
-        metric="警情(场所)",
+        counts=counts,
+        mark_perf=_mark,
     )
-    aj_changsuo_rows = _load_detail_rows(
+    bqh_rows, cs_bqh_rows = _populate_case_counts(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+        typed_patterns_empty=typed_patterns_empty,
+        include_details=include_details,
+        counts=counts,
+        mark_perf=_mark,
+    )
+    zmjz_cover_num_rows, zmjz_cover_den_rows = _populate_zmjz_cover_counts(
         conn,
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing,
-        metric="案件(场所)",
+        typed_patterns_empty=typed_patterns_empty,
+        counts=counts,
+        mark_perf=_mark,
     )
-    counts["jq_changsuo"] = _count_rows_by_region(jq_changsuo_rows)
-    counts["aj_changsuo"] = _count_rows_by_region(aj_changsuo_rows)
-    _mark("place_detail_ms", t)
-
-    if typed_patterns_empty:
-        counts["xingzheng"] = _normalize_count_map({})
-        counts["xingshi"] = _normalize_count_map({})
-        counts["bqh_case"] = _normalize_count_map({})
-        counts["cs_bqh_case"] = _normalize_count_map({})
-        counts["wcnr_xingshi"] = _normalize_count_map({})
-        counts["jqaj_xingshi"] = _normalize_count_map({})
-    else:
-        t = time.perf_counter()
-        ajxx = zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            patterns=patterns,
-        )
-        counts["xingzheng"] = _normalize_count_map(ajxx.get("行政", {}))
-        counts["xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
-        counts["wcnr_xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
-        jqaj_ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            patterns=patterns,
-        )
-        counts["jqaj_xingshi"] = _normalize_count_map(jqaj_ajxx.get("刑事", {}))
-        _mark("count_ajxx_ms", t)
-
-        if include_details:
-            t = time.perf_counter()
-            bqh_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                patterns=patterns,
-                diqu=None,
-            )
-            bqh_rows = _attach_region_fields(bqh_base_rows)
-            counts["bqh_case"] = _count_rows_by_region(bqh_rows)
-            cs_bqh_rows = _filter_changsuo_bqh_rows(bqh_rows)
-            counts["cs_bqh_case"] = _count_rows_by_region(cs_bqh_rows)
-            _mark("bqh_and_changsuo_detail_ms", t)
-        else:
-            t = time.perf_counter()
-            bqh_counts = zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                patterns=patterns,
-            )
-            counts["bqh_case"] = _normalize_count_map(bqh_counts)
-            cs_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                patterns=patterns,
-                diqu=None,
-            )
-            cs_rows = _filter_changsuo_bqh_rows(_attach_region_fields(cs_base_rows))
-            counts["cs_bqh_case"] = _count_rows_by_region(cs_rows)
-            _mark("bqh_and_changsuo_summary_ms", t)
-
-    wfzf_rows: List[Dict[str, Any]] = []
-    sx_songjiao_den_rows: List[Dict[str, Any]] = []
-    sx_songjiao_num_rows: List[Dict[str, Any]] = []
-    yzbl_den_rows: List[Dict[str, Any]] = []
-    yzbl_num_rows: List[Dict[str, Any]] = []
-    zmjz_cover_num_rows: List[Dict[str, Any]] = []
-    zmjz_cover_den_rows: List[Dict[str, Any]] = []
-    if typed_patterns_empty:
-        counts["zmjz_cover_num"] = _normalize_count_map({})
-        counts["zmjz_cover_den"] = _normalize_count_map({})
-    else:
-        t = time.perf_counter()
-        zmjz_ratio_rows = _fetch_zmjz_ratio_rows(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            leixing_list=leixing,
-        )
-        zmjz_cover_den_rows = [r for r in zmjz_ratio_rows if _is_zmjz_ratio_den_row(r)]
-        zmjz_cover_num_rows = [r for r in zmjz_cover_den_rows if _is_zmjz_ratio_num_row(r)]
-        counts["zmjz_cover_num"] = _count_rows_by_region(zmjz_cover_num_rows)
-        counts["zmjz_cover_den"] = _count_rows_by_region(zmjz_cover_den_rows)
-        _mark("zmjz_ratio_rows_ms", t)
-
-    t = time.perf_counter()
-    wfzf_rows = _fetch_wfzf_people_rows(
+    wfzf_rows, yzbl_den_rows, yzbl_num_rows, sx_songjiao_den_rows, sx_songjiao_num_rows = _populate_wfzf_ratio_counts(
         conn,
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing,
+        counts=counts,
+        mark_perf=_mark,
     )
-    counts["wfzf_people"] = _count_rows_by_region(wfzf_rows)
-
-    yzbl_den_rows = _fetch_yzbl_ratio_rows(
+    zmy_den_rows, zmy_num_rows, zmjz_den_rows, zmjz_num_rows = _populate_graduate_counts(
         conn,
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing,
+        typed_patterns_empty=typed_patterns_empty,
+        include_details=include_details,
+        counts=counts,
+        mark_perf=_mark,
     )
-    yzbl_den_rows = [r for r in yzbl_den_rows if _is_yes(r.get("是否应采取矫治教育措施"))]
-    yzbl_num_rows = [r for r in yzbl_den_rows if _is_yes(r.get("是否开具矫治文书"))]
-    counts["yzbl_num"] = _count_rows_by_region(yzbl_num_rows)
-    counts["yzbl_den"] = _count_rows_by_region(yzbl_den_rows)
-
-    sx_songjiao_den_rows = _fetch_sx_songjiao_den_rows(
+    naguan_den_rows, naguan_num_rows = _populate_naguan_counts(
         conn,
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing,
+        patterns=patterns,
+        typed_patterns_empty=typed_patterns_empty,
+        include_details=include_details,
+        counts=counts,
+        mark_perf=_mark,
     )
-    sx_songjiao_num_rows = _fetch_sx_songjiao_num_rows(
+    zljiaqjh_detail_rows = _populate_zljiaqjh_counts(
         conn,
         start_time=start_time,
         end_time=end_time,
         leixing_list=leixing,
+        counts=counts,
+        mark_perf=_mark,
     )
-    counts["sx_songjiao_den"] = _count_rows_by_region(sx_songjiao_den_rows)
-    counts["sx_songjiao_num"] = _count_rows_by_region(sx_songjiao_num_rows)
-    _mark("wfzf_yzbl_sx_ms", t)
-
-    zmy_den_rows: List[Dict[str, Any]] = []
-    zmy_num_rows: List[Dict[str, Any]] = []
-    zmjz_den_rows: List[Dict[str, Any]] = []
-    zmjz_num_rows: List[Dict[str, Any]] = []
-    if typed_patterns_empty:
-        counts["zmy_den"] = _normalize_count_map({})
-        counts["zmy_num"] = _normalize_count_map({})
-        counts["zmjz_den"] = _normalize_count_map({})
-        counts["zmjz_num"] = _normalize_count_map({})
-    else:
-        if include_details:
-            t = time.perf_counter()
-            zmy_den_rows = _fetch_graduates(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-                jz_time_lt6=True,
-            )
-            zmy_num_rows = _fetch_graduate_reoffend(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-                jz_time_lt6=True,
-                xingshi_only=True,
-                minor_only=True,
-            )
-            zmjz_den_rows = _fetch_graduates(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-                jz_time_lt6=False,
-            )
-            zmjz_num_rows = _fetch_graduate_reoffend(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-                jz_time_lt6=False,
-                xingshi_only=False,
-                minor_only=False,
-            )
-            counts["zmy_den"] = _count_rows_by_region(zmy_den_rows)
-            counts["zmy_num"] = _count_distinct_by_region(zmy_num_rows, id_key="证件号码")
-            counts["zmjz_den"] = _count_rows_by_region(zmjz_den_rows)
-            counts["zmjz_num"] = _count_distinct_by_region(zmjz_num_rows, id_key="证件号码")
-            _mark("graduate_detail_ms", t)
-        else:
-            t = time.perf_counter()
-            counts["zmy_den"] = _count_graduates_by_region(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-                jz_time_lt6=True,
-            )
-            counts["zmy_num"] = _count_graduate_reoffend_by_region(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-                jz_time_lt6=True,
-                xingshi_only=True,
-                minor_only=True,
-            )
-            counts["zmjz_den"] = _count_graduates_by_region(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-                jz_time_lt6=False,
-            )
-            counts["zmjz_num"] = _count_graduate_reoffend_by_region(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-                jz_time_lt6=False,
-                xingshi_only=False,
-                minor_only=False,
-            )
-            _mark("graduate_summary_ms", t)
-
-    naguan_den_rows: List[Dict[str, Any]] = []
-    naguan_num_rows: List[Dict[str, Any]] = []
-    if include_details:
-        naguan_den_rows = _fetch_naguan_base(conn)
-        counts["naguan_den"] = _count_rows_by_region(naguan_den_rows)
-    else:
-        counts["naguan_den"] = _count_naguan_base_by_region(conn)
-    if typed_patterns_empty:
-        counts["naguan_num"] = _normalize_count_map({})
-    else:
-        if include_details:
-            t = time.perf_counter()
-            naguan_num_rows = _fetch_naguan_reoffend(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                leixing_list=leixing,
-            )
-            counts["naguan_num"] = _count_distinct_by_region(naguan_num_rows, id_key="证件号码")
-            _mark("naguan_detail_ms", t)
-        else:
-            t = time.perf_counter()
-            counts["naguan_num"] = _count_naguan_reoffend_by_region(
-                conn,
-                start_time=start_time,
-                end_time=end_time,
-                patterns=patterns,
-            )
-            _mark("naguan_summary_ms", t)
-
-    # 责令加强监护数
-    t = time.perf_counter()
-    zljiaqjh_detail_rows = _fetch_zljiaqjh_detail_rows(
-        conn,
-        start_time=start_time,
-        end_time=end_time,
-        leixing_list=leixing,
-    )
-    counts["zljiaqjh_num"] = _sum_field_by_region(
-        zljiaqjh_detail_rows,
-        value_key="已责令加强监护数",
-    )
-    counts["zljiaqjh_den"] = _sum_field_by_region(
-        zljiaqjh_detail_rows,
-        value_key="应责令加强监护数",
-    )
-    _mark("zljiaqjh_ms", t)
 
     if include_details:
-        t = time.perf_counter()
-        details["jq:value"] = _load_detail_rows(
+        details = _build_period_details(
             conn,
             start_time=start_time,
             end_time=end_time,
             leixing_list=leixing,
-            metric="警情",
+            jq_changsuo_rows=jq_changsuo_rows,
+            aj_changsuo_rows=aj_changsuo_rows,
+            bqh_rows=bqh_rows,
+            cs_bqh_rows=cs_bqh_rows,
+            wfzf_rows=wfzf_rows,
+            zmy_den_rows=zmy_den_rows,
+            zmy_num_rows=zmy_num_rows,
+            zmjz_den_rows=zmjz_den_rows,
+            zmjz_num_rows=zmjz_num_rows,
+            yzbl_den_rows=yzbl_den_rows,
+            yzbl_num_rows=yzbl_num_rows,
+            sx_songjiao_den_rows=sx_songjiao_den_rows,
+            sx_songjiao_num_rows=sx_songjiao_num_rows,
+            zmjz_cover_num_rows=zmjz_cover_num_rows,
+            zmjz_cover_den_rows=zmjz_cover_den_rows,
+            naguan_den_rows=naguan_den_rows,
+            naguan_num_rows=naguan_num_rows,
+            zljiaqjh_detail_rows=zljiaqjh_detail_rows,
+            mark_perf=_mark,
         )
-        details["jq_changsuo:value"] = jq_changsuo_rows
-        details["za_rate:numerator"] = _load_detail_rows(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            leixing_list=leixing,
-            metric="转案数",
-        )
-        details["za_rate:denominator"] = details["jq:value"]
-
-        details["xingzheng:value"] = _load_detail_rows(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            leixing_list=leixing,
-            metric="行政",
-        )
-        details["xingshi:value"] = _load_detail_rows(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            leixing_list=leixing,
-            metric="刑事",
-        )
-
-        details["bqh_case:value"] = bqh_rows
-        details["aj_changsuo:value"] = aj_changsuo_rows
-        details["wfzf_people:value"] = wfzf_rows
-        details["cs_bqh_case:value"] = cs_bqh_rows
-
-        details["zmy_reoff:numerator"] = zmy_num_rows
-        details["zmy_reoff:denominator"] = zmy_den_rows
-
-        details["zmjz_reoff:numerator"] = zmjz_num_rows
-        details["zmjz_reoff:denominator"] = zmjz_den_rows
-
-        details["xingshi_ratio:numerator"] = _load_detail_rows(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            leixing_list=leixing,
-            metric="刑事",
-        )
-        _jqaj_xingshi_rows, _ = zfba_jq_aj_dao.fetch_detail_rows(
-            conn,
-            metric="刑事",
-            diqu="__ALL__",
-            start_time=start_time,
-            end_time=end_time,
-            leixing_list=leixing,
-            za_types=[],
-            limit=0,
-        )
-        details["xingshi_ratio:denominator"] = _attach_region_fields(_jqaj_xingshi_rows)
-
-        details["yzbl_ratio:numerator"] = yzbl_num_rows
-        details["yzbl_ratio:denominator"] = yzbl_den_rows
-
-        details["sx_songjiao_ratio:numerator"] = sx_songjiao_num_rows
-        details["sx_songjiao_ratio:denominator"] = sx_songjiao_den_rows
-
-        details["zmjz_ratio:numerator"] = zmjz_cover_num_rows
-        details["zmjz_ratio:denominator"] = zmjz_cover_den_rows
-
-        details["naguan_ratio:numerator"] = naguan_num_rows
-        details["naguan_ratio:denominator"] = naguan_den_rows
-
-        details["zljiaqjh:numerator"] = zljiaqjh_detail_rows
-        details["zljiaqjh:denominator"] = zljiaqjh_detail_rows
-        _mark("assemble_details_ms", t)
 
     perf["total_ms"] = round((time.perf_counter() - t_all) * 1000, 2)
 

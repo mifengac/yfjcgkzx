@@ -16,6 +16,7 @@ from openpyxl import Workbook
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao.zfba_jq_aj_dao import fetch_leixing_list
+from hqzcsj.routes.route_helpers import parse_bool_arg, parse_list_arg, user_has_module_access
 from hqzcsj.service.zfba_jq_aj_report_service import ZfbaJqAjReportService
 from hqzcsj.service.zfba_jq_aj_service import (
     REGION_ORDER,
@@ -34,15 +35,7 @@ def _check_access() -> None:
     if not session.get("username"):
         return redirect(url_for("login"))
     try:
-        conn = get_database_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                'SELECT 1 FROM "ywdata"."jcgkzx_permission" WHERE username=%s AND module=%s',
-                (session["username"], "获取综查数据"),
-            )
-            row = cur.fetchone()
-        conn.close()
-        if not row:
+        if not user_has_module_access(get_database_connection, username=session["username"]):
             abort(403)
     except Exception:
         abort(500)
@@ -62,18 +55,11 @@ def api_leixing() -> Any:
 
 
 def _parse_list_args(name: str) -> List[str]:
-    vals = request.args.getlist(name)
-    out: List[str] = []
-    for v in vals:
-        s = (v or "").strip()
-        if s:
-            out.append(s)
-    return out
+    return parse_list_arg(name)
 
 
 def _parse_bool_arg(name: str) -> bool:
-    v = (request.args.get(name) or "").strip().lower()
-    return v in ("1", "true", "yes", "on")
+    return parse_bool_arg(name)
 
 
 @zfba_jq_aj_bp.route("/zfba_jq_aj/api/summary")

@@ -7,6 +7,14 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao import wcnr_10lv_dao
+from hqzcsj.service.stats_common import (
+    calc_percent_text,
+    calc_ratio_text,
+    fmt_dt,
+    normalize_text_list,
+    parse_dt,
+    shift_year,
+)
 
 
 REGION_ORDER: List[Tuple[str, str]] = [
@@ -21,13 +29,17 @@ REGION_ORDER: List[Tuple[str, str]] = [
 
 COUNT_METRICS: List[Dict[str, str]] = [
     {"label": "警情", "key": "jq", "unit": "起"},
+    {"label": "警情(场所)", "key": "jq_changsuo", "unit": "起"},
     {"label": "行政", "key": "xingzheng", "unit": "起"},
     {"label": "刑事", "key": "xingshi", "unit": "起"},
     {"label": "案件(被侵害)", "key": "bqh_case", "unit": "起"},
     {"label": "违法犯罪人员", "key": "wfzf_people", "unit": "人"},
-    {"label": "警情(场所)", "key": "jq_changsuo", "unit": "起"},
     {"label": "案件(场所)", "key": "aj_changsuo", "unit": "起"},
     {"label": "案件(场所被侵害)", "key": "cs_bqh_case", "unit": "起"},
+]
+
+RATE_METRICS: List[Dict[str, str]] = [
+    {"key": "za_rate", "label": "转案率", "num_key": "zhuanan", "den_key": "jq"},
 ]
 
 COMPOSITE_METRICS: List[Dict[str, str]] = [
@@ -88,38 +100,35 @@ COMPOSITE_METRICS: List[Dict[str, str]] = [
         "den_key": "zljiaqjh_den",
     },
 ]
-
+COUNT_METRIC_MAP: Dict[str, Dict[str, str]] = {item["key"]: item for item in COUNT_METRICS}
+RATE_METRIC_MAP: Dict[str, Dict[str, str]] = {item["key"]: item for item in RATE_METRICS}
+COMPOSITE_METRIC_MAP: Dict[str, Dict[str, str]] = {item["key"]: item for item in COMPOSITE_METRICS}
+SUMMARY_LAYOUT: List[Tuple[str, str]] = [
+    ("count", "jq"),
+    ("rate", "za_rate"),
+    ("count", "jq_changsuo"),
+    ("count", "xingzheng"),
+    ("count", "xingshi"),
+    ("count", "bqh_case"),
+    ("count", "wfzf_people"),
+    ("count", "aj_changsuo"),
+    ("composite", "zmy_reoff"),
+    ("composite", "zmjz_reoff"),
+    ("count", "cs_bqh_case"),
+    ("composite", "xingshi_ratio"),
+    ("composite", "yzbl_ratio"),
+    ("composite", "sx_songjiao_ratio"),
+    ("composite", "zmjz_ratio"),
+    ("composite", "naguan_ratio"),
+    ("composite", "zljiaqjh"),
+]
 DETAIL_METRIC_LABEL: Dict[str, str] = {
-    "jq": "警情",
-    "jq_changsuo": "警情(场所)",
-    "za_rate": "转案率",
-    "xingzheng": "行政",
-    "xingshi": "刑事",
-    "bqh_case": "案件(被侵害)",
-    "wfzf_people": "违法犯罪人员",
-    "aj_changsuo": "案件(场所)",
-    "zmy_reoff": "专门教育学生结业后犯罪数",
-    "zmjz_reoff": "专门(矫治)教育学生结业后再犯数",
-    "cs_bqh_case": "案件(场所被侵害)",
-    "xingshi_ratio": "刑事占比",
-    "yzbl_ratio": "严重不良未成年人矫治教育占比",
-    "sx_songjiao_ratio": "涉刑人员送生占比",
-    "zmjz_ratio": "专门(矫治)教育占比",
-    "naguan_ratio": "纳管人员再犯占比",
-    "zljiaqjh": "责令加强监护数",
+    **{item["key"]: item["label"] for item in COUNT_METRICS},
+    **{item["key"]: item["label"] for item in RATE_METRICS},
+    **{item["key"]: item["label"] for item in COMPOSITE_METRICS},
 }
-
-COMPOSITE_METRIC_KEYS = {
-    "za_rate",
-    "zmy_reoff",
-    "zmjz_reoff",
-    "xingshi_ratio",
-    "yzbl_ratio",
-    "sx_songjiao_ratio",
-    "zmjz_ratio",
-    "naguan_ratio",
-    "zljiaqjh",
-}
+COMPOSITE_METRIC_KEYS = set(COMPOSITE_METRIC_MAP)
+EXPORT_METRIC_ORDER: List[str] = [metric_key for _metric_kind, metric_key in SUMMARY_LAYOUT]
 
 
 def default_time_range_for_page() -> Tuple[str, str, str, str]:
@@ -136,63 +145,8 @@ def default_time_range_for_page() -> Tuple[str, str, str, str]:
     )
 
 
-def parse_dt(text: str) -> datetime:
-    s = (text or "").strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(s, fmt)
-        except Exception:
-            pass
-    raise ValueError(f"时间格式错误: {text}（期望 YYYY-MM-DD HH:MM:SS）")
-
-
-def fmt_dt(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def shift_year(dt: datetime, years: int = -1) -> datetime:
-    try:
-        return dt.replace(year=dt.year + years)
-    except Exception:
-        if dt.month == 2 and dt.day == 29:
-            return dt.replace(year=dt.year + years, day=28)
-        raise
-
-
-def _to_num(v: Any) -> float:
-    try:
-        return float(v or 0)
-    except Exception:
-        return 0.0
-
-
-def _fmt_num(v: float) -> str:
-    return str(int(v)) if float(v).is_integer() else f"{v:.2f}".rstrip("0").rstrip(".")
-
-
-def calc_percent_text(num: Any, den: Any) -> str:
-    d = _to_num(den)
-    if d <= 0:
-        return "0.00%"
-    n = _to_num(num)
-    return f"{(n / d) * 100:.2f}%"
-
-
-def calc_ratio_text(current_value: Any, compare_value: Any, unit: str) -> str:
-    cur = _to_num(current_value)
-    cmp = _to_num(compare_value)
-    if cur == cmp:
-        return "持平"
-    if cur == 0 and cmp != 0:
-        return f"下降{_fmt_num(cmp)}{unit}"
-    if cur != 0 and cmp == 0:
-        return f"上升{_fmt_num(cur)}{unit}"
-    ratio = ((cur - cmp) / cmp) * 100
-    return f"{ratio:.2f}%"
-
-
 def _normalize_leixing_list(leixing_list: Sequence[str]) -> List[str]:
-    return [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
+    return normalize_text_list(leixing_list)
 
 
 def _count(period_data: Dict[str, Any], key: str, code: str) -> int:
@@ -334,96 +288,59 @@ def build_summary(
         row[f"同比{rate_label}"] = calc_percent_text(yoy_num, yoy_den)
         row[f"环比{rate_label}"] = calc_percent_text(hb_num, hb_den)
 
+    def add_rate_metric(
+        row: Dict[str, Any],
+        *,
+        code: str,
+        label: str,
+        num_key: str,
+        den_key: str,
+    ) -> None:
+        cur_num = _count(current_data, num_key, code)
+        cur_den = _count(current_data, den_key, code)
+        yoy_num = _count(yoy_data, num_key, code)
+        yoy_den = _count(yoy_data, den_key, code)
+        hb_num = _count(hb_data, num_key, code)
+        hb_den = _count(hb_data, den_key, code)
+
+        row[label] = calc_percent_text(cur_num, cur_den)
+        row[f"同比{label}"] = calc_percent_text(yoy_num, yoy_den)
+        row[f"环比{label}"] = calc_percent_text(hb_num, hb_den)
+
     for code, name in REGION_ORDER:
         row: Dict[str, Any] = {"地区": name, "地区代码": code}
 
-        add_count_metric(row, code=code, label="警情", key="jq", unit="起")
+        for metric_kind, metric_key in SUMMARY_LAYOUT:
+            if metric_kind == "count":
+                metric = COUNT_METRIC_MAP[metric_key]
+                add_count_metric(
+                    row,
+                    code=code,
+                    label=metric["label"],
+                    key=metric["key"],
+                    unit=metric["unit"],
+                )
+                continue
+            if metric_kind == "rate":
+                metric = RATE_METRIC_MAP[metric_key]
+                add_rate_metric(
+                    row,
+                    code=code,
+                    label=metric["label"],
+                    num_key=metric["num_key"],
+                    den_key=metric["den_key"],
+                )
+                continue
 
-        cur_za = _count(current_data, "zhuanan", code)
-        cur_jq = _count(current_data, "jq", code)
-        yoy_za = _count(yoy_data, "zhuanan", code)
-        yoy_jq = _count(yoy_data, "jq", code)
-        hb_za = _count(hb_data, "zhuanan", code)
-        hb_jq = _count(hb_data, "jq", code)
-        row["转案率"] = calc_percent_text(cur_za, cur_jq)
-        row["同比转案率"] = calc_percent_text(yoy_za, yoy_jq)
-        row["环比转案率"] = calc_percent_text(hb_za, hb_jq)
-
-        add_count_metric(row, code=code, label="警情(场所)", key="jq_changsuo", unit="起")
-
-        add_count_metric(row, code=code, label="行政", key="xingzheng", unit="起")
-        add_count_metric(row, code=code, label="刑事", key="xingshi", unit="起")
-        add_count_metric(row, code=code, label="案件(被侵害)", key="bqh_case", unit="起")
-        add_count_metric(row, code=code, label="违法犯罪人员", key="wfzf_people", unit="人")
-        add_count_metric(row, code=code, label="案件(场所)", key="aj_changsuo", unit="起")
-
-        add_composite_metric(
-            row,
-            code=code,
-            label="专门教育学生结业后犯罪数",
-            rate_label="专门教育学生结业后再犯率",
-            num_key="zmy_num",
-            den_key="zmy_den",
-        )
-        add_composite_metric(
-            row,
-            code=code,
-            label="专门(矫治)教育学生结业后再犯数",
-            rate_label="专门(矫治)教育学生结业后再犯率",
-            num_key="zmjz_num",
-            den_key="zmjz_den",
-        )
-
-        add_count_metric(row, code=code, label="案件(场所被侵害)", key="cs_bqh_case", unit="起")
-
-        add_composite_metric(
-            row,
-            code=code,
-            label="刑事占比",
-            rate_label="刑事占比率",
-            num_key="wcnr_xingshi",
-            den_key="jqaj_xingshi",
-        )
-        add_composite_metric(
-            row,
-            code=code,
-            label="严重不良未成年人矫治教育占比",
-            rate_label="严重不良未成年人矫治教育占比率",
-            num_key="yzbl_num",
-            den_key="yzbl_den",
-        )
-        add_composite_metric(
-            row,
-            code=code,
-            label="涉刑人员送生占比",
-            rate_label="涉刑人员送矫率",
-            num_key="sx_songjiao_num",
-            den_key="sx_songjiao_den",
-        )
-        add_composite_metric(
-            row,
-            code=code,
-            label="专门(矫治)教育占比",
-            rate_label="专门(矫治)教育占比率",
-            num_key="zmjz_cover_num",
-            den_key="zmjz_cover_den",
-        )
-        add_composite_metric(
-            row,
-            code=code,
-            label="纳管人员再犯占比",
-            rate_label="纳管人员再犯率",
-            num_key="naguan_num",
-            den_key="naguan_den",
-        )
-        add_composite_metric(
-            row,
-            code=code,
-            label="责令加强监护数",
-            rate_label="责令加强监护率",
-            num_key="zljiaqjh_num",
-            den_key="zljiaqjh_den",
-        )
+            metric = COMPOSITE_METRIC_MAP[metric_key]
+            add_composite_metric(
+                row,
+                code=code,
+                label=metric["label"],
+                rate_label=metric["rate_label"],
+                num_key=metric["num_key"],
+                den_key=metric["den_key"],
+            )
 
         rows.append(row)
 
@@ -479,23 +396,14 @@ def get_display_columns(*, show_hb: bool, show_ratio: bool) -> List[str]:
             if show_ratio:
                 cols.append(f"环比{rate_label}")
 
-    add_count("警情")
-    add_rate("转案率")
-    add_count("警情(场所)")
-    add_count("行政")
-    add_count("刑事")
-    add_count("案件(被侵害)")
-    add_count("违法犯罪人员")
-    add_count("案件(场所)")
-    add_composite("专门教育学生结业后犯罪数", "专门教育学生结业后再犯率")
-    add_composite("专门(矫治)教育学生结业后再犯数", "专门(矫治)教育学生结业后再犯率")
-    add_count("案件(场所被侵害)")
-    add_composite("刑事占比", "刑事占比率")
-    add_composite("严重不良未成年人矫治教育占比", "严重不良未成年人矫治教育占比率")
-    add_composite("涉刑人员送生占比", "涉刑人员送矫率")
-    add_composite("专门(矫治)教育占比", "专门(矫治)教育占比率")
-    add_composite("纳管人员再犯占比", "纳管人员再犯率")
-    add_composite("责令加强监护数", "责令加强监护率")
+    for metric_kind, metric_key in SUMMARY_LAYOUT:
+        if metric_kind == "count":
+            add_count(COUNT_METRIC_MAP[metric_key]["label"])
+        elif metric_kind == "rate":
+            add_rate(RATE_METRIC_MAP[metric_key]["label"])
+        else:
+            metric = COMPOSITE_METRIC_MAP[metric_key]
+            add_composite(metric["label"], metric["rate_label"])
     return cols
 
 
@@ -644,28 +552,8 @@ def build_detail_export_sheets(
         except Exception:
             pass
 
-    export_order = [
-        "jq",
-        "za_rate",
-        "jq_changsuo",
-        "xingzheng",
-        "xingshi",
-        "bqh_case",
-        "wfzf_people",
-        "aj_changsuo",
-        "zmy_reoff",
-        "zmjz_reoff",
-        "cs_bqh_case",
-        "xingshi_ratio",
-        "yzbl_ratio",
-        "sx_songjiao_ratio",
-        "zmjz_ratio",
-        "naguan_ratio",
-        "zljiaqjh",
-    ]
-
     sheets: List[Dict[str, Any]] = []
-    for metric in export_order:
+    for metric in EXPORT_METRIC_ORDER:
         parts = ["value"] if metric not in COMPOSITE_METRIC_KEYS else ["numerator", "denominator"]
         for part in parts:
             part_label = ""

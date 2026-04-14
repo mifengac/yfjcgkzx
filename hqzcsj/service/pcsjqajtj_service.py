@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Sequence, Tuple
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao import pcsjqajtj_dao
+from hqzcsj.service.stats_common import (
+    calc_percent_text,
+    calc_ratio_text,
+    default_recent_time_window,
+    fmt_dt,
+    normalize_text_list,
+    parse_dt,
+    shift_year,
+)
 
 
 @dataclass(frozen=True)
@@ -29,78 +37,11 @@ RATIO_METRIC_UNIT: Dict[str, str] = {
 
 
 def _normalize_list(values: Sequence[str]) -> List[str]:
-    out: List[str] = []
-    for value in values or []:
-        text = str(value or "").strip()
-        if text:
-            out.append(text)
-    return out
-
-
-def _to_num(value: Any) -> float:
-    try:
-        return float(value or 0)
-    except Exception:
-        return 0.0
-
-
-def _fmt_num(value: float) -> str:
-    if float(value).is_integer():
-        return str(int(value))
-    return f"{value:.2f}".rstrip("0").rstrip(".")
-
-
-def parse_dt(text: str) -> datetime:
-    content = str(text or "").strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(content, fmt)
-        except Exception:
-            pass
-    raise ValueError(f"时间格式错误: {text}（期望 YYYY-MM-DD HH:MM:SS）")
-
-
-def fmt_dt(value: datetime) -> str:
-    return value.strftime("%Y-%m-%d %H:%M:%S")
+    return normalize_text_list(values)
 
 
 def default_time_range_for_page() -> Tuple[str, str]:
-    today0 = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    start = (today0 - timedelta(days=7)).strftime("%Y-%m-%d 00:00:00")
-    end = today0.strftime("%Y-%m-%d 00:00:00")
-    return start, end
-
-
-def shift_year(value: datetime, years: int = -1) -> datetime:
-    try:
-        return value.replace(year=value.year + years)
-    except Exception:
-        if value.month == 2 and value.day == 29:
-            return value.replace(year=value.year + years, day=28)
-        raise
-
-
-def calc_percent_text(numerator: Any, denominator: Any) -> str:
-    den = _to_num(denominator)
-    if den <= 0:
-        return "0.00%"
-    num = _to_num(numerator)
-    return f"{(num / den) * 100:.2f}%"
-
-
-def calc_ratio_text(current_value: Any, compare_value: Any, unit: str) -> str:
-    cur = _to_num(current_value)
-    cmp = _to_num(compare_value)
-    if cur == cmp:
-        return "持平"
-    if cmp == 0 and cur != 0:
-        return f"上升{_fmt_num(cur)}{unit}"
-    if cur == 0 and cmp != 0:
-        return f"下降{_fmt_num(cmp)}{unit}"
-    if cmp == 0:
-        return "持平"
-    ratio = ((cur - cmp) / cmp) * 100
-    return f"{ratio:.2f}%"
+    return default_recent_time_window(days=7)
 
 
 def fetch_leixing_options() -> List[Dict[str, str]]:

@@ -19,6 +19,7 @@ from typing import Any, Dict
 from flask import Blueprint, abort, jsonify, redirect, render_template, request, session, url_for
 
 from gonggong.config.database import get_database_connection
+from hqzcsj.routes.route_helpers import user_has_module_access
 from hqzcsj.service.jsxx_service import get_jsxx_job_status, get_jsxx_sources, start_jsxx_job
 from hqzcsj.service.zongcha_source_catalog_service import get_source_catalog
 from hqzcsj.service.zongcha_service import start_zongcha_job, get_zongcha_job_status
@@ -50,15 +51,7 @@ def _check_access() -> None:
     if not session.get("username"):
         return redirect(url_for("login"))
     try:
-        conn = get_database_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                'SELECT 1 FROM "ywdata"."jcgkzx_permission" WHERE username=%s AND module=%s',
-                (session["username"], "获取综查数据"),
-            )
-            row = cur.fetchone()
-        conn.close()
-        if not row:
+        if not user_has_module_access(get_database_connection, username=session["username"]):
             abort(403)
     except Exception:
         abort(500)

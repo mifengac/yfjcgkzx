@@ -1,11 +1,20 @@
 ﻿from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao import zfba_wcnr_jqaj_dao
+from hqzcsj.service.stats_common import (
+    calc_percent_text,
+    calc_ratio_text,
+    default_recent_time_window,
+    fmt_dt,
+    infer_hb_range,
+    normalize_text_list,
+    parse_dt,
+    shift_year,
+)
 
 
 REGION_ORDER: List[Tuple[str, str]] = [
@@ -52,60 +61,7 @@ class SummaryMeta:
 
 
 def default_time_range_for_page() -> Tuple[str, str]:
-    today0 = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    start = (today0 - timedelta(days=7)).strftime("%Y-%m-%d 00:00:00")
-    end = today0.strftime("%Y-%m-%d 00:00:00")
-    return start, end
-
-
-def parse_dt(s: str) -> datetime:
-    s = (s or "").strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(s, fmt)
-        except Exception:
-            pass
-    raise ValueError(f"时间格式错误: {s}（期望 YYYY-MM-DD HH:MM:SS）")
-
-
-def fmt_dt(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _to_num(v: Any) -> float:
-    try:
-        if v is None:
-            return 0.0
-        return float(v)
-    except Exception:
-        return 0.0
-
-
-def _fmt_num(v: float) -> str:
-    return str(int(v)) if float(v).is_integer() else f"{v:.2f}".rstrip("0").rstrip(".")
-
-
-def calc_percent_text(numerator: Any, denominator: Any) -> str:
-    den = _to_num(denominator)
-    if den <= 0:
-        return "0.00%"
-    num = _to_num(numerator)
-    return f"{(num / den) * 100:.2f}%"
-
-
-def calc_ratio_text(current_value: Any, compare_value: Any, unit: str) -> str:
-    current_num = _to_num(current_value)
-    compare_num = _to_num(compare_value)
-
-    if current_num == compare_num:
-        return "持平"
-    if current_num == 0 and compare_num != 0:
-        return f"下降{_fmt_num(compare_num)}{unit}"
-    if current_num != 0 and compare_num == 0:
-        return f"上升{_fmt_num(current_num)}{unit}"
-
-    ratio = ((current_num - compare_num) / compare_num) * 100
-    return f"{ratio:.2f}%"
+    return default_recent_time_window(days=7)
 
 
 def append_ratio_columns(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -124,22 +80,6 @@ def append_ratio_columns(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         new_row["环比转案率"] = calc_percent_text(row.get("环比转案数"), row.get("环比警情"))
         out.append(new_row)
     return out
-
-
-def shift_year(dt: datetime, years: int = -1) -> datetime:
-    try:
-        return dt.replace(year=dt.year + years)
-    except Exception:
-        if dt.month == 2 and dt.day == 29:
-            return dt.replace(year=dt.year + years, day=28)
-        raise
-
-
-def infer_hb_range(start_dt: datetime, end_dt: datetime) -> Tuple[datetime, datetime]:
-    delta = end_dt - start_dt
-    hb_end = start_dt - timedelta(seconds=1)
-    hb_start = hb_end - delta
-    return hb_start, hb_end
 
 
 def _build_wfry_stats_bundle(rows: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
@@ -218,8 +158,8 @@ def build_summary(
         hb_end_time=fmt_dt(hb_end_dt),
     )
 
-    leixing_list = [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
-    za_types = [str(x).strip() for x in (za_types or []) if str(x).strip()]
+    leixing_list = normalize_text_list(leixing_list)
+    za_types = normalize_text_list(za_types)
 
     def _call(stage: str, fn):
         try:
