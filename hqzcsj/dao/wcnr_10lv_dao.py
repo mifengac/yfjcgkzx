@@ -72,6 +72,10 @@ def _normalize_leixing_list(leixing_list: Sequence[str]) -> List[str]:
     return [str(x).strip() for x in (leixing_list or []) if str(x).strip()]
 
 
+def _normalize_person_name_sql(column_expr: str) -> str:
+    return f"REGEXP_REPLACE(COALESCE({column_expr}, ''), '[[:space:]　]+', '', 'g')"
+
+
 def _normalize_leixing_for_query(conn, leixing_list: Sequence[str]) -> List[str]:
     """
     统一“类型”口径：
@@ -216,6 +220,25 @@ def _relation_exists(
     with conn.cursor() as cur:
         cur.execute(q, params)
         return cur.fetchone() is not None
+
+
+def _view_uses_normalized_name_matching(conn, *, schema: str, name: str) -> bool:
+        q = """
+                SELECT pg_get_viewdef(c.oid)
+                FROM pg_class c
+                JOIN pg_namespace n
+                    ON n.oid = c.relnamespace
+                WHERE n.nspname = %s
+                    AND c.relname = %s
+                    AND c.relkind = ANY(%s)
+                LIMIT 1
+        """
+        with conn.cursor() as cur:
+                cur.execute(q, (schema, name, ["v", "m"]))
+                row = cur.fetchone()
+        if not row or not row[0]:
+                return False
+        return "regexp_replace" in str(row[0]).lower()
 
 
 def _row_region_code(row: Dict[str, Any]) -> str:
@@ -1522,6 +1545,10 @@ def _fetch_zmjz_ratio_rows(
         schema="ywdata",
         name="v_wcnr_zmjz_ratio_base",
         relkinds=("v", "m"),
+    ) and _view_uses_normalized_name_matching(
+        conn,
+        schema="ywdata",
+        name="v_wcnr_zmjz_ratio_base",
     )
 
     if use_base_view:
@@ -1546,7 +1573,7 @@ def _fetch_zmjz_ratio_rows(
         wf_validated AS MATERIALIZED (
             SELECT
                 x."xyrxx_sfzh",
-                x."xyrxx_xm",
+                {_normalize_person_name_sql('x."xyrxx_xm"')} AS "xyrxx_xm",
                 x."xyrxx_xb",
                 x."xyrxx_lrsj",
                 x."ajxx_join_ajxx_ajbh",
@@ -1599,7 +1626,7 @@ def _fetch_zmjz_ratio_rows(
                     SELECT 1
                     FROM "ywdata"."zq_zfba_wenshu" ws
                     WHERE ws."ajbh" = v."ajxx_join_ajxx_ajbh"
-                      AND TRIM(ws."xgry_xm") = v."xyrxx_xm"
+                    AND {_normalize_person_name_sql('ws."xgry_xm"')} = {_normalize_person_name_sql('v."xyrxx_xm"')}
                 )
 
             UNION ALL
@@ -1683,7 +1710,7 @@ def _fetch_zmjz_ratio_rows(
         admin_history AS MATERIALIZED (
             SELECT
                 x."xyrxx_sfzh",
-                x."xyrxx_xm",
+                {_normalize_person_name_sql('x."xyrxx_xm"')} AS "xyrxx_xm",
                 x."ajxx_join_ajxx_ajbh",
                 x."ajxx_join_ajxx_lasj",
                 x."ajxx_join_ajxx_ay_dm"
@@ -1729,13 +1756,13 @@ def _fetch_zmjz_ratio_rows(
                         SELECT 1
                         FROM "ywdata"."zq_zfba_xjs2" xj
                         WHERE xj."ajbh" = f.ajxx_join_ajxx_ajbh
-                          AND TRIM(xj."xgry_xm") = f.xyrxx_xm
+                          AND {_normalize_person_name_sql('xj."xgry_xm"')} = {_normalize_person_name_sql('f.xyrxx_xm')}
                     )
                  OR EXISTS (
                         SELECT 1
                         FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs" zl
                         WHERE zl."zltzs_ajbh" = f.ajxx_join_ajxx_ajbh
-                          AND zl."zltzs_ryxm" = f.xyrxx_xm
+                          AND {_normalize_person_name_sql('zl."zltzs_ryxm"')} = {_normalize_person_name_sql('f.xyrxx_xm')}
                     )
                 )
         ),
@@ -1768,7 +1795,7 @@ def _fetch_zmjz_ratio_rows(
                     SELECT 1
                     FROM "ywdata"."zq_zfba_wenshu" ws
                     WHERE ws."ajbh" = b.ajxx_join_ajxx_ajbh
-                      AND TRIM(ws."xgry_xm") = b.xyrxx_xm
+                    AND {_normalize_person_name_sql('ws."xgry_xm"')} = {_normalize_person_name_sql('b.xyrxx_xm')}
                       AND COALESCE(ws."wsmc", '') ~ '终止侦查决定书'
                 )
         ),
@@ -1813,7 +1840,7 @@ def _fetch_zmjz_ratio_rows(
             FROM qualified_latest_case q
             INNER JOIN "ywdata"."zq_zfba_tqzmjy" t
                 ON  t."ajbh" = q."ajxx_join_ajxx_ajbh"
-                AND TRIM(t."xgry_xm") = q."xyrxx_xm"
+                AND {_normalize_person_name_sql('t."xgry_xm"')} = {_normalize_person_name_sql('q."xyrxx_xm"')}
         ),
         final_flags AS MATERIALIZED (
             SELECT

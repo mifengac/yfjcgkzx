@@ -7,7 +7,7 @@ CREATE OR REPLACE VIEW "ywdata"."v_wcnr_zmjz_ratio_base" AS
 WITH wf_validated AS MATERIALIZED (
     SELECT
         x."xyrxx_sfzh",
-        x."xyrxx_xm",
+        REGEXP_REPLACE(COALESCE(x."xyrxx_xm", ''), '[[:space:]　]+', '', 'g') AS "xyrxx_xm",
         x."xyrxx_xb",
         x."xyrxx_lrsj",
         x."ajxx_join_ajxx_ajbh",
@@ -61,7 +61,7 @@ wf_xz_filtered AS MATERIALIZED (
             SELECT 1
             FROM "ywdata"."zq_zfba_wenshu" ws
             WHERE ws."ajbh" = v."ajxx_join_ajxx_ajbh"
-              AND TRIM(ws."xgry_xm") = v."xyrxx_xm"
+                            AND REGEXP_REPLACE(COALESCE(ws."xgry_xm", ''), '[[:space:]　]+', '', 'g') = REGEXP_REPLACE(COALESCE(v."xyrxx_xm", ''), '[[:space:]　]+', '', 'g')
         )
 
     UNION ALL
@@ -138,7 +138,7 @@ jlbzx_cte AS MATERIALIZED (
 admin_history AS MATERIALIZED (
     SELECT
         x."xyrxx_sfzh",
-        x."xyrxx_xm",
+        REGEXP_REPLACE(COALESCE(x."xyrxx_xm", ''), '[[:space:]　]+', '', 'g') AS "xyrxx_xm",
         x."ajxx_join_ajxx_ajbh",
         x."ajxx_join_ajxx_lasj",
         x."ajxx_join_ajxx_ay_dm"
@@ -184,13 +184,13 @@ twice_same_ay_with_doc_cte AS MATERIALIZED (
                 SELECT 1
                 FROM "ywdata"."zq_zfba_xjs2" xj
                 WHERE xj."ajbh" = f.ajxx_join_ajxx_ajbh
-                  AND TRIM(xj."xgry_xm") = f.xyrxx_xm
+                                    AND REGEXP_REPLACE(COALESCE(xj."xgry_xm", ''), '[[:space:]　]+', '', 'g') = REGEXP_REPLACE(COALESCE(f.xyrxx_xm, ''), '[[:space:]　]+', '', 'g')
             )
          OR EXISTS (
                 SELECT 1
                 FROM "ywdata"."zq_zfba_zlwcnrzstdxwgftzs" zl
                 WHERE zl."zltzs_ajbh" = f.ajxx_join_ajxx_ajbh
-                  AND zl."zltzs_ryxm" = f.xyrxx_xm
+                                    AND REGEXP_REPLACE(COALESCE(zl."zltzs_ryxm", ''), '[[:space:]　]+', '', 'g') = REGEXP_REPLACE(COALESCE(f.xyrxx_xm, ''), '[[:space:]　]+', '', 'g')
             )
         )
 ),
@@ -223,7 +223,7 @@ criminal_no_detain_no_stop_cte AS MATERIALIZED (
             SELECT 1
             FROM "ywdata"."zq_zfba_wenshu" ws
             WHERE ws."ajbh" = b.ajxx_join_ajxx_ajbh
-              AND TRIM(ws."xgry_xm") = b.xyrxx_xm
+                            AND REGEXP_REPLACE(COALESCE(ws."xgry_xm", ''), '[[:space:]　]+', '', 'g') = REGEXP_REPLACE(COALESCE(b.xyrxx_xm, ''), '[[:space:]　]+', '', 'g')
               AND COALESCE(ws."wsmc", '') ~ '终止侦查决定书'
         )
 ),
@@ -269,7 +269,7 @@ tqzmjy_people AS MATERIALIZED (
     FROM qualified_latest_case q
     INNER JOIN "ywdata"."zq_zfba_tqzmjy" t
         ON  t."ajbh" = q."ajxx_join_ajxx_ajbh"
-        AND TRIM(t."xgry_xm") = q."xyrxx_xm"
+        AND REGEXP_REPLACE(COALESCE(t."xgry_xm", ''), '[[:space:]　]+', '', 'g') = REGEXP_REPLACE(COALESCE(q."xyrxx_xm", ''), '[[:space:]　]+', '', 'g')
 ),
 final_flags AS MATERIALIZED (
     SELECT

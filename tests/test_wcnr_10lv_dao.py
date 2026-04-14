@@ -2,8 +2,10 @@ import unittest
 from unittest.mock import patch
 
 from hqzcsj.dao.wcnr_10lv_dao import (
+    _fetch_zmjz_ratio_rows,
     _is_zmjz_ratio_den_row,
     _is_zmjz_ratio_num_row,
+    _normalize_person_name_sql,
     fetch_metric_detail_rows,
 )
 
@@ -13,7 +15,49 @@ APPLY = "\u662f\u5426\u5f00\u5177\u4e13\u95e8(\u77eb\u6cbb)\u6559\u80b2\u7533\u8
 LEGACY_APPLY = "\u662f\u5426\u5f00\u5177\u4e13\u95e8\u6559\u80b2\u7533\u8bf7\u4e66"
 
 
+class _FakeCursor:
+    def __init__(self, row=None, description=None, rows=None):
+        self._row = row
+        self.description = description or [("xyrxx_sfzh",), ("xyrxx_xm",), ("地区代码",)]
+        self._rows = rows or []
+        self.executed = []
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+
+    def fetchone(self):
+        return self._row
+
+    def fetchall(self):
+        return self._rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _FakeConnection:
+    def __init__(self, row=None, description=None, rows=None):
+        self.cursors = []
+        self._row = row
+        self._description = description
+        self._rows = rows
+
+    def cursor(self):
+        cursor = _FakeCursor(row=self._row, description=self._description, rows=self._rows)
+        self.cursors.append(cursor)
+        return cursor
+
+
 class TestWcnr10lvDao(unittest.TestCase):
+    def test_normalize_person_name_sql_removes_all_whitespace(self) -> None:
+        self.assertEqual(
+            _normalize_person_name_sql('demo_col'),
+            "REGEXP_REPLACE(COALESCE(demo_col, ''), '[[:space:]　]+', '', 'g')",
+        )
+
     def test_zmjz_ratio_den_requires_qualified_flag(self) -> None:
         self.assertTrue(
             _is_zmjz_ratio_den_row(
@@ -175,6 +219,32 @@ class TestWcnr10lvDao(unittest.TestCase):
         self.assertEqual(rows[0]["简要案情"], "KTV内发生争执")
         self.assertEqual(mock_fetch_rows.call_args.kwargs["patterns"], [".*"])
         self.assertIsNone(mock_fetch_rows.call_args.kwargs["diqu"])
+
+    def test_fetch_zmjz_ratio_rows_falls_back_when_view_lacks_name_normalization(self) -> None:
+        conn = _FakeConnection()
+
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._relation_exists",
+            return_value=True,
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._view_uses_normalized_name_matching",
+            return_value=False,
+        ):
+            rows = _fetch_zmjz_ratio_rows(
+                conn,
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=[],
+            )
+
+        self.assertEqual(rows, [])
+        sql, params = conn.cursors[-1].executed[-1]
+        self.assertNotIn('v_wcnr_zmjz_ratio_base', sql)
+        self.assertIn(
+            "REGEXP_REPLACE(COALESCE(t.\"xgry_xm\", ''), '[[:space:]　]+', '', 'g') = REGEXP_REPLACE(COALESCE(q.\"xyrxx_xm\", ''), '[[:space:]　]+', '', 'g')",
+            sql,
+        )
+        self.assertEqual(params[:2], ["2026-01-01 00:00:00", "2026-01-02 00:00:00"])
 
 
 if __name__ == "__main__":
