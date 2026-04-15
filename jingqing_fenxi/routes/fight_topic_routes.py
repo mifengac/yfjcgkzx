@@ -5,6 +5,10 @@ import uuid
 from flask import Response, jsonify, request, send_file
 
 from jingqing_fenxi.routes.jingqing_fenxi_routes import jingqing_fenxi_bp
+from jingqing_fenxi.service.fight_topic_case_export_service import (
+    build_unclosed_case_export_filename,
+    export_unclosed_fight_cases,
+)
 from jingqing_fenxi.service.fight_topic_service import (
     build_export_filename,
     generate_fight_topic_excel,
@@ -83,6 +87,23 @@ def download_fight_topic() -> Response:
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
             download_name=build_export_filename(meta["beginDate"], meta["endDate"]),
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"success": False, "message": str(exc)}), 500
+
+
+@jingqing_fenxi_bp.route("/download/fight-topic/unclosed-cases", methods=["GET"])
+def download_fight_topic_unclosed_cases() -> Response:
+    params = _collect_params()
+    try:
+        export_file, meta = export_unclosed_fight_cases(params)
+        return send_file(
+            export_file,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=build_unclosed_case_export_filename(meta["beginDate"], meta["endDate"]),
         )
     except ValueError as exc:
         return jsonify({"success": False, "message": str(exc)}), 400

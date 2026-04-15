@@ -525,6 +525,17 @@
         window.location.href = "/jingqing_fenxi/download/fight-topic?" + params.toString();
     }
 
+    function doPendingCaseExport() {
+        var beginDate = document.getElementById("fightBeginDate").value;
+        var endDate = document.getElementById("fightEndDate").value;
+        var params = new URLSearchParams();
+
+        if (beginDate) params.append("beginDate", beginDate.replace("T", " "));
+        if (endDate) params.append("endDate", endDate.replace("T", " "));
+
+        window.location.href = "/jingqing_fenxi/download/fight-topic/unclosed-cases?" + params.toString();
+    }
+
     function init() {
         if (initialized || !document.getElementById("fightTopicAnalyzeBtn")) return;
         initialized = true;
@@ -533,6 +544,7 @@
         initAnalysisOptions();
         document.getElementById("fightTopicAnalyzeBtn").addEventListener("click", doAnalyze);
         document.getElementById("fightTopicExportBtn").addEventListener("click", doExport);
+        document.getElementById("fightTopicPendingCaseExportBtn").addEventListener("click", doPendingCaseExport);
     }
 
     window.FightTopicTabPage = { init: init };
