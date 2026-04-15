@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import re
+import threading
+import time
 import uuid
+from copy import deepcopy
 from typing import Any, Dict, Sequence
 
 from jingqing_fenxi.dao import custom_case_monitor_dao as dao
 from jingqing_fenxi.service.special_case_tab_service import (
     CUSTOM_CASE_MONITOR_LABEL,
+    ProgressCallback,
     build_defaults_payload as build_special_case_defaults_payload,
     build_export_filename,
     export_special_case_records,
@@ -15,6 +19,61 @@ from jingqing_fenxi.service.special_case_tab_service import (
     query_special_case_records,
     validate_scheme_rules,
 )
+
+
+_STATUS_LOCK = threading.Lock()
+_QUERY_JOB_STATUS: Dict[tuple[str, str], Dict[str, Any]] = {}
+_QUERY_JOB_TTL_SECONDS = 15 * 60
+
+
+def _default_query_stats() -> Dict[str, int]:
+    return {
+        "upstream_row_count": 0,
+        "rule_scanned_count": 0,
+        "rule_match_count": 0,
+        "branch_scanned_count": 0,
+        "branch_filtered_count": 0,
+    }
+
+
+def _cleanup_expired_query_jobs() -> None:
+    expire_before = time.time() - _QUERY_JOB_TTL_SECONDS
+    with _STATUS_LOCK:
+        expired_keys = [
+            key
+            for key, value in _QUERY_JOB_STATUS.items()
+            if float(value.get("updated_at") or value.get("created_at") or 0) < expire_before
+        ]
+        for key in expired_keys:
+            _QUERY_JOB_STATUS.pop(key, None)
+
+
+def _update_query_job_status(key: tuple[str, str], **patch: Any) -> None:
+    with _STATUS_LOCK:
+        current = _QUERY_JOB_STATUS.get(key)
+        if not current:
+            return
+        for field, value in patch.items():
+            current[field] = value
+        current["updated_at"] = time.time()
+
+
+def _build_query_job_progress(stage: str, stats: Dict[str, int]) -> Dict[str, int]:
+    if stage == "rule_filtering":
+        return {
+            "current": int(stats.get("rule_scanned_count") or 0),
+            "total": int(stats.get("upstream_row_count") or 0),
+        }
+    if stage == "branch_filtering":
+        return {
+            "current": int(stats.get("branch_scanned_count") or 0),
+            "total": int(stats.get("rule_match_count") or 0),
+        }
+    if stage == "done":
+        final_count = int(stats.get("branch_filtered_count") or 0)
+        return {"current": final_count, "total": final_count}
+    upstream_count = int(stats.get("upstream_row_count") or 0)
+    return {"current": upstream_count, "total": upstream_count}
 
 
 def _normalize_scheme_name(value: Any) -> str:
@@ -125,16 +184,16 @@ def _load_enabled_scheme_or_raise(scheme_id: Any) -> Dict[str, Any]:
     return scheme
 
 
-def query_custom_case_monitor_records(
+def _query_records_with_scheme(
     *,
-    scheme_id: Any,
+    scheme: Dict[str, Any],
     start_time: str,
     end_time: str,
     branches: Sequence[str] | None,
     page_num: int,
     page_size: int,
+    progress_callback: ProgressCallback | None = None,
 ) -> Dict[str, Any]:
-    scheme = _load_enabled_scheme_or_raise(scheme_id)
     return query_special_case_records(
         label=CUSTOM_CASE_MONITOR_LABEL,
         scheme_id=int(scheme["id"]),
@@ -145,7 +204,142 @@ def query_custom_case_monitor_records(
         branches=branches,
         page_num=page_num,
         page_size=page_size,
+        progress_callback=progress_callback,
+        include_hit_keyword_details=True,
     )
+
+
+def query_custom_case_monitor_records(
+    *,
+    scheme_id: Any,
+    start_time: str,
+    end_time: str,
+    branches: Sequence[str] | None,
+    page_num: int,
+    page_size: int,
+    progress_callback: ProgressCallback | None = None,
+) -> Dict[str, Any]:
+    scheme = _load_enabled_scheme_or_raise(scheme_id)
+    return _query_records_with_scheme(
+        scheme=scheme,
+        start_time=start_time,
+        end_time=end_time,
+        branches=branches,
+        page_num=page_num,
+        page_size=page_size,
+        progress_callback=progress_callback,
+    )
+
+
+def start_query_custom_case_monitor_job(
+    *,
+    username: str,
+    scheme_id: Any,
+    start_time: str,
+    end_time: str,
+    branches: Sequence[str] | None,
+    page_num: int,
+    page_size: int,
+) -> str:
+    scheme = _load_enabled_scheme_or_raise(scheme_id)
+    _cleanup_expired_query_jobs()
+    job_id = uuid.uuid4().hex
+    key = (username or "", job_id)
+    now = time.time()
+    with _STATUS_LOCK:
+        _QUERY_JOB_STATUS[key] = {
+            "job_id": job_id,
+            "username": username or "",
+            "created_at": now,
+            "updated_at": now,
+            "state": "queued",
+            "stage": "fetching",
+            "message": "任务已创建，准备开始查询...",
+            "progress": {"current": 0, "total": 0},
+            "stats": _default_query_stats(),
+            "result": None,
+        }
+
+    worker = threading.Thread(
+        target=_run_query_job,
+        kwargs={
+            "key": key,
+            "scheme": deepcopy(scheme),
+            "start_time": start_time,
+            "end_time": end_time,
+            "branches": list(branches or []),
+            "page_num": int(page_num or 1),
+            "page_size": int(page_size or 15),
+        },
+        daemon=True,
+    )
+    worker.start()
+    return job_id
+
+
+def get_query_custom_case_monitor_job_status(*, username: str, job_id: str) -> Dict[str, Any] | None:
+    _cleanup_expired_query_jobs()
+    key = (username or "", job_id)
+    with _STATUS_LOCK:
+        status = _QUERY_JOB_STATUS.get(key)
+        if not status:
+            return None
+        return deepcopy(status)
+
+
+def _run_query_job(
+    *,
+    key: tuple[str, str],
+    scheme: Dict[str, Any],
+    start_time: str,
+    end_time: str,
+    branches: Sequence[str] | None,
+    page_num: int,
+    page_size: int,
+) -> None:
+    def on_progress(payload: Dict[str, Any]) -> None:
+        stage = str(payload.get("stage") or "fetching")
+        stats = _default_query_stats()
+        stats.update(payload.get("stats") or {})
+        _update_query_job_status(
+            key,
+            state="running",
+            stage=stage,
+            message=str(payload.get("message") or "查询进行中..."),
+            progress=_build_query_job_progress(stage, stats),
+            stats=stats,
+        )
+
+    try:
+        on_progress({"stage": "fetching", "message": "正在拉取警情...", "stats": {}})
+        result = _query_records_with_scheme(
+            scheme=scheme,
+            start_time=start_time,
+            end_time=end_time,
+            branches=branches,
+            page_num=page_num,
+            page_size=page_size,
+            progress_callback=on_progress,
+        )
+        final_stats = _default_query_stats()
+        final_stats.update((result.get("debug") or {}))
+        _update_query_job_status(
+            key,
+            state="success",
+            stage="done",
+            message=f"查询完成：命中 {result.get('total', 0)} 条",
+            progress=_build_query_job_progress("done", final_stats),
+            stats=final_stats,
+            result=result,
+        )
+    except Exception as exc:
+        _update_query_job_status(
+            key,
+            state="failed",
+            message=str(exc),
+            progress={"current": 0, "total": 0},
+            result=None,
+        )
 
 
 def export_custom_case_monitor_records(

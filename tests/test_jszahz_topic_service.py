@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime
 from unittest.mock import patch
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from jszahzyj.service import jszahz_topic_service
 
@@ -322,6 +322,133 @@ class TestJszahzTopicService(unittest.TestCase):
         self.assertIsNone(payload["records"][0]["关联警情"])
         mock_initialize.assert_called_once()
         mock_attach.assert_not_called()
+
+    def test_query_detail_page_payload_paginates_and_keeps_total_count(self) -> None:
+        fake_payload = {
+            "success": True,
+            "records": [
+                {"姓名": f"人员{i}", "身份证号": f"4401{i:02d}", "关联案件": None, "关联警情": None}
+                for i in range(21)
+            ],
+            "count": 21,
+            "message": "",
+            "filters": {
+                "branch_codes": ["445302000000"],
+                "person_types": [],
+                "risk_labels": [],
+                "managed_only": True,
+            },
+            "active_batches": {"base_batch": None, "tag_batch": None},
+        }
+        with patch(
+            "jszahzyj.service.jszahz_topic_service.query_detail_payload",
+            return_value=fake_payload,
+        ):
+            payload = jszahz_topic_service.query_detail_page_payload(
+                branch_code="445302000000",
+                person_types=[],
+                risk_labels=[],
+                managed_only=True,
+                relation_types=["case", "clinic"],
+                page=2,
+                page_size="20",
+            )
+
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["count"], 21)
+        self.assertEqual(payload["page"], 2)
+        self.assertEqual(payload["page_size_value"], "20")
+        self.assertEqual(payload["page_record_count"], 1)
+        self.assertEqual(payload["selected_relation_types"], ["case", "clinic"])
+        self.assertEqual(payload["visible_relation_columns"], ["关联案件", "关联门诊"])
+
+    def test_query_detail_page_payload_supports_all_page_size(self) -> None:
+        fake_payload = {
+            "success": True,
+            "records": [
+                {"姓名": "张三", "身份证号": "4401", "关联案件": None},
+                {"姓名": "李四", "身份证号": "4402", "关联案件": None},
+            ],
+            "count": 2,
+            "message": "",
+            "filters": {
+                "branch_codes": [],
+                "person_types": [],
+                "risk_labels": [],
+                "managed_only": False,
+            },
+            "active_batches": {"base_batch": None, "tag_batch": None},
+        }
+        with patch(
+            "jszahzyj.service.jszahz_topic_service.query_detail_payload",
+            return_value=fake_payload,
+        ):
+            payload = jszahz_topic_service.query_detail_page_payload(
+                branch_code="__ALL__",
+                person_types=[],
+                risk_labels=[],
+                managed_only=False,
+                relation_types=["case"],
+                page=5,
+                page_size="all",
+            )
+
+        self.assertEqual(payload["page"], 1)
+        self.assertEqual(payload["total_pages"], 1)
+        self.assertEqual(payload["page_size"], None)
+        self.assertEqual(payload["page_record_count"], 2)
+
+    def test_export_detail_xlsx_builds_multi_sheet_workbook(self) -> None:
+        fake_payload = {
+            "success": True,
+            "records": [
+                {
+                    "姓名": "张三",
+                    "身份证号": "4401",
+                    "列管时间": "2026-04-01 08:00:00",
+                    "列管单位": "云城派出所",
+                    "分局": "云城分局",
+                    "人员风险": "1级患者",
+                    "人员类型": "弱监护",
+                    "关联案件": None,
+                    "关联门诊": None,
+                }
+            ],
+            "count": 1,
+            "message": "",
+            "filters": {
+                "branch_codes": ["445302000000"],
+                "person_types": ["弱监护"],
+                "risk_labels": ["1级患者"],
+                "managed_only": True,
+            },
+            "active_batches": {"base_batch": None, "tag_batch": None},
+        }
+        with patch(
+            "jszahzyj.service.jszahz_topic_service.query_detail_payload",
+            return_value=fake_payload,
+        ), patch(
+            "jszahzyj.service.jszahz_topic_detail_page_service.jszahz_topic_relation_dao.query_relation_detail_rows_batch",
+            side_effect=[
+                [{"身份证号": "4401", "案件编号": "AJ001", "案件类型": "刑事"}],
+                [],
+            ],
+        ):
+            data, filename = jszahz_topic_service.export_detail_xlsx(
+                branch_code="445302000000",
+                branch_name="云城分局",
+                person_types=["弱监护"],
+                risk_labels=["1级患者"],
+                managed_only=True,
+                relation_types=["case", "clinic"],
+            )
+
+        workbook = load_workbook(io.BytesIO(data))
+        self.assertEqual(workbook.sheetnames, ["患者明细", "关联案件", "关联门诊"])
+        self.assertEqual(workbook["关联案件"]["A1"].value, "患者姓名")
+        self.assertEqual(workbook["关联案件"]["B2"].value, "4401")
+        self.assertEqual(workbook["关联门诊"]["A1"].value, "暂无数据")
+        self.assertIn("精神患者主题库详情_云城分局_已列管_弱监护_1级患者_案件_门诊_", filename)
 
 
 if __name__ == "__main__":

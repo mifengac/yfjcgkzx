@@ -80,6 +80,67 @@ def query_workorder_rows(
     return _fetch_rows(sql, [start_time, end_time, *keyword_params])
 
 
+def query_workorder_rows(
+    *,
+    start_time: str,
+    end_time: str,
+    keywords: Sequence[str],
+) -> List[Dict[str, Any]]:
+    keyword_sql, keyword_params = _build_keyword_clause(['gd."ordercont"'], keywords)
+    sql = f"""
+    WITH filtered_gd AS (
+        SELECT
+            gd."orderid" AS orderid,
+            gd."ordertitle" AS ordertitle,
+            gd."ordercont" AS ordercont,
+            gd."keyword" AS keyword,
+            gd."registertime" AS registertime,
+            gd."caseaddr" AS caseaddr,
+            gd."objectname" AS objectname,
+            gd."orderstatuscd" AS orderstatuscd
+        FROM ywdata.sh_yf_12345gd_xx gd
+        WHERE gd."registertime" >= %s
+          AND gd."registertime" <= %s
+          AND ({keyword_sql})
+    ),
+    latest_contact AS (
+        SELECT ranked.register_code, ranked.name, ranked.mobile
+        FROM (
+            SELECT
+                jb."register_code" AS register_code,
+                jb."name" AS name,
+                jb."mobile" AS mobile,
+                ROW_NUMBER() OVER (
+                    PARTITION BY jb."register_code"
+                    ORDER BY
+                        jb."cd_time" DESC NULLS LAST,
+                        jb."data_exch_tm" DESC NULLS LAST,
+                        jb."data_incrm_key" DESC NULLS LAST
+                ) AS rn
+            FROM ywdata.sh_yf_12345jbtsyh_xx jb
+            WHERE jb."register_code" IS NOT NULL
+        ) ranked
+        WHERE ranked.rn = 1
+    )
+    SELECT
+        gd.orderid,
+        lc.name,
+        lc.mobile,
+        gd.ordertitle,
+        gd.ordercont,
+        gd.keyword,
+        gd.registertime,
+        gd.caseaddr,
+        gd.objectname,
+        gd.orderstatuscd
+    FROM filtered_gd gd
+    LEFT JOIN latest_contact lc
+      ON gd.orderid = lc.register_code
+    ORDER BY gd.registertime DESC NULLS LAST
+    """
+    return _fetch_rows(sql, [start_time, end_time, *keyword_params])
+
+
 def query_dispute_rows(
     *,
     start_time: datetime,

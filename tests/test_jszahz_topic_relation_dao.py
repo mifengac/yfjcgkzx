@@ -53,6 +53,35 @@ class TestJszahzTopicRelationDao(unittest.TestCase):
         self.assertIn('ORDER BY jqm."source_sync_ts" DESC', alarm_sql)
         self.assertEqual(alarm_params, ("440123199001011111",))
 
+    def test_query_relation_detail_rows_batch_uses_any_filter(self) -> None:
+        with patch(
+            "jszahzyj.dao.jszahz_topic_relation_dao.execute_query",
+            return_value=[{"身份证号": "440123199001011111", "案件编号": "AJ001"}],
+        ) as mock_execute:
+            rows = jszahz_topic_relation_dao.query_relation_detail_rows_batch(
+                "case",
+                ["440123199001011111", "440123199001011111"],
+            )
+
+        self.assertEqual(rows[0]["案件编号"], "AJ001")
+        batch_sql, batch_params = mock_execute.call_args[0]
+        self.assertIn('"xyrxx_sfzh" = ANY', batch_sql)
+        self.assertIn('AS "身份证号"', batch_sql)
+        self.assertEqual(batch_params, (["440123199001011111"],))
+
+    def test_query_relation_count_maps_can_limit_relation_types(self) -> None:
+        with patch(
+            "jszahzyj.dao.jszahz_topic_relation_dao.execute_query",
+            side_effect=[[{"身份证号": "440123199001011111", "数量": 2}]],
+        ) as mock_execute:
+            result = jszahz_topic_relation_dao.query_relation_count_maps(
+                ["440123199001011111"],
+                relation_types=["alarm"],
+            )
+
+        self.assertEqual(result, {"alarm": {"440123199001011111": 2}})
+        self.assertEqual(mock_execute.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

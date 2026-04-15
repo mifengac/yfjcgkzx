@@ -271,12 +271,45 @@ def calc_50m_cluster(data):
     return calc_repeat_address(data, radius_meters=50)
 
 
-def generate_excel_report(analysis_results, all_data, dimensions_selected, analysis_options=None):
-    """Generate excel workbook containing summary and raw data."""
-    opts = analysis_options or {}
+def _write_headers(ws, row_idx, headers, bold_font):
+    for col_idx, header in enumerate(headers, 1):
+        ws.cell(row=row_idx, column=col_idx, value=header).font = bold_font
 
+
+def _write_raw_data_section(ws, row_idx, all_data, raw_headers, bold_font):
+    ws.cell(row=row_idx, column=1, value="分析源数据明细").font = bold_font
+    row_idx += 1
+    _write_headers(ws, row_idx, raw_headers, bold_font)
+    row_idx += 1
+
+    for raw_row in all_data:
+        ws.cell(row=row_idx, column=1, value=raw_row.get("caseNo", ""))
+        ws.cell(row=row_idx, column=2, value=raw_row.get("callTime", ""))
+        ws.cell(row=row_idx, column=3, value=raw_row.get("caseLevelName", ""))
+        ws.cell(row=row_idx, column=4, value=raw_row.get("occurAddress", ""))
+        ws.cell(row=row_idx, column=5, value=raw_row.get("callerPhone", ""))
+        ws.cell(row=row_idx, column=6, value=raw_row.get("dutyDeptName", ""))
+        ws.cell(row=row_idx, column=7, value=raw_row.get("caseState", ""))
+        ws.cell(row=row_idx, column=8, value=raw_row.get("caseContents", ""))
+        row_idx += 1
+
+    return row_idx
+
+
+def generate_excel_report(
+    analysis_results,
+    all_data,
+    dimensions_selected,
+    analysis_options=None,
+    begin_date='',
+    end_date='',
+):
+    """Generate a single-sheet excel workbook containing summary and raw data."""
+    opts = analysis_options or {}
+    bold_font = openpyxl.styles.Font(bold=True)
     wb = Workbook()
-    wb.remove(wb.active)
+    ws = wb.active
+    ws.title = "警情分析报表"
 
     dim_names = {
         "srr": "各地同环比",
@@ -285,36 +318,35 @@ def generate_excel_report(analysis_results, all_data, dimensions_selected, analy
         "phone": f"重复报警电话(>= {opts.get('repeatPhoneMinCount', 2)}次)",
         "cluster": f"重复报警地址(半径{opts.get('repeatAddrRadiusMeters', 50)}米)",
     }
+    raw_headers = ["接警号", "报警时间", "警情级别", "涉案地址", "报警人电话", "管辖单位", "警情状态", "简要案情"]
 
-    raw_headers = [
-        "接警号",
-        "报警时间",
-        "警情级别",
-        "涉案地址",
-        "报警人电话",
-        "管辖单位",
-        "警情状态",
-        "简要案情",
-    ]
+    ws.cell(row=1, column=1, value="警情分析报表").font = bold_font
+    ws.cell(row=2, column=1, value="开始时间").font = bold_font
+    ws.cell(row=2, column=2, value=begin_date or "")
+    ws.cell(row=3, column=1, value="结束时间").font = bold_font
+    ws.cell(row=3, column=2, value=end_date or "")
 
-    for dim_key, title in dim_names.items():
-        if dim_key not in dimensions_selected:
+    row_idx = 5
+    wrote_content = False
+
+    for dim_key in dimensions_selected or []:
+        title = dim_names.get(dim_key)
+        if not title:
             continue
 
-        ws = wb.create_sheet(title=title[:31])
-        dim_data = analysis_results.get(dim_key, [])
+        wrote_content = True
+        ws.cell(row=row_idx, column=1, value=f"{title}统计").font = bold_font
+        row_idx += 1
 
-        ws.cell(row=1, column=1, value=f"{title}统计表").font = openpyxl.styles.Font(bold=True)
         if dim_key == "srr":
-            ws.cell(row=3, column=1, value="单位名称")
-            ws.cell(row=3, column=2, value="本期数")
-            ws.cell(row=3, column=3, value="同比上期")
-            ws.cell(row=3, column=4, value="同比比例")
-            ws.cell(row=3, column=5, value="环比上期")
-            ws.cell(row=3, column=6, value="环比比例")
-
-            row_idx = 4
-            for item in dim_data:
+            _write_headers(
+                ws,
+                row_idx,
+                ["单位名称", "本期数", "同比上期", "同比比例", "环比上期", "环比比例"],
+                bold_font,
+            )
+            row_idx += 1
+            for item in analysis_results.get(dim_key, []):
                 ws.cell(row=row_idx, column=1, value=item.get("name", ""))
                 ws.cell(row=row_idx, column=2, value=item.get("presentCycle", ""))
                 ws.cell(row=row_idx, column=3, value=item.get("upperY2yCycle", ""))
@@ -323,40 +355,30 @@ def generate_excel_report(analysis_results, all_data, dimensions_selected, analy
                 ws.cell(row=row_idx, column=6, value=item.get("m2mProportion", ""))
                 row_idx += 1
         else:
-            ws.cell(row=3, column=1, value="统计项")
-            ws.cell(row=3, column=2, value="数量")
-
-            row_idx = 4
-            for item in dim_data:
+            _write_headers(ws, row_idx, ["统计项", "数量"], bold_font)
+            row_idx += 1
+            for item in analysis_results.get(dim_key, []):
                 ws.cell(row=row_idx, column=1, value=str(item[0]))
                 ws.cell(row=row_idx, column=2, value=str(item[1]))
                 row_idx += 1
 
-        start_raw_row = row_idx + 3
-        ws.cell(row=start_raw_row, column=1, value="分析源数据明细").font = openpyxl.styles.Font(bold=True)
+        row_idx += 2
 
-        start_raw_row += 1
-        for col_idx, header in enumerate(raw_headers, 1):
-            ws.cell(row=start_raw_row, column=col_idx, value=header).font = openpyxl.styles.Font(bold=True)
+    if all_data:
+        wrote_content = True
+        row_idx = _write_raw_data_section(ws, row_idx, all_data, raw_headers, bold_font)
 
-        row_idx = start_raw_row + 1
-        for raw_row in all_data:
-            ws.cell(row=row_idx, column=1, value=raw_row.get("caseNo", ""))
-            ws.cell(row=row_idx, column=2, value=raw_row.get("callTime", ""))
-            ws.cell(row=row_idx, column=3, value=raw_row.get("caseLevelName", ""))
-            ws.cell(row=row_idx, column=4, value=raw_row.get("occurAddress", ""))
-            ws.cell(row=row_idx, column=5, value=raw_row.get("callerPhone", ""))
-            ws.cell(row=row_idx, column=6, value=raw_row.get("dutyDeptName", ""))
-            ws.cell(row=row_idx, column=7, value=raw_row.get("caseState", ""))
-            ws.cell(row=row_idx, column=8, value=raw_row.get("caseContents", ""))
-            row_idx += 1
+    if not wrote_content:
+        ws.cell(row=row_idx, column=1, value="无数据").font = bold_font
 
-        ws.column_dimensions["A"].width = 30
-        ws.column_dimensions["D"].width = 40
-        ws.column_dimensions["H"].width = 80
-
-    if not wb.sheetnames:
-        wb.create_sheet("无数据")
+    ws.column_dimensions["A"].width = 30
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 18
+    ws.column_dimensions["D"].width = 40
+    ws.column_dimensions["E"].width = 18
+    ws.column_dimensions["F"].width = 18
+    ws.column_dimensions["G"].width = 18
+    ws.column_dimensions["H"].width = 80
 
     out = io.BytesIO()
     wb.save(out)

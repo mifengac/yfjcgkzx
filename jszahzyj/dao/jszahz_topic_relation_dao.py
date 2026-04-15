@@ -193,6 +193,121 @@ RELATION_DETAIL_SQLS = {
     """,
 }
 
+RELATION_BATCH_DETAIL_SQLS = {
+    "case": """
+        SELECT
+            UPPER(zzx."xyrxx_sfzh") AS "身份证号",
+            zzx."ajxx_join_ajxx_ajbh" AS "案件编号",
+            zzx."ajxx_join_ajxx_ajlx" AS "案件类型",
+            zzx."ajxx_join_ajxx_ay" AS "案由",
+            zzx."ajxx_join_ajxx_cbdw_bh" AS "办案单位",
+            zzx."ajxx_join_ajxx_lasj" AS "立案时间"
+        FROM "ywdata"."zq_zfba_xyrxx" zzx
+        WHERE zzx."ajxx_join_ajxx_ajbh" IS NOT NULL
+          AND zzx."xyrxx_sfzh" = ANY(%s::text[])
+        ORDER BY UPPER(zzx."xyrxx_sfzh"), zzx."ajxx_join_ajxx_lasj" DESC NULLS LAST
+    """,
+    "alarm": """
+        SELECT
+            UPPER(jqm."sfzh") AS "身份证号",
+            jqm."calltime" AS "报警时间",
+            jqm."cmdname" AS "分局",
+            jqm."dutydeptname" AS "管辖单位",
+            jqm."casecontents" AS "报警内容",
+            jqm."newcharasubclass" AS "警情性质",
+            jqm."occuraddress" AS "警情地址",
+            jqm."replies" AS "处警情况",
+            jqm."newcharasubclass" AS "确认警情编码",
+            jqm."neworicharasubclass" AS "原始警情编码",
+            jqm."cmdid" AS "分局编码",
+            jqm."dutydeptno" AS "管辖单位编码",
+            jqm."caseno" AS "警情编号"
+        FROM "jcgkzx_monitor"."jszahz_jq_sfzh_map" jqm
+        WHERE jqm."sfzh" = ANY(%s::text[])
+        ORDER BY UPPER(jqm."sfzh"), jqm."source_sync_ts" DESC, jqm."source_jq_id" DESC
+    """,
+    "vehicle": """
+        SELECT
+            UPPER(jdc."sfzmhm") AS "身份证号",
+            jdc."hpzl" AS "号牌种类",
+            jdc."jdcxh" AS "机动车序号",
+            jdc."hphmqc" AS "号牌名称",
+            jdc."zwppmc" AS "中文品牌",
+            jdc."clzzqymc" AS "车辆制造企业",
+            jdc."cllx" AS "车辆类型",
+            jdc."ccdjrq" AS "初次登记时间",
+            jdc."zjdjrq" AS "最近定检日期",
+            jdc."qzbfqz" AS "强制报废期止"
+        FROM "ywdata"."t_qsjdc_jbxx" jdc
+        WHERE jdc."sfzmhm" = ANY(%s::text[])
+        ORDER BY UPPER(jdc."sfzmhm"), jdc."ccdjrq" DESC NULLS LAST
+    """,
+    "video": """
+        SELECT
+            UPPER(spy."id_number") AS "身份证号",
+            spy."name" AS "姓名",
+            spy."shot_time" AS "抓拍时间",
+            dev."azdz" AS "地点",
+            dev."jd" AS "经度",
+            dev."wd" AS "纬度"
+        FROM "ywdata"."t_spy_ryrlgj_xx" spy
+        LEFT JOIN "ywdata"."t_yf_spy_qs_device" dev
+          ON spy."device_id" = dev."sbbm"
+        WHERE spy."libname" = '精神病人'
+          AND spy."id_number" = ANY(%s::text[])
+        ORDER BY
+            UPPER(spy."id_number"),
+            CASE
+                WHEN spy."shot_time" ~ '^\\d{14}$' THEN ywdata.str_to_ts(spy."shot_time")
+                ELSE NULL
+            END DESC NULLS LAST,
+            spy."shot_time" DESC NULLS LAST
+    """,
+    "clinic": """
+        SELECT
+            UPPER(mz."zjhm") AS "身份证号",
+            mz."xzz_dzmc" AS "现住址",
+            mz."gzdw" AS "工作单位",
+            mz."lxr_xm" AS "联系人姓名",
+            mz."mzyy_yymc" AS "医院名称",
+            mz."mzyy_ksmc" AS "科室名称",
+            mz."mzys_ysxm" AS "医生姓名",
+            mz."mzxx_mzfy" AS "门诊费用",
+            mz."mzxx_jzsj" AS "就诊时间"
+        FROM "ywdata"."sh_yf_mz_djxx" mz
+        WHERE mz."zjhm" = ANY(%s::text[])
+        ORDER BY UPPER(mz."zjhm"), mz."mzxx_jzsj" DESC NULLS LAST
+    """,
+    "racing": """
+        SELECT
+            UPPER(jz."dsrsfzmhm") AS "身份证号",
+            jz."wsbh" AS "文书编号",
+            jz."wfsj" AS "违法时间",
+            jz."wfdd" AS "违法地点",
+            jz."hphm" AS "号牌号码",
+            jz."wfxw" AS "违法行为",
+            jz."shyj" AS "审核意见"
+        FROM "ywdata"."b_evt_jjzdbczjajxx" jz
+        WHERE jz."dsrsfzmhm" = ANY(%s::text[])
+        ORDER BY UPPER(jz."dsrsfzmhm"), jz."wfsj" DESC NULLS LAST
+    """,
+    "traffic": """
+        SELECT
+            UPPER(vv."jszh") AS "身份证号",
+            vv."wfbh" AS "违法编号",
+            vv."wfsj" AS "违法时间",
+            vv."wfdd" AS "违法地点",
+            vv."hphm" AS "号牌号码",
+            vv."hpzl" AS "号牌种类",
+            vv."wfxw" AS "违法行为",
+            vv."fkje" AS "罚款金额",
+            vv."wfjfs" AS "违法记分数"
+        FROM "ywdata"."vio_violation" vv
+        WHERE vv."jszh" = ANY(%s::text[])
+        ORDER BY UPPER(vv."jszh"), vv."wfsj" DESC NULLS LAST
+    """,
+}
+
 
 def _normalize_zjhms(zjhms: Iterable[str]) -> List[str]:
     seen = set()
@@ -225,15 +340,30 @@ def _query_relation_rows(relation_type: str, zjhm: str) -> List[Dict[str, Any]]:
     return execute_query(RELATION_DETAIL_SQLS[relation_type], (zjhm,))
 
 
-def query_relation_count_maps(zjhms: Iterable[str]) -> Dict[str, Dict[str, int]]:
+def query_relation_count_maps(
+    zjhms: Iterable[str],
+    *,
+    relation_types: Iterable[str] | None = None,
+) -> Dict[str, Dict[str, int]]:
     normalized = _normalize_zjhms(zjhms)
-    empty = {relation_type: {} for relation_type in RELATION_COUNT_SQLS}
+    selected_relation_types = [
+        relation_type for relation_type in (relation_types or RELATION_COUNT_SQLS.keys())
+        if relation_type in RELATION_COUNT_SQLS
+    ]
+    empty = {relation_type: {} for relation_type in selected_relation_types}
     if not normalized:
         return empty
     return {
         relation_type: _query_relation_count_map(relation_type, normalized)
-        for relation_type in RELATION_COUNT_SQLS
+        for relation_type in selected_relation_types
     }
+
+
+def query_relation_detail_rows_batch(relation_type: str, zjhms: Iterable[str]) -> List[Dict[str, Any]]:
+    normalized = _normalize_zjhms(zjhms)
+    if relation_type not in RELATION_BATCH_DETAIL_SQLS or not normalized:
+        return []
+    return execute_query(RELATION_BATCH_DETAIL_SQLS[relation_type], (normalized,))
 
 
 def query_case_rows(zjhm: str) -> List[Dict[str, Any]]:

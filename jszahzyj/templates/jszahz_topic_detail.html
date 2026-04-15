@@ -5,68 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/water.css') }}">
-    <style>
-        body { margin: 0; background: #f8fafc; color: #1f2937; }
-        .page { padding: 16px; width: max-content; min-width: 100%; box-sizing: border-box; }
-        .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
-        .head h1 { margin: 0; font-size: 18px; }
-        .sub { color: #64748b; font-size: 12px; }
-        .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .table-wrap { border: 1px solid #dbe3ef; border-radius: 10px; background: #fff; overflow: auto; max-height: calc(100vh - 120px); }
-        table { width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; }
-        th, td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; text-align: left; font-size: 13px; white-space: nowrap; vertical-align: top; background: #fff; }
-        th { position: sticky; top: 0; background: #f8fbff; z-index: 4; }
-        .sticky-col { position: sticky; z-index: 3; overflow: hidden; text-overflow: ellipsis; }
-        tbody .sticky-col { background: #fff; }
-        thead .sticky-col { background: #f8fbff; }
-        .sticky-col-1 { left: 0; min-width: 120px; width: 120px; max-width: 120px; }
-        .sticky-col-2 { left: 120px; min-width: 190px; width: 190px; max-width: 190px; }
-        .sticky-col-3 { left: 310px; min-width: 190px; width: 190px; max-width: 190px; }
-        .sticky-col-4 { left: 500px; min-width: 280px; width: 280px; max-width: 280px; }
-        .relation-col { min-width: 104px; text-align: center; }
-        .type-col { min-width: 220px; }
-        .relation-link {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 78px;
-            padding: 4px 10px;
-            border-radius: 999px;
-            text-decoration: none;
-            color: #0f4c81;
-            background: #edf5ff;
-            border: 1px solid #c8ddf6;
-            font-weight: 600;
-        }
-        .relation-link-active {
-            color: #15803d;
-            background: #ecfdf3;
-            border-color: #86efac;
-        }
-        .relation-link-active:hover { background: #dcfce7; }
-        .relation-link-disabled {
-            color: #94a3b8;
-            background: #f1f5f9;
-            border-color: #cbd5e1;
-            cursor: not-allowed;
-        }
-        .relation-link-loading {
-            color: #475569;
-            background: #eef2ff;
-            border-color: #c7d2fe;
-        }
-        .empty { padding: 24px; color: #64748b; text-align: center; }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('jszahzyj.static', filename='jszahz_topic_detail.css') }}">
 </head>
 <body>
 <div class="page">
     <div class="head">
         <div>
             <h1>{{ title }}</h1>
-            <div class="sub">当前分局：{{ branch_name }}，共 {{ records|length }} 条明细</div>
+            <div class="sub">当前分局：{{ branch_name }}，共 {{ count }} 人</div>
         </div>
-        <div class="toolbar">
-            <button type="button" onclick="downloadDetail()">导出 xlsx</button>
+        <form class="toolbar-form" id="jszahzTopicDetailForm" method="get" action="{{ url_for('jszahzyj.jszahzztk_detail_page') }}">
+            <input type="hidden" name="branch_code" value="{{ branch_code }}">
+            <input type="hidden" name="branch_name" value="{{ branch_name }}">
+            <input type="hidden" name="person_types" value="{{ filters.person_types|join(',') }}">
+            <input type="hidden" name="risk_labels" value="{{ filters.risk_labels|join(',') }}">
+            <input type="hidden" name="managed_only" value="{{ '1' if filters.managed_only else '0' }}">
+            <input type="hidden" name="page" id="jszahzTopicDetailPageInput" value="{{ page }}">
+
+            <div class="toolbar-group">
+                <label for="jszahzTopicDetailPageSize">每页</label>
+                <select class="toolbar-select" id="jszahzTopicDetailPageSize" name="page_size">
+                    {% for option in page_size_options %}
+                    <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="relation-picker" id="jszahzTopicRelationPicker">
+                <button type="button" class="tool-button" id="jszahzTopicRelationPickerTrigger">关联类型（{{ selected_relation_types|length }}/{{ relation_type_options|length }}）</button>
+                <div class="relation-picker-menu" id="jszahzTopicRelationPickerMenu">
+                    <div class="relation-picker-grid">
+                        {% for option in relation_type_options %}
+                        <label>
+                            <input type="checkbox" name="relation_types" value="{{ option.value }}" {% if option.checked %}checked{% endif %}>
+                            <span>{{ option.label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <div class="relation-picker-actions">
+                        <button type="button" class="tool-button" onclick="toggleAllRelationTypes(true)">全选</button>
+                        <button type="button" class="tool-button" onclick="applyToolbarFilters()">应用筛选</button>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="tool-button primary" onclick="downloadDetail()">导出详情</button>
+        </form>
+    </div>
+
+    <div class="status-bar">
+        <div class="sub">
+            当前共 <strong>{{ count }}</strong> 人，本页 <strong>{{ page_record_count }}</strong> 人，已显示 <strong>{{ selected_relation_types|length }}</strong> 类关联
+        </div>
+        <div class="sub">
+            分页：第 <strong>{{ page }}</strong> / <strong>{{ total_pages }}</strong> 页
         </div>
     </div>
 
@@ -82,6 +74,7 @@
             <tr>
                 {% for key in headers %}
                 {% set is_relation = key in relation_column_types %}
+                {% if (not is_relation) or (key in visible_relation_columns) %}
                 {% set class_name = 'relation-col' if is_relation else '' %}
                 {% if loop.index <= 4 %}
                 {% set class_name = (class_name + ' sticky-col sticky-col-' + loop.index|string).strip() %}
@@ -90,6 +83,7 @@
                 {% set class_name = (class_name + ' type-col').strip() %}
                 {% endif %}
                 <th class="{{ class_name }}" title="{{ key }}">{{ key }}</th>
+                {% endif %}
                 {% endfor %}
             </tr>
             </thead>
@@ -97,8 +91,9 @@
             {% for row in records %}
             <tr>
                 {% for key in headers %}
-                {% set value = row.get(key) %}
                 {% set is_relation = key in relation_column_types %}
+                {% if (not is_relation) or (key in visible_relation_columns) %}
+                {% set value = row.get(key) %}
                 {% set class_name = 'relation-col' if is_relation else '' %}
                 {% if loop.index <= 4 %}
                 {% set class_name = (class_name + ' sticky-col sticky-col-' + loop.index|string).strip() %}
@@ -133,6 +128,7 @@
                     {{ value if value is not none else '' }}
                     {% endif %}
                 </td>
+                {% endif %}
                 {% endfor %}
             </tr>
             {% endfor %}
@@ -142,129 +138,45 @@
         <div class="empty">暂无明细数据</div>
         {% endif %}
     </div>
+
+    <div class="pagination">
+        <div class="sub">分页大小：{{ page_size_label }}，当前共 {{ count }} 人</div>
+        <div class="pagination-controls">
+            <button type="button" class="tool-button" onclick="goToPage(1)" {% if not has_previous %}disabled{% endif %}>首页</button>
+            <button type="button" class="tool-button" onclick="goToPage({{ previous_page }})" {% if not has_previous %}disabled{% endif %}>上一页</button>
+            {% for page_no in page_numbers %}
+            {% if page_no == page %}
+            <span class="page-chip current">{{ page_no }}</span>
+            {% else %}
+            <button type="button" class="page-chip" onclick="goToPage({{ page_no }})">{{ page_no }}</button>
+            {% endif %}
+            {% endfor %}
+            <button type="button" class="tool-button" onclick="goToPage({{ next_page }})" {% if not has_next %}disabled{% endif %}>下一页</button>
+            <button type="button" class="tool-button" onclick="goToPage({{ total_pages }})" {% if not has_next %}disabled{% endif %}>末页</button>
+        </div>
+    </div>
+</div>
+<div class="export-overlay export-overlay-hidden" id="jszahzTopicExportOverlay">
+    <div class="export-overlay-card">
+        <div class="export-overlay-spinner" aria-hidden="true"></div>
+        <div class="export-overlay-title">正在整理导出文件，请稍候...</div>
+        <div class="export-overlay-text">
+            正在汇总患者明细和所选关联类型的详细内容，数据量较大时可能需要几秒到几十秒。<br>
+            下载开始后可直接关闭此提示；如果长时间没有反应，请查看浏览器下载栏。
+        </div>
+        <div class="export-overlay-actions">
+            <button type="button" class="tool-button" onclick="hideExportOverlay()">关闭提示</button>
+        </div>
+    </div>
 </div>
 <script>
-    function notifyParentReady() {
-        if (window.parent && window.parent !== window) {
-            window.parent.postMessage({
-                type: "jszahz-topic-detail-ready"
-            }, "*");
-        }
-    }
-
-    function reportPreferredWidth() {
-        const tableWrap = document.querySelector(".table-wrap");
-        const page = document.querySelector(".page");
-        const contentWidth = Math.max(
-            tableWrap ? tableWrap.scrollWidth : 0,
-            page ? page.scrollWidth : 0,
-            640
-        );
-        if (window.parent && window.parent !== window) {
-            window.parent.postMessage({
-                type: "jszahz-topic-detail-width",
-                width: contentWidth
-            }, "*");
-        }
-    }
-
-    function downloadDetail() {
-        const params = new URLSearchParams({
-            branch_code: "{{ branch_code }}",
-            person_types: "{{ filters.person_types|join(',') }}",
-            risk_labels: "{{ filters.risk_labels|join(',') }}",
-            managed_only: "{{ '1' if filters.managed_only else '0' }}"
-        });
-        window.location.href = "{{ url_for('jszahzyj.download_jszahzztk_detail') }}?" + params.toString();
-    }
-
-    function buildRelationHref(relationType, zjhm, xm) {
-        const params = new URLSearchParams({
-            relation_type: relationType || "",
-            zjhm: zjhm || "",
-            xm: xm || ""
-        });
-        return "{{ url_for('jszahzyj.jszahzztk_relation_page') }}?" + params.toString();
-    }
-
-    function renderRelationPlaceholder(el, count) {
-        const relationType = el.getAttribute("data-relation-type") || "";
-        const zjhm = el.getAttribute("data-zjhm") || "";
-        const xm = el.getAttribute("data-xm") || "";
-        const safeCount = Number(count) || 0;
-
-        if (safeCount > 0) {
-            const link = document.createElement("a");
-            link.className = "relation-link relation-link-active";
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
-            link.href = buildRelationHref(relationType, zjhm, xm);
-            link.textContent = "查看(" + safeCount + ")";
-            el.replaceWith(link);
-            return;
-        }
-
-        const span = document.createElement("span");
-        span.className = "relation-link relation-link-disabled";
-        span.setAttribute("aria-disabled", "true");
-        span.textContent = "查看(0)";
-        el.replaceWith(span);
-    }
-
-    async function loadRelationCounts() {
-        const placeholders = Array.from(document.querySelectorAll("[data-relation-placeholder='1']"));
-        if (!placeholders.length) {
-            reportPreferredWidth();
-            return;
-        }
-
-        const zjhms = Array.from(new Set(placeholders
-            .map(function (el) { return (el.getAttribute("data-zjhm") || "").trim(); })
-            .filter(Boolean)));
-
-        if (!zjhms.length) {
-            placeholders.forEach(function (el) { renderRelationPlaceholder(el, 0); });
-            reportPreferredWidth();
-            return;
-        }
-
-        try {
-            const response = await fetch("{{ url_for('jszahzyj.api_jszahzztk_detail_relation_counts') }}", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ zjhms: zjhms })
-            });
-            const payload = await response.json();
-            if (!response.ok || !payload.success) {
-                throw new Error((payload && payload.message) || "关联统计加载失败");
-            }
-
-            const counts = payload.counts || {};
-            placeholders.forEach(function (el) {
-                const relationType = el.getAttribute("data-relation-type") || "";
-                const zjhm = (el.getAttribute("data-zjhm") || "").trim().toUpperCase();
-                const count = Number((((counts[relationType] || {})[zjhm]) || 0));
-                renderRelationPlaceholder(el, count);
-            });
-        } catch (_error) {
-            placeholders.forEach(function (el) {
-                const span = document.createElement("span");
-                span.className = "relation-link relation-link-disabled";
-                span.setAttribute("aria-disabled", "true");
-                span.textContent = "统计失败";
-                el.replaceWith(span);
-            });
-        } finally {
-            reportPreferredWidth();
-        }
-    }
-
-    window.addEventListener("DOMContentLoaded", notifyParentReady);
-    window.addEventListener("DOMContentLoaded", reportPreferredWidth);
-    window.addEventListener("load", notifyParentReady);
-    window.addEventListener("load", reportPreferredWidth);
-    window.addEventListener("resize", reportPreferredWidth);
-    window.addEventListener("load", loadRelationCounts);
+window.JSZahzTopicDetailConfig = {
+    selectedRelationTypes: {{ selected_relation_types|tojson }},
+    downloadDetailUrl: {{ url_for('jszahzyj.download_jszahzztk_detail')|tojson }},
+    relationPageUrl: {{ url_for('jszahzyj.jszahzztk_relation_page')|tojson }},
+    detailRelationCountsUrl: {{ url_for('jszahzyj.api_jszahzztk_detail_relation_counts')|tojson }}
+};
 </script>
+<script src="{{ url_for('jszahzyj.static', filename='jszahz_topic_detail.js') }}"></script>
 </body>
 </html>

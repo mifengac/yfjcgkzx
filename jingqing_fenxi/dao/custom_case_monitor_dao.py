@@ -11,6 +11,7 @@ from gonggong.config.database import get_database_connection
 SCHEMA_NAME = "jcgkzx_monitor"
 SCHEME_TABLE = "custom_case_monitor_scheme"
 RULE_TABLE = "custom_case_monitor_rule"
+_RULE_GROUP_COLUMN_EXISTS: bool | None = None
 
 
 def _quote_table(schema_name: str, table_name: str) -> str:
@@ -23,6 +24,37 @@ def _scheme_table() -> str:
 
 def _rule_table() -> str:
     return _quote_table(SCHEMA_NAME, RULE_TABLE)
+
+
+def _rule_group_column_exists(cursor: RealDictCursor | None = None) -> bool:
+    global _RULE_GROUP_COLUMN_EXISTS
+    if _RULE_GROUP_COLUMN_EXISTS is not None:
+        return _RULE_GROUP_COLUMN_EXISTS
+
+    owns_connection = False
+    connection = None
+    if cursor is None:
+        owns_connection = True
+        connection = get_database_connection()
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        cursor.execute(
+            """
+            SELECT 1
+              FROM information_schema.columns
+             WHERE table_schema = %s
+               AND table_name = %s
+               AND column_name = 'group_no'
+             LIMIT 1
+            """,
+            (SCHEMA_NAME, RULE_TABLE),
+        )
+        _RULE_GROUP_COLUMN_EXISTS = bool(cursor.fetchone())
+        return _RULE_GROUP_COLUMN_EXISTS
+    finally:
+        if owns_connection and connection is not None:
+            connection.close()
 
 
 def _serialize_row(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -39,6 +71,7 @@ def _fetch_rules_by_scheme_ids(cursor: RealDictCursor, scheme_ids: Sequence[int]
     if not scheme_ids:
         return {}
 
+    group_select = "group_no," if _rule_group_column_exists(cursor) else "1 AS group_no,"
     cursor.execute(
         f"""
         SELECT id,
@@ -46,13 +79,14 @@ def _fetch_rules_by_scheme_ids(cursor: RealDictCursor, scheme_ids: Sequence[int]
                field_name,
                operator,
                rule_values,
+               {group_select}
                sort_order,
                is_enabled,
                created_at,
                updated_at
           FROM {_rule_table()}
          WHERE scheme_id = ANY(%s)
-         ORDER BY scheme_id ASC, sort_order ASC, id ASC
+         ORDER BY scheme_id ASC, group_no ASC, sort_order ASC, id ASC
         """,
         (list(scheme_ids),),
     )
@@ -212,7 +246,38 @@ def delete_scheme(scheme_id: int) -> bool:
 
 def _replace_rules(cursor: RealDictCursor, scheme_id: int, rules: Sequence[Dict[str, Any]]) -> None:
     cursor.execute(f"DELETE FROM {_rule_table()} WHERE scheme_id = %s", (scheme_id,))
+    has_group_column = _rule_group_column_exists(cursor)
     for index, rule in enumerate(rules, start=1):
+        group_no = int(rule.get("group_no") or 1)
+        if not has_group_column and group_no != 1:
+            raise RuntimeError("custom_case_monitor_rule.group_no 缺失，请先执行规则分组升级 SQL")
+        if has_group_column:
+            cursor.execute(
+                f"""
+                INSERT INTO {_rule_table()} (
+                    scheme_id,
+                    field_name,
+                    operator,
+                    rule_values,
+                    group_no,
+                    sort_order,
+                    is_enabled,
+                    created_at,
+                    updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                (
+                    scheme_id,
+                    rule["field_name"],
+                    rule["operator"],
+                    Json(list(rule["rule_values"])),
+                    group_no,
+                    int(rule.get("sort_order") or index),
+                    bool(rule.get("is_enabled", True)),
+                ),
+            )
+            continue
+
         cursor.execute(
             f"""
             INSERT INTO {_rule_table()} (

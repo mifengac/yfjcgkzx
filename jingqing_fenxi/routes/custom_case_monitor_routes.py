@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Response, jsonify, request, send_file
+from flask import Response, jsonify, request, send_file, session
 
 from jingqing_fenxi.routes.jingqing_fenxi_routes import jingqing_fenxi_bp
 from jingqing_fenxi.service.custom_case_monitor_service import (
@@ -8,8 +8,10 @@ from jingqing_fenxi.service.custom_case_monitor_service import (
     create_scheme,
     delete_scheme,
     export_custom_case_monitor_records,
+    get_query_custom_case_monitor_job_status,
     list_scheme_payload,
     query_custom_case_monitor_records,
+    start_query_custom_case_monitor_job,
     update_scheme,
 )
 
@@ -78,6 +80,44 @@ def api_custom_case_monitor_query() -> Response:
         )
     except ValueError as exc:
         return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"success": False, "message": str(exc)}), 500
+
+
+@jingqing_fenxi_bp.route("/api/custom-case-monitor/query-jobs", methods=["POST"])
+def api_custom_case_monitor_query_jobs_start() -> Response:
+    payload = request.get_json(silent=True) or {}
+    try:
+        return jsonify(
+            {
+                "success": True,
+                "job_id": start_query_custom_case_monitor_job(
+                    username=session.get("username") or "",
+                    scheme_id=payload.get("scheme_id"),
+                    start_time=(payload.get("start_time") or "").strip(),
+                    end_time=(payload.get("end_time") or "").strip(),
+                    branches=payload.get("branches") or [],
+                    page_num=payload.get("page_num") or 1,
+                    page_size=payload.get("page_size") or 15,
+                ),
+            }
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"success": False, "message": str(exc)}), 500
+
+
+@jingqing_fenxi_bp.route("/api/custom-case-monitor/query-jobs/<job_id>", methods=["GET"])
+def api_custom_case_monitor_query_jobs_status(job_id: str) -> Response:
+    try:
+        status = get_query_custom_case_monitor_job_status(
+            username=session.get("username") or "",
+            job_id=job_id,
+        )
+        if not status:
+            return jsonify({"success": False, "message": "任务不存在或已过期"}), 404
+        return jsonify({"success": True, "data": status})
     except Exception as exc:
         return jsonify({"success": False, "message": str(exc)}), 500
 

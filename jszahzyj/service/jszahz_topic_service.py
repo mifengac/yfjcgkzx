@@ -7,8 +7,13 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from jszahzyj.dao import jszahz_topic_dao
 from jszahzyj.jszahz_topic_constants import PERSON_TYPE_OPTIONS, RISK_OPTIONS
-from jszahzyj.service.common import normalize_text_list, sanitize_filename_text
+from jszahzyj.service.common import normalize_text_list
 from jszahzyj.service.jszahz_topic_base_excel_parser import parse_base_person_workbook
+from jszahzyj.service.jszahz_topic_detail_page_service import (
+    build_detail_export_xlsx,
+    build_detail_page_payload,
+)
+from jszahzyj.service.jszahz_topic_detail_support import build_summary_export_filename
 from jszahzyj.service.jszahz_topic_excel_parser import parse_person_type_workbook
 from jszahzyj.service.jszahz_topic_merge import (
     build_detail_records,
@@ -25,9 +30,7 @@ from jszahzyj.service.jszahz_topic_relation_service import (
 
 logger = logging.getLogger(__name__)
 
-
 UPLOAD_API_VERSION = "jszahz-upload-20260414-v2"
-
 
 def default_time_range() -> Tuple[str, str]:
     now = datetime.now()
@@ -37,7 +40,6 @@ def default_time_range() -> Tuple[str, str]:
         start_dt.strftime("%Y-%m-%d %H:%M:%S"),
         end_dt.strftime("%Y-%m-%d %H:%M:%S"),
     )
-
 
 def _serialize_batch(batch: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not batch:
@@ -49,14 +51,12 @@ def _serialize_batch(batch: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]
             data[key] = value.strftime("%Y-%m-%d %H:%M:%S")
     return data
 
-
 def _serialize_active_batches(active_batches: Optional[Dict[str, Any]] = None) -> Dict[str, Optional[Dict[str, Any]]]:
     batches = active_batches or jszahz_topic_dao.get_active_batches()
     return {
         "base_batch": _serialize_batch(batches.get("base_batch")),
         "tag_batch": _serialize_batch(batches.get("tag_batch")),
     }
-
 
 def _normalize_bool(value: Any, *, default: bool = True) -> bool:
     if value is None:
@@ -72,7 +72,6 @@ def _normalize_bool(value: Any, *, default: bool = True) -> bool:
         return True
     return default
 
-
 def _normalize_filters(
     *,
     branch_codes: Iterable[str] | None,
@@ -87,7 +86,6 @@ def _normalize_filters(
         "managed_only": _normalize_bool(managed_only, default=True),
     }
 
-
 def _progress(title: str, detail: str = "") -> Dict[str, Any]:
     return {
         "progress": True,
@@ -95,7 +93,6 @@ def _progress(title: str, detail: str = "") -> Dict[str, Any]:
         "detail": detail,
         "api_version": UPLOAD_API_VERSION,
     }
-
 
 def _build_import_result_payload(
     *,
@@ -124,7 +121,6 @@ def _build_import_result_payload(
         payload["deduplicated_person_count"] = deduplicated_person_count
     return payload
 
-
 def _active_batch_ids() -> Tuple[Optional[int], Optional[int], Dict[str, Optional[Dict[str, Any]]]]:
     active_batches = jszahz_topic_dao.get_active_batches()
     base_batch = active_batches.get("base_batch")
@@ -132,7 +128,6 @@ def _active_batch_ids() -> Tuple[Optional[int], Optional[int], Dict[str, Optiona
     base_batch_id = int(base_batch["id"]) if base_batch and base_batch.get("id") is not None else None
     tag_batch_id = int(tag_batch["id"]) if tag_batch and tag_batch.get("id") is not None else None
     return base_batch_id, tag_batch_id, active_batches
-
 
 def _load_person_records(*, managed_only: bool) -> Tuple[List[Dict[str, Any]], Dict[str, Optional[Dict[str, Any]]]]:
     base_batch_id, tag_batch_id, active_batches = _active_batch_ids()
@@ -143,7 +138,6 @@ def _load_person_records(*, managed_only: bool) -> Tuple[List[Dict[str, Any]], D
     )
     return records, active_batches
 
-
 def defaults_payload() -> Dict[str, Any]:
     return {
         "success": True,
@@ -153,7 +147,6 @@ def defaults_payload() -> Dict[str, Any]:
         "risk_options": [{"value": item, "label": item} for item in RISK_OPTIONS],
         "active_batches": _serialize_active_batches(),
     }
-
 
 def import_jszahz_base_excel_stream(*, file_bytes: bytes, filename: str, created_by: str):
     logger.warning(
@@ -204,7 +197,6 @@ def import_jszahz_base_excel_stream(*, file_bytes: bytes, filename: str, created
         deduplicated_person_count=parsed.deduplicated_person_count,
         active_batches=active_batches,
     )
-
 
 def import_jszahz_tag_excel_stream(*, file_bytes: bytes, filename: str, created_by: str):
     logger.warning(
@@ -257,14 +249,12 @@ def import_jszahz_tag_excel_stream(*, file_bytes: bytes, filename: str, created_
         active_batches=active_batches,
     )
 
-
 def import_jszahz_topic_excel_stream(*, file_bytes: bytes, filename: str, created_by: str):
     return import_jszahz_tag_excel_stream(
         file_bytes=file_bytes,
         filename=filename,
         created_by=created_by,
     )
-
 
 def query_summary_payload(
     *,
@@ -307,7 +297,6 @@ def query_summary_payload(
         "active_batches": _serialize_active_batches(active_batches),
     }
 
-
 def query_detail_payload(
     *,
     branch_code: Optional[str],
@@ -345,31 +334,26 @@ def query_detail_payload(
         "active_batches": _serialize_active_batches(active_batches),
     }
 
-
-def _build_filter_segment(values: Iterable[str] | None, fallback: str) -> str:
-    items = [str(item).strip() for item in (values or []) if str(item).strip()]
-    if not items:
-        return fallback
-    return "_".join(sanitize_filename_text(item) for item in items)
-
-
-def _build_export_filename(
+def query_detail_page_payload(
     *,
+    branch_code: Optional[str],
     person_types: Iterable[str] | None,
     risk_labels: Iterable[str] | None,
-    managed_only: bool,
-    is_detail: bool,
-) -> str:
-    scope = "已列管" if managed_only else "全部人员"
-    suffix = "精神障碍患者_详细数据" if is_detail else "精神障碍患者"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return (
-        f"{sanitize_filename_text(scope)}_"
-        f"{_build_filter_segment(person_types, '全部类型')}_"
-        f"{_build_filter_segment(risk_labels, '全部风险')}_"
-        f"{suffix}_{timestamp}.xlsx"
+    managed_only: Any,
+    relation_types: Iterable[str] | None,
+    page: Any,
+    page_size: Any,
+) -> Dict[str, Any]:
+    return build_detail_page_payload(
+        query_detail_payload_func=query_detail_payload,
+        branch_code=branch_code,
+        person_types=person_types,
+        risk_labels=risk_labels,
+        managed_only=managed_only,
+        relation_types=relation_types,
+        page=page,
+        page_size=page_size,
     )
-
 
 def export_summary_xlsx(
     *,
@@ -386,11 +370,10 @@ def export_summary_xlsx(
     )
     return (
         records_to_xlsx_bytes(payload["records"], "精神患者主题库汇总"),
-        _build_export_filename(
+        build_summary_export_filename(
+            managed_only=payload["filters"]["managed_only"],
             person_types=payload["filters"]["person_types"],
             risk_labels=payload["filters"]["risk_labels"],
-            managed_only=payload["filters"]["managed_only"],
-            is_detail=False,
         ),
     )
 
@@ -398,23 +381,18 @@ def export_summary_xlsx(
 def export_detail_xlsx(
     *,
     branch_code: Optional[str],
+    branch_name: Optional[str] = None,
     person_types: Iterable[str] | None,
     risk_labels: Iterable[str] | None,
     managed_only: Any,
+    relation_types: Iterable[str] | None = None,
 ) -> Tuple[bytes, str]:
-    payload = query_detail_payload(
+    return build_detail_export_xlsx(
+        query_detail_payload_func=query_detail_payload,
         branch_code=branch_code,
+        branch_name=branch_name,
         person_types=person_types,
         risk_labels=risk_labels,
         managed_only=managed_only,
-        include_relation_counts=False,
-    )
-    return (
-        records_to_xlsx_bytes(payload["records"], "精神患者主题库明细"),
-        _build_export_filename(
-            person_types=payload["filters"]["person_types"],
-            risk_labels=payload["filters"]["risk_labels"],
-            managed_only=payload["filters"]["managed_only"],
-            is_detail=True,
-        ),
+        relation_types=relation_types,
     )

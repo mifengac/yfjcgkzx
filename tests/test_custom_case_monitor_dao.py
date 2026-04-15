@@ -115,6 +115,83 @@ class TestCustomCaseMonitorDao(unittest.TestCase):
         self.assertEqual(scheme["id"], 9)
         self.assertTrue(any("INSERT INTO" in sql for sql, _ in cursor.executed))
 
+    def test_list_schemes_reads_group_no_when_column_exists(self) -> None:
+        cursor = _FakeCursor(
+            fetchall_results=[
+                [
+                    {
+                        "id": 1,
+                        "scheme_name": "test",
+                        "scheme_code": "test_scheme",
+                        "description": "",
+                        "is_enabled": True,
+                        "created_at": "2026-04-05 00:00:00",
+                        "updated_at": "2026-04-05 00:00:00",
+                    }
+                ],
+                [
+                    {
+                        "id": 11,
+                        "scheme_id": 1,
+                        "field_name": "combined_text",
+                        "operator": "contains_any",
+                        "rule_values": ["knife"],
+                        "group_no": 2,
+                        "sort_order": 1,
+                        "is_enabled": True,
+                        "created_at": "2026-04-05 00:00:00",
+                        "updated_at": "2026-04-05 00:00:00",
+                    }
+                ],
+            ]
+        )
+        connection = _FakeConnection(cursor)
+
+        with patch.object(dao, "get_database_connection", return_value=connection), patch.object(
+            dao,
+            "_rule_group_column_exists",
+            return_value=True,
+        ):
+            rows = dao.list_schemes(include_disabled=True)
+
+        self.assertEqual(rows[0]["rules"][0]["group_no"], 2)
+
+    def test_create_scheme_writes_group_no_when_column_exists(self) -> None:
+        cursor = _FakeCursor(fetchone_results=[{"id": 9}])
+        connection = _FakeConnection(cursor)
+        created_scheme = {"id": 9, "scheme_name": "test", "rules": []}
+
+        with patch.object(dao, "get_database_connection", return_value=connection), patch.object(
+            dao,
+            "get_scheme_by_id",
+            return_value=created_scheme,
+        ), patch.object(dao, "_rule_group_column_exists", return_value=True):
+            dao.create_scheme(
+                scheme_name="test",
+                scheme_code="test_scheme",
+                description="test",
+                is_enabled=True,
+                rules=[
+                    {
+                        "field_name": "combined_text",
+                        "operator": "contains_any",
+                        "rule_values": ["knife"],
+                        "group_no": 3,
+                        "sort_order": 1,
+                        "is_enabled": True,
+                    }
+                ],
+            )
+
+        rule_insert_calls = [
+            (sql, params)
+            for sql, params in cursor.executed
+            if "custom_case_monitor_rule" in sql and "INSERT INTO" in sql
+        ]
+        self.assertTrue(rule_insert_calls)
+        self.assertIn("group_no", rule_insert_calls[0][0])
+        self.assertEqual(rule_insert_calls[0][1][4], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

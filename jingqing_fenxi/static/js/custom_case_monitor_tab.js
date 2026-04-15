@@ -1,4 +1,6 @@
 (function() {
+    var QUERY_POLL_INTERVAL_MS = 500;
+    var QUERY_TIMEOUT_MS = 5 * 60 * 1000;
     var state = {
         branches: [],
         schemes: [],
@@ -9,7 +11,12 @@
         pageSize: 15,
         total: 0,
         selectedSchemeId: "",
-        initialized: false
+        initialized: false,
+        busy: false,
+        queryToken: 0,
+        queryStartedAt: 0,
+        pollTimer: 0,
+        activeJobId: ""
     };
 
     function escapeHtml(value) {
@@ -22,8 +29,7 @@
     }
 
     function formatDateTimeLocal(value) {
-        if (!value) return "";
-        return String(value).replace(" ", "T");
+        return value ? String(value).replace(" ", "T") : "";
     }
 
     function formatRequestTime(value) {
@@ -41,12 +47,20 @@
         });
     }
 
+    function getQueryButton() {
+        return document.querySelector("[data-special-case-type='custom-case-monitor'] [data-action='query']");
+    }
+
+    function getExportButton() {
+        return document.querySelector("#customMonitorDownloadMenu [data-action='toggle-export']");
+    }
+
     function getSelectedBranches() {
         var boxes = document.querySelectorAll("#customMonitorBranchDropdown input[type='checkbox']");
         var values = [];
-        for (var i = 0; i < boxes.length; i++) {
-            if (boxes[i].checked) values.push(boxes[i].value);
-        }
+        Array.prototype.forEach.call(boxes, function(box) {
+            if (box.checked) values.push(box.value);
+        });
         return values;
     }
 
@@ -54,7 +68,7 @@
         var labelNode = document.querySelector("#customMonitorBranchDisplay span");
         if (!labelNode) return;
         var values = getSelectedBranches();
-        if (values.length === 0) labelNode.textContent = "全部";
+        if (!values.length) labelNode.textContent = "全部";
         else if (values.length === state.branches.length) labelNode.textContent = "全部分局";
         else labelNode.textContent = values.join("、");
     }
@@ -77,8 +91,8 @@
         renderBranchLabel();
     }
 
-    function setError(message) {
-        var box = document.getElementById("customMonitorErr");
+    function setMessage(boxId, message) {
+        var box = document.getElementById(boxId);
         if (!box) return;
         if (message) {
             box.textContent = message;
@@ -87,30 +101,44 @@
             box.textContent = "";
             box.classList.add("special-case-hidden");
         }
+    }
+
+    function setError(message) {
+        setMessage("customMonitorErr", message);
     }
 
     function setFormError(message) {
-        var box = document.getElementById("customMonitorFormErr");
-        if (!box) return;
-        if (message) {
-            box.textContent = message;
-            box.classList.remove("special-case-hidden");
-        } else {
-            box.textContent = "";
-            box.classList.add("special-case-hidden");
-        }
+        setMessage("customMonitorFormErr", message);
     }
 
     function setEmptyState(message) {
-        var box = document.getElementById("customMonitorEmptyState");
-        if (!box) return;
-        if (message) {
-            box.textContent = message;
-            box.classList.remove("special-case-hidden");
-        } else {
-            box.textContent = "";
-            box.classList.add("special-case-hidden");
+        setMessage("customMonitorEmptyState", message);
+    }
+
+    function setBusy(isBusy, text, detail) {
+        var mask = document.getElementById("customMonitorBusyMask");
+        var textNode = document.getElementById("customMonitorBusyText");
+        var detailNode = document.getElementById("customMonitorBusyStats");
+        state.busy = !!isBusy;
+        if (textNode) textNode.textContent = text || "正在查询，请稍候...";
+        if (detailNode) detailNode.textContent = detail || "已拉取 0 条；规则扫描 0 条，命中 0 条；分局保留 0 条";
+        if (mask) {
+            if (state.busy) mask.classList.add("active");
+            else mask.classList.remove("active");
         }
+        updateActionState();
+    }
+
+    function clearPollTimer() {
+        if (state.pollTimer) {
+            window.clearTimeout(state.pollTimer);
+            state.pollTimer = 0;
+        }
+    }
+
+    function cancelPendingQuery() {
+        clearPollTimer();
+        state.activeJobId = "";
     }
 
     function renderSchemeOptions(enabledSchemes) {
@@ -123,7 +151,7 @@
             option.textContent = scheme.scheme_name;
             select.appendChild(option);
         });
-        if (enabledSchemes.length === 0) {
+        if (!enabledSchemes.length) {
             var emptyOption = document.createElement("option");
             emptyOption.value = "";
             emptyOption.textContent = "暂无启用方案";
@@ -147,14 +175,22 @@
         return null;
     }
 
+    function findSchemeById(schemeId) {
+        var normalized = String(schemeId || "");
+        for (var i = 0; i < state.allSchemes.length; i++) {
+            if (String(state.allSchemes[i].id) === normalized) return state.allSchemes[i];
+        }
+        return null;
+    }
+
     function renderTable(rows) {
         var table = document.getElementById("customMonitorTable");
         if (!table) return;
         var html = "<thead><tr>" +
-            "<th>接警号</th><th>报警时间</th><th>分局编码</th><th>管辖单位</th><th>警情级别</th><th>涉案地址</th><th>报警人</th><th>报警人电话</th><th>简要案情</th><th>反馈内容</th>" +
+            "<th>接警号</th><th>报警时间</th><th>分局编码</th><th>管辖单位</th><th>警情级别</th><th>涉案地址</th><th>报警人</th><th>报警人电话</th><th>简要案情</th><th>反馈内容</th><th>命中关键字</th>" +
             "</tr></thead><tbody>";
-        if (!rows || rows.length === 0) {
-            html += "<tr><td colspan='10' style='text-align:center;color:#64748b;'>无符合条件数据</td></tr>";
+        if (!rows || !rows.length) {
+            html += "<tr><td colspan='11' style='text-align:center;color:#64748b;'>无符合条件数据</td></tr>";
         } else {
             rows.forEach(function(row) {
                 html += "<tr>" +
@@ -168,6 +204,7 @@
                     "<td>" + escapeHtml(row.callerPhone || "") + "</td>" +
                     "<td>" + escapeHtml(row.caseContents || "") + "</td>" +
                     "<td>" + escapeHtml(row.replies || "") + "</td>" +
+                    "<td>" + escapeHtml(row.hitKeywordDetails || "") + "</td>" +
                     "</tr>";
             });
         }
@@ -218,10 +255,10 @@
 
     function updateActionState() {
         var hasEnabledScheme = state.schemes.length > 0;
-        var queryBtn = document.querySelector("[data-special-case-type='custom-case-monitor'] [data-action='query']");
-        var exportBtn = document.querySelector("#customMonitorDownloadMenu [data-action='toggle-export']");
-        if (queryBtn) queryBtn.disabled = !hasEnabledScheme;
-        if (exportBtn) exportBtn.disabled = !hasEnabledScheme;
+        var queryBtn = getQueryButton();
+        var exportBtn = getExportButton();
+        if (queryBtn) queryBtn.disabled = !hasEnabledScheme || state.busy;
+        if (exportBtn) exportBtn.disabled = !hasEnabledScheme || state.busy;
         if (!hasEnabledScheme) {
             setEmptyState("暂无启用的监测方案，请先在“方案管理”中新增或启用方案。");
             renderTable([]);
@@ -229,9 +266,80 @@
             renderPagination();
             var status = document.getElementById("customMonitorStatus");
             if (status) status.textContent = "";
+            if (state.busy) setBusy(false);
         } else {
             setEmptyState("");
         }
+    }
+
+    function formatBusyDetail(stats) {
+        var data = stats || {};
+        return "已拉取 " + (data.upstream_row_count || 0) +
+            " 条；规则扫描 " + (data.rule_scanned_count || 0) +
+            " 条，命中 " + (data.rule_match_count || 0) +
+            " 条；分局保留 " + (data.branch_filtered_count || 0) + " 条";
+    }
+
+    function updateBusyByStatus(status) {
+        var message = (status && status.message) || "正在查询，请稍候...";
+        var stats = (status && status.stats) || {};
+        setBusy(true, message, formatBusyDetail(stats));
+    }
+
+    function finishQuery(result, token) {
+        if (token !== state.queryToken) return;
+        cancelPendingQuery();
+        setBusy(false);
+        state.pageNum = result.page_num;
+        state.pageSize = result.page_size;
+        state.total = result.total;
+        setError("");
+        renderStatus(result);
+        renderTable(result.rows || []);
+        renderPagination();
+    }
+
+    function handleQueryError(error, token) {
+        if (token !== state.queryToken) return;
+        cancelPendingQuery();
+        setBusy(false);
+        setError((error && error.message) || "查询失败");
+        renderTable([]);
+        state.total = 0;
+        renderPagination();
+    }
+
+    function scheduleJobPoll(jobId, token) {
+        clearPollTimer();
+        state.pollTimer = window.setTimeout(function() {
+            pollQueryJob(jobId, token);
+        }, QUERY_POLL_INTERVAL_MS);
+    }
+
+    function pollQueryJob(jobId, token) {
+        if (token !== state.queryToken) return;
+        if (Date.now() - state.queryStartedAt > QUERY_TIMEOUT_MS) {
+            handleQueryError(new Error("查询超时，请稍后重试"), token);
+            return;
+        }
+        requestJson("/jingqing_fenxi/api/custom-case-monitor/query-jobs/" + encodeURIComponent(jobId))
+            .then(function(response) {
+                if (token !== state.queryToken) return;
+                var status = response.data || {};
+                updateBusyByStatus(status);
+                if (status.state === "success") {
+                    finishQuery(status.result || {}, token);
+                    return;
+                }
+                if (status.state === "failed") {
+                    handleQueryError(new Error(status.message || "查询失败"), token);
+                    return;
+                }
+                scheduleJobPoll(jobId, token);
+            })
+            .catch(function(error) {
+                handleQueryError(error, token);
+            });
     }
 
     function query(pageNum) {
@@ -239,26 +347,35 @@
             setError("请先选择监测方案");
             return;
         }
+        cancelPendingQuery();
         var payload = buildPayload(pageNum);
-        requestJson("/jingqing_fenxi/api/custom-case-monitor/query", {
+        var token = state.queryToken + 1;
+        state.queryToken = token;
+        state.queryStartedAt = Date.now();
+        setError("");
+        setBusy(true, "正在创建查询任务...", "已拉取 0 条；规则扫描 0 条，命中 0 条；分局保留 0 条");
+        requestJson("/jingqing_fenxi/api/custom-case-monitor/query-jobs", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         })
             .then(function(result) {
-                state.pageNum = result.page_num;
-                state.pageSize = result.page_size;
-                state.total = result.total;
-                setError("");
-                renderStatus(result);
-                renderTable(result.rows || []);
-                renderPagination();
+                if (token !== state.queryToken) return;
+                state.activeJobId = result.job_id;
+                updateBusyByStatus({
+                    stage: "fetching",
+                    message: "正在拉取警情...",
+                    stats: {
+                        upstream_row_count: 0,
+                        rule_scanned_count: 0,
+                        rule_match_count: 0,
+                        branch_filtered_count: 0
+                    }
+                });
+                pollQueryJob(result.job_id, token);
             })
             .catch(function(error) {
-                setError(error.message || "查询失败");
-                renderTable([]);
-                state.total = 0;
-                renderPagination();
+                handleQueryError(error, token);
             });
     }
 
@@ -292,12 +409,36 @@
         return value || "";
     }
 
-    function findSchemeById(schemeId) {
-        var normalized = String(schemeId || "");
-        for (var i = 0; i < state.allSchemes.length; i++) {
-            if (String(state.allSchemes[i].id) === normalized) return state.allSchemes[i];
-        }
-        return null;
+    function getRuleGroupNo(rule) {
+        var value = parseInt(rule && rule.group_no, 10);
+        return value > 0 ? value : 1;
+    }
+
+    function getLastRuleGroupNo(rules) {
+        var items = rules || [];
+        if (!items.length) return 1;
+        return getRuleGroupNo(items[items.length - 1]);
+    }
+
+    function getNextRuleGroupNo(rules) {
+        var maxGroupNo = 0;
+        (rules || []).forEach(function(rule) {
+            maxGroupNo = Math.max(maxGroupNo, getRuleGroupNo(rule));
+        });
+        return maxGroupNo + 1 || 1;
+    }
+
+    function buildRuleSummary(rules) {
+        var grouped = {};
+        (rules || []).forEach(function(rule) {
+            var groupNo = getRuleGroupNo(rule);
+            if (!grouped[groupNo]) grouped[groupNo] = [];
+            grouped[groupNo].push("G" + groupNo + " " + getFieldLabel(rule.field_name) + " / " + getOperatorLabel(rule.operator));
+        });
+        return Object.keys(grouped)
+            .sort(function(a, b) { return Number(a) - Number(b); })
+            .map(function(groupNo) { return grouped[groupNo].join(" + "); })
+            .join(" | ");
     }
 
     function createSelectOptions(options, selectedValue) {
@@ -305,6 +446,11 @@
             var selected = option.value === selectedValue ? " selected" : "";
             return "<option value='" + escapeHtml(option.value) + "'" + selected + ">" + escapeHtml(option.label) + "</option>";
         }).join("");
+    }
+
+    function normalizeRuleValueText(ruleValues) {
+        if (Array.isArray(ruleValues)) return ruleValues.join("\n");
+        return ruleValues || "";
     }
 
     function renderSchemeList() {
@@ -315,14 +461,11 @@
             html += "<tr><td colspan='5' style='text-align:center;color:#64748b;'>暂无方案，请先新增方案</td></tr>";
         } else {
             state.allSchemes.forEach(function(scheme) {
-                var ruleSummary = (scheme.rules || []).map(function(rule) {
-                    return getFieldLabel(rule.field_name) + " / " + getOperatorLabel(rule.operator);
-                }).join("；");
                 html += "<tr>" +
                     "<td>" + escapeHtml(scheme.scheme_name || "") + "</td>" +
                     "<td>" + (scheme.is_enabled ? "是" : "否") + "</td>" +
                     "<td>" + escapeHtml(scheme.updated_at || "") + "</td>" +
-                    "<td>" + escapeHtml(ruleSummary || "无规则") + "</td>" +
+                    "<td>" + escapeHtml(buildRuleSummary(scheme.rules || []) || "无规则") + "</td>" +
                     "<td class='custom-monitor-op-cell'>" +
                     "<button type='button' class='module-button custom-monitor-mini-btn' data-action='edit' data-id='" + scheme.id + "'>编辑</button>" +
                     "<button type='button' class='module-button custom-monitor-mini-btn custom-monitor-secondary-btn' data-action='toggle' data-id='" + scheme.id + "'>" + (scheme.is_enabled ? "禁用" : "启用") + "</button>" +
@@ -353,41 +496,55 @@
     function renderRuleList(rules) {
         var container = document.getElementById("customMonitorRuleList");
         if (!container) return;
-        var items = rules || [];
+        var items = (rules || []).map(function(rule) {
+            return {
+                field_name: rule.field_name || (state.fieldOptions[0] && state.fieldOptions[0].value) || "combined_text",
+                operator: rule.operator || (state.operatorOptions[0] && state.operatorOptions[0].value) || "contains_any",
+                rule_values: rule.rule_values || [],
+                group_no: getRuleGroupNo(rule),
+                is_enabled: rule.is_enabled !== false
+            };
+        });
         if (!items.length) {
             container.innerHTML = "<div class='custom-monitor-rule-empty'>暂无规则，请先新增一条规则。</div>";
             return;
         }
-        var html = "";
+
+        var html = "<div class='custom-monitor-rule-empty' style='text-align:left;'>同组规则需同时命中（AND），不同组命中任一组即可（OR）。</div>";
         items.forEach(function(rule, index) {
             html += "<div class='custom-monitor-rule-row' data-rule-index='" + index + "'>" +
-                "<div class='custom-monitor-rule-grid'>" +
-                "<label>字段<select data-role='field'>" + createSelectOptions(state.fieldOptions, rule.field_name) + "</select></label>" +
-                "<label>操作符<select data-role='operator'>" + createSelectOptions(state.operatorOptions, rule.operator) + "</select></label>" +
-                "<label>值列表<textarea data-role='values' rows='3' placeholder='一行一个值，或用逗号分隔'>" + escapeHtml((rule.rule_values || []).join("\n")) + "</textarea></label>" +
-                "</div>" +
+                "<div class='custom-monitor-rule-header'>" +
+                "<div class='custom-monitor-rule-title'>规则 " + (index + 1) + "</div>" +
                 "<div class='custom-monitor-rule-tools'>" +
-                "<label class='custom-monitor-toggle'><input type='checkbox' data-role='enabled' " + (rule.is_enabled !== false ? "checked" : "") + "><span>启用</span></label>" +
+                "<label class='custom-monitor-toggle'><input type='checkbox' data-role='enabled' " + (rule.is_enabled ? "checked" : "") + "><span>启用</span></label>" +
                 "<button type='button' class='module-button custom-monitor-mini-btn custom-monitor-danger-btn' data-role='remove'>删除规则</button>" +
                 "</div>" +
+                "</div>" +
+                "<div class='custom-monitor-rule-meta'>" +
+                "<label class='custom-monitor-rule-field'>规则组<input data-role='groupNo' type='number' min='1' value='" + escapeHtml(String(getRuleGroupNo(rule))) + "'></label>" +
+                "<label class='custom-monitor-rule-field'>字段<select data-role='field'>" + createSelectOptions(state.fieldOptions, rule.field_name) + "</select></label>" +
+                "<label class='custom-monitor-rule-field'>操作符<select data-role='operator'>" + createSelectOptions(state.operatorOptions, rule.operator) + "</select></label>" +
+                "</div>" +
+                "<label class='custom-monitor-rule-values'>值列表<textarea data-role='values' rows='5' placeholder='一行一个值，或用逗号分隔'>" + escapeHtml(normalizeRuleValueText(rule.rule_values)) + "</textarea></label>" +
                 "</div>";
         });
         container.innerHTML = html;
         Array.prototype.forEach.call(container.querySelectorAll("[data-role='remove']"), function(button) {
             button.addEventListener("click", function() {
                 var row = button.closest(".custom-monitor-rule-row");
-                if (!row) return;
+                if (!row || !row.parentNode) return;
                 row.parentNode.removeChild(row);
                 if (!container.querySelector(".custom-monitor-rule-row")) renderRuleList([]);
             });
         });
     }
 
-    function blankRule() {
+    function blankRule(groupNo) {
         return {
             field_name: state.fieldOptions.length ? state.fieldOptions[0].value : "combined_text",
             operator: state.operatorOptions.length ? state.operatorOptions[0].value : "contains_any",
             rule_values: [],
+            group_no: groupNo > 0 ? groupNo : 1,
             is_enabled: true
         };
     }
@@ -398,7 +555,7 @@
         document.getElementById("customMonitorSchemeDescInput").value = "";
         document.getElementById("customMonitorSchemeEnabled").checked = true;
         setFormError("");
-        renderRuleList([blankRule()]);
+        renderRuleList([blankRule(1)]);
     }
 
     function loadSchemeIntoForm(scheme) {
@@ -411,7 +568,7 @@
         document.getElementById("customMonitorSchemeDescInput").value = scheme.description || "";
         document.getElementById("customMonitorSchemeEnabled").checked = !!scheme.is_enabled;
         setFormError("");
-        renderRuleList((scheme.rules || []).length ? scheme.rules : [blankRule()]);
+        renderRuleList((scheme.rules || []).length ? scheme.rules : [blankRule(1)]);
     }
 
     function collectRulesFromForm() {
@@ -421,11 +578,13 @@
             var field = row.querySelector("[data-role='field']");
             var operator = row.querySelector("[data-role='operator']");
             var values = row.querySelector("[data-role='values']");
+            var groupNo = row.querySelector("[data-role='groupNo']");
             var enabled = row.querySelector("[data-role='enabled']");
             rules.push({
                 field_name: field ? field.value : "",
                 operator: operator ? operator.value : "",
                 rule_values: values ? values.value : "",
+                group_no: groupNo ? groupNo.value : 1,
                 is_enabled: enabled ? enabled.checked : true,
                 sort_order: index + 1
             });
@@ -443,18 +602,21 @@
     }
 
     function openModal() {
-        document.getElementById("customMonitorModalBackdrop").style.display = "block";
-        document.getElementById("customMonitorSchemeModal").style.display = "flex";
+        var drawer = document.getElementById("customMonitorSchemeDrawer");
+        if (!drawer) return;
+        drawer.classList.add("open");
+        document.body.style.overflow = "hidden";
         setFormError("");
         if (!document.getElementById("customMonitorEditingId").value) {
-            var current = getSelectedScheme();
-            if (current) loadSchemeIntoForm(current);
+            loadSchemeIntoForm(getSelectedScheme() || null);
         }
     }
 
     function closeModal() {
-        document.getElementById("customMonitorModalBackdrop").style.display = "none";
-        document.getElementById("customMonitorSchemeModal").style.display = "none";
+        var drawer = document.getElementById("customMonitorSchemeDrawer");
+        if (!drawer) return;
+        drawer.classList.remove("open");
+        document.body.style.overflow = "";
     }
 
     function refreshSchemes(options) {
@@ -488,8 +650,10 @@
                 return refreshSchemes({ preserveSelected: true });
             })
             .then(function() {
-                if (state.selectedSchemeId) setError("");
-                if (state.selectedSchemeId) query(1);
+                if (state.selectedSchemeId) {
+                    setError("");
+                    query(1);
+                }
             })
             .catch(function(error) {
                 setFormError(error.message || "切换方案状态失败");
@@ -531,14 +695,11 @@
                 return refreshSchemes({ preserveSelected: true });
             })
             .then(function() {
-                var current = getSelectedScheme();
-                if (current) loadSchemeIntoForm(current);
+                loadSchemeIntoForm(getSelectedScheme() || null);
                 closeModal();
                 if (state.selectedSchemeId) {
                     setError("");
                     query(1);
-                } else {
-                    setError("");
                 }
             })
             .catch(function(error) {
@@ -553,25 +714,27 @@
         if (display) {
             display.addEventListener("click", function(event) {
                 event.stopPropagation();
-                dropdown.classList.toggle("show");
+                if (dropdown) dropdown.classList.toggle("show");
             });
         }
         document.addEventListener("click", function() {
             if (dropdown) dropdown.classList.remove("show");
             if (menu) menu.classList.remove("show");
         });
-        if (dropdown) dropdown.addEventListener("click", function(event) { event.stopPropagation(); });
-        document.querySelector("[data-special-case-type='custom-case-monitor'] [data-action='query']").addEventListener("click", function() {
+        if (dropdown) dropdown.addEventListener("click", function(event) {
+            event.stopPropagation();
+        });
+        getQueryButton().addEventListener("click", function() {
             query(1);
         });
-        document.querySelector("#customMonitorDownloadMenu [data-action='toggle-export']").addEventListener("click", function(event) {
+        getExportButton().addEventListener("click", function(event) {
             event.stopPropagation();
-            menu.classList.toggle("show");
+            if (menu) menu.classList.toggle("show");
         });
         Array.prototype.forEach.call(document.querySelectorAll("#customMonitorDownloadMenu [data-action='export']"), function(button) {
             button.addEventListener("click", function(event) {
                 event.stopPropagation();
-                menu.classList.remove("show");
+                if (menu) menu.classList.remove("show");
                 exportData(button.getAttribute("data-format"));
             });
         });
@@ -588,16 +751,23 @@
         });
         document.getElementById("customMonitorAddRuleBtn").addEventListener("click", function() {
             var rules = collectRulesFromForm();
-            if (!rules.length) rules = [blankRule()];
-            rules.push(blankRule());
+            if (!rules.length) rules = [blankRule(1)];
+            rules.push(blankRule(getLastRuleGroupNo(rules)));
+            renderRuleList(rules);
+        });
+        document.getElementById("customMonitorAddGroupBtn").addEventListener("click", function() {
+            var rules = collectRulesFromForm();
+            if (!rules.length) rules = [blankRule(1)];
+            rules.push(blankRule(getNextRuleGroupNo(rules)));
             renderRuleList(rules);
         });
         document.getElementById("customMonitorSaveSchemeBtn").addEventListener("click", saveCurrentScheme);
         document.getElementById("customMonitorCancelBtn").addEventListener("click", closeModal);
         document.getElementById("customMonitorCloseModal").addEventListener("click", closeModal);
         document.getElementById("customMonitorModalBackdrop").addEventListener("click", closeModal);
-        document.getElementById("customMonitorSchemeModal").addEventListener("click", function(event) {
-            if (event.target === document.getElementById("customMonitorSchemeModal")) closeModal();
+        document.addEventListener("keydown", function(event) {
+            var drawer = document.getElementById("customMonitorSchemeDrawer");
+            if (event.key === "Escape" && drawer && drawer.classList.contains("open")) closeModal();
         });
     }
 
@@ -615,8 +785,7 @@
             })
             .then(function() {
                 if (state.schemes.length) {
-                    var current = getSelectedScheme();
-                    loadSchemeIntoForm(current || null);
+                    loadSchemeIntoForm(getSelectedScheme() || null);
                     query(1);
                 } else {
                     resetForm();

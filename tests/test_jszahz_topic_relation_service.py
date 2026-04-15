@@ -16,7 +16,21 @@ class TestJszahzTopicRelationService(unittest.TestCase):
             )
 
         self.assertEqual(payload["alarm"]["440123199001011111"], 2)
-        mock_query.assert_called_once_with(["440123199001011111"])
+        mock_query.assert_called_once_with(["440123199001011111"], relation_types=list(jszahz_topic_relation_service.RELATION_TYPES.keys()))
+
+    def test_build_relation_count_payload_can_limit_relation_types(self) -> None:
+        with patch.object(
+            jszahz_topic_relation_service.jszahz_topic_relation_dao,
+            "query_relation_count_maps",
+            return_value={"alarm": {"440123199001011111": 2}},
+        ) as mock_query:
+            payload = jszahz_topic_relation_service.build_relation_count_payload(
+                ["440123199001011111"],
+                relation_types=["alarm"],
+            )
+
+        self.assertEqual(payload, {"alarm": {"440123199001011111": 2}})
+        mock_query.assert_called_once_with(["440123199001011111"], relation_types=["alarm"])
 
     def test_attach_relation_counts_sets_all_relation_values(self) -> None:
         records = [
@@ -48,7 +62,10 @@ class TestJszahzTopicRelationService(unittest.TestCase):
         self.assertEqual(enhanced[0]["关联视频云"], 4)
         self.assertEqual(enhanced[0]["关联门诊"], 5)
         self.assertEqual(enhanced[0]["关联飙车炸街"], 6)
-        mock_query.assert_called_once_with(["440123199001011111"])
+        mock_query.assert_called_once_with(
+            ["440123199001011111"],
+            relation_types=list(jszahz_topic_relation_service.RELATION_TYPES.keys()),
+        )
 
     def test_attach_relation_counts_defaults_to_zero(self) -> None:
         records = [{"身份证号": "440123199001011111"}]
@@ -107,6 +124,10 @@ class TestJszahzTopicRelationService(unittest.TestCase):
                 zjhm="440123199001011111",
                 xm="张三",
             )
+
+    def test_normalize_relation_types_rejects_invalid_values(self) -> None:
+        with self.assertRaises(ValueError):
+            jszahz_topic_relation_service.normalize_relation_types(["case", "bad"])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable, List
 
 from jszahzyj.dao import jszahz_topic_relation_dao
 
@@ -8,36 +8,50 @@ from jszahzyj.dao import jszahz_topic_relation_dao
 RELATION_TYPES: Dict[str, Dict[str, str]] = {
     "case": {
         "column": "关联案件",
+        "sheet": "关联案件",
+        "short_label": "案件",
         "title": "关联案件明细",
         "empty_message": "未查询到该人员的关联案件数据",
     },
     "alarm": {
         "column": "关联警情",
+        "sheet": "关联警情",
+        "short_label": "警情",
         "title": "关联警情明细",
         "empty_message": "未查询到该人员的关联警情数据",
     },
     "vehicle": {
         "column": "关联机动车",
+        "sheet": "关联机动车",
+        "short_label": "机动车",
         "title": "关联机动车明细",
         "empty_message": "未查询到该人员的关联机动车数据",
     },
     "video": {
         "column": "关联视频云",
+        "sheet": "关联视频云",
+        "short_label": "视频云",
         "title": "关联视频云明细",
         "empty_message": "未查询到该人员的关联视频云数据",
     },
     "clinic": {
         "column": "关联门诊",
+        "sheet": "关联门诊",
+        "short_label": "门诊",
         "title": "关联门诊明细",
         "empty_message": "未查询到该人员的关联门诊数据",
     },
     "racing": {
         "column": "关联飙车炸街",
+        "sheet": "关联飙车炸街",
+        "short_label": "飙车炸街",
         "title": "关联飙车炸街明细",
         "empty_message": "未查询到该人员的关联飙车炸街数据",
     },
     "traffic": {
         "column": "关联交通违法",
+        "sheet": "关联交通违法",
+        "short_label": "交通违法",
         "title": "关联交通违法明细",
         "empty_message": "未查询到该人员的关联交通违法数据",
     },
@@ -74,6 +88,48 @@ def _normalize_unique_zjhms(values: List[str]) -> List[str]:
     return normalized
 
 
+def normalize_relation_types(relation_types: Iterable[str] | None) -> List[str]:
+    raw_values = list(relation_types or [])
+    if not raw_values:
+        return list(RELATION_TYPES.keys())
+
+    selected: List[str] = []
+    seen = set()
+    invalid: List[str] = []
+    for value in raw_values:
+        relation_type = str(value or "").strip()
+        if not relation_type or relation_type in seen:
+            continue
+        if relation_type not in RELATION_TYPES:
+            invalid.append(relation_type)
+            continue
+        seen.add(relation_type)
+        selected.append(relation_type)
+
+    if invalid:
+        raise ValueError(f"不支持的关联类型: {', '.join(invalid)}")
+    return selected or list(RELATION_TYPES.keys())
+
+
+def list_relation_type_options(relation_types: Iterable[str] | None = None) -> List[Dict[str, Any]]:
+    selected = set(normalize_relation_types(relation_types))
+    return [
+        {
+            "value": relation_type,
+            "label": config["column"],
+            "checked": relation_type in selected,
+        }
+        for relation_type, config in RELATION_TYPES.items()
+    ]
+
+
+def get_relation_columns(relation_types: Iterable[str] | None = None) -> List[str]:
+    return [
+        RELATION_TYPES[relation_type]["column"]
+        for relation_type in normalize_relation_types(relation_types)
+    ]
+
+
 def get_relation_type_config(relation_type: str) -> Dict[str, str]:
     config = RELATION_TYPES.get(str(relation_type or "").strip())
     if not config:
@@ -97,9 +153,15 @@ def initialize_relation_placeholders(records: List[Dict[str, Any]]) -> List[Dict
 
 def build_relation_count_payload(
     zjhms: List[str],
+    *,
+    relation_types: Iterable[str] | None = None,
 ) -> Dict[str, Dict[str, int]]:
     normalized = _normalize_unique_zjhms(zjhms)
-    count_maps = jszahz_topic_relation_dao.query_relation_count_maps(normalized)
+    selected_relation_types = normalize_relation_types(relation_types)
+    count_maps = jszahz_topic_relation_dao.query_relation_count_maps(
+        normalized,
+        relation_types=selected_relation_types,
+    )
     return {
         relation_type: {key: int(value) for key, value in (value_map or {}).items()}
         for relation_type, value_map in count_maps.items()

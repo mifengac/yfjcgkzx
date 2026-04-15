@@ -10,6 +10,11 @@ from openpyxl import Workbook
 
 from gonggong.service.upstream_jingqing_client import api_client
 from mdjfxsyj.dao.mdjfxsyj_yyjdjc_dao import query_dispute_rows, query_workorder_rows
+from mdjfxsyj.service.mdjfxsyj_yyjdjc_workorder_support import (
+    WORKORDER_COLUMNS,
+    build_workorder_display_row,
+    format_workorder_query_range,
+)
 
 
 DEFAULT_KEYWORDS: Tuple[str, ...] = (
@@ -478,3 +483,24 @@ def build_source_export(*, source: str, export_format: str, start_time: Optional
         download_name=base_name + ".xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+SOURCE_SPECS["workorder"]["columns"] = list(WORKORDER_COLUMNS)
+
+
+def fetch_workorder_source_rows(
+    *,
+    start_dt: datetime,
+    end_dt: datetime,
+    keywords: Sequence[str],
+) -> List[Dict[str, str]]:
+    query_start_time, query_end_time = format_workorder_query_range(start_dt, end_dt)
+    rows = query_workorder_rows(start_time=query_start_time, end_time=query_end_time, keywords=keywords)
+
+    normalized_rows: List[Dict[str, str]] = []
+    for row in rows:
+        matched_keywords = find_matched_keywords([row.get("ordercont")], keywords)
+        if not matched_keywords:
+            continue
+        normalized_rows.append(build_workorder_display_row(row, matched_keywords))
+    return normalized_rows

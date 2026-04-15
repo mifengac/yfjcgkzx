@@ -56,6 +56,8 @@ def export_report():
         all_data,
         dimensions,
         analysis_options=analysis_options,
+        begin_date=str(form.get('beginDate', '') or '').replace('T', ' '),
+        end_date=str(form.get('endDate', '') or '').replace('T', ' '),
     )
     return send_file(
         excel_file,

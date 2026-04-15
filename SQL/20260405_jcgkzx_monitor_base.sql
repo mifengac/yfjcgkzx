@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS "jcgkzx_monitor"."custom_case_monitor_rule" (
     field_name VARCHAR(64) NOT NULL,
     operator VARCHAR(64) NOT NULL,
     rule_values JSONB NOT NULL,
+    group_no INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 1,
     is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_custom_case_monitor_scheme_enabled
     ON "jcgkzx_monitor"."custom_case_monitor_scheme" (is_enabled);
 
 CREATE INDEX IF NOT EXISTS idx_custom_case_monitor_rule_scheme_id
-    ON "jcgkzx_monitor"."custom_case_monitor_rule" (scheme_id, sort_order);
+    ON "jcgkzx_monitor"."custom_case_monitor_rule" (scheme_id, group_no, sort_order);
 
 -- ■ 初始化方案数据 ---------------------------------------------------------
 

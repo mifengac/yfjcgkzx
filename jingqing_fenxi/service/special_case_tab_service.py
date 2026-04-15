@@ -6,7 +6,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Sequence, Tuple
 
 import openpyxl
 from openpyxl import Workbook
@@ -65,9 +65,12 @@ RULE_OPERATOR_OPTIONS = [
 
 ALLOWED_RULE_FIELDS = {item["value"] for item in RULE_FIELD_OPTIONS}
 ALLOWED_RULE_OPERATORS = {item["value"] for item in RULE_OPERATOR_OPTIONS}
+RULE_FIELD_LABEL_MAP = {item["value"]: item["label"] for item in RULE_FIELD_OPTIONS}
 HIT_KEYWORD_HEADER = ("hitKeywords", "命中关键字")
 _FILENAME_SAFE_PATTERN = re.compile(r'[\\/:*?"<>|\r\n\t]+')
 _SHEET_TITLE_SAFE_PATTERN = re.compile(r"[\[\]\*?:/\\]")
+_FILTER_PROGRESS_STEP = 100
+ProgressCallback = Callable[[Dict[str, Any]], None]
 
 
 def default_time_range() -> Tuple[str, str]:
@@ -218,12 +221,25 @@ def normalize_rule_values(values: Any) -> List[str]:
     return result
 
 
+def normalize_rule_group_no(value: Any, default: int = 1) -> int:
+    if value in (None, ""):
+        return default
+    try:
+        group_no = int(str(value).strip())
+    except Exception as exc:
+        raise ValueError("规则组必须是大于等于 1 的整数") from exc
+    if group_no < 1:
+        raise ValueError("规则组必须是大于等于 1 的整数")
+    return group_no
+
+
 def validate_scheme_rules(rules: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for index, rule in enumerate(rules or [], start=1):
         field_name = str(rule.get("field_name") or "").strip()
         operator = str(rule.get("operator") or "").strip()
         rule_values = normalize_rule_values(rule.get("rule_values"))
+        group_no = normalize_rule_group_no(rule.get("group_no"), default=1)
         if field_name not in ALLOWED_RULE_FIELDS:
             raise ValueError(f"规则字段不支持：{field_name}")
         if operator not in ALLOWED_RULE_OPERATORS:
@@ -235,6 +251,7 @@ def validate_scheme_rules(rules: Sequence[Dict[str, Any]]) -> List[Dict[str, Any
                 "field_name": field_name,
                 "operator": operator,
                 "rule_values": rule_values,
+                "group_no": group_no,
                 "sort_order": int(rule.get("sort_order") or index),
                 "is_enabled": bool(rule.get("is_enabled", True)),
             }
@@ -269,20 +286,6 @@ def _rule_hit_values(row: Dict[str, Any], rule: Dict[str, Any]) -> List[str]:
     return []
 
 
-def collect_rule_hit_keywords(row: Dict[str, Any], rules: Sequence[Dict[str, Any]]) -> List[str]:
-    keywords: List[str] = []
-    seen = set()
-    for rule in rules or []:
-        if not rule.get("is_enabled", True):
-            continue
-        for value in _rule_hit_values(row, rule):
-            if value in seen:
-                continue
-            seen.add(value)
-            keywords.append(value)
-    return keywords
-
-
 def _rule_matches_row(row: Dict[str, Any], rule: Dict[str, Any]) -> bool:
     target = _row_field_text(row, rule["field_name"])
     values = normalize_rule_values(rule.get("rule_values"))
@@ -299,28 +302,186 @@ def _rule_matches_row(row: Dict[str, Any], rule: Dict[str, Any]) -> bool:
     return False
 
 
-def filter_rows_by_rules(rows: Iterable[Dict[str, Any]], rules: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    enabled_rules = [rule for rule in rules if rule.get("is_enabled", True)]
-    if not enabled_rules:
+def _enabled_rule_groups(rules: Sequence[Dict[str, Any]]) -> List[Tuple[int, List[Dict[str, Any]]]]:
+    grouped: Dict[int, List[Dict[str, Any]]] = {}
+    for rule in rules or []:
+        if not rule.get("is_enabled", True):
+            continue
+        group_no = normalize_rule_group_no(rule.get("group_no"), default=1)
+        grouped.setdefault(group_no, []).append(rule)
+
+    return [
+        (
+            group_no,
+            sorted(
+                group_rules,
+                key=lambda item: (
+                    int(item.get("sort_order") or 0),
+                    int(item.get("id") or 0),
+                ),
+            ),
+        )
+        for group_no, group_rules in sorted(grouped.items(), key=lambda item: item[0])
+    ]
+
+
+def _matching_rule_groups(row: Dict[str, Any], rules: Sequence[Dict[str, Any]]) -> List[Tuple[int, List[Dict[str, Any]]]]:
+    matches: List[Tuple[int, List[Dict[str, Any]]]] = []
+    for group_no, group_rules in _enabled_rule_groups(rules):
+        if all(_rule_matches_row(row, rule) for rule in group_rules):
+            matches.append((group_no, group_rules))
+    return matches
+
+
+def _emit_progress(
+    progress_callback: ProgressCallback | None,
+    *,
+    stage: str,
+    message: str,
+    stats: Dict[str, int],
+) -> None:
+    if not progress_callback:
+        return
+    progress_callback(
+        {
+            "stage": stage,
+            "message": message,
+            "stats": dict(stats),
+        }
+    )
+
+
+def collect_rule_hit_keywords(row: Dict[str, Any], rules: Sequence[Dict[str, Any]]) -> List[str]:
+    keywords: List[str] = []
+    seen = set()
+    for _group_no, group_rules in _matching_rule_groups(row, rules):
+        for rule in group_rules:
+            for value in _rule_hit_values(row, rule):
+                if value in seen:
+                    continue
+                seen.add(value)
+                keywords.append(value)
+    return keywords
+
+
+def _resolve_hit_field_labels(row: Dict[str, Any], rule: Dict[str, Any], value: str) -> List[str]:
+    field_name = str(rule.get("field_name") or "").strip()
+    if field_name != "combined_text":
+        return [RULE_FIELD_LABEL_MAP.get(field_name, field_name or "命中字")]
+
+    operator = str(rule.get("operator") or "").strip()
+    case_text = str(row.get("caseContents") or "").strip()
+    reply_text = str(row.get("replies") or "").strip()
+    labels: List[str] = []
+    if operator in {"contains_any", "contains_all"}:
+        if value in case_text:
+            labels.append(RULE_FIELD_LABEL_MAP["caseContents"])
+        if value in reply_text:
+            labels.append(RULE_FIELD_LABEL_MAP["replies"])
+    elif operator in {"equals", "in_list"}:
+        if case_text == value:
+            labels.append(RULE_FIELD_LABEL_MAP["caseContents"])
+        if reply_text == value:
+            labels.append(RULE_FIELD_LABEL_MAP["replies"])
+    if labels:
+        return labels
+    return [RULE_FIELD_LABEL_MAP["combined_text"]]
+
+
+def collect_rule_hit_keyword_details(row: Dict[str, Any], rules: Sequence[Dict[str, Any]]) -> List[str]:
+    details: List[str] = []
+    seen = set()
+    for _group_no, group_rules in _matching_rule_groups(row, rules):
+        for rule in group_rules:
+            for value in _rule_hit_values(row, rule):
+                for label in _resolve_hit_field_labels(row, rule, value):
+                    detail = f"{label}→{value}"
+                    if detail in seen:
+                        continue
+                    seen.add(detail)
+                    details.append(detail)
+    return details
+
+
+def filter_rows_by_rules(
+    rows: Iterable[Dict[str, Any]],
+    rules: Sequence[Dict[str, Any]],
+    *,
+    progress_callback: ProgressCallback | None = None,
+    progress_step: int = _FILTER_PROGRESS_STEP,
+) -> List[Dict[str, Any]]:
+    row_list = list(rows or [])
+    enabled_rule_groups = _enabled_rule_groups(rules)
+    if not enabled_rule_groups:
+        _emit_progress(
+            progress_callback,
+            stage="rule_filtering",
+            message="规则过滤完成，未配置启用规则组",
+            stats={
+                "rule_scanned_count": 0,
+                "rule_match_count": 0,
+            },
+        )
         return []
     filtered: List[Dict[str, Any]] = []
-    for row in rows or []:
-        if all(_rule_matches_row(row, rule) for rule in enabled_rules):
+    matched_count = 0
+    total = len(row_list)
+    for index, row in enumerate(row_list, start=1):
+        if _matching_rule_groups(row, rules):
             filtered.append(row)
+            matched_count += 1
+        if index % progress_step == 0 or index == total:
+            _emit_progress(
+                progress_callback,
+                stage="rule_filtering",
+                message=f"规则过滤中：已扫描 {index} 条，命中 {matched_count} 条",
+                stats={
+                    "rule_scanned_count": index,
+                    "rule_match_count": matched_count,
+                },
+            )
     return filtered
 
 
-def filter_rows_by_branches(rows: Iterable[Dict[str, Any]], selected_branches: Sequence[str] | None = None) -> List[Dict[str, Any]]:
+def filter_rows_by_branches(
+    rows: Iterable[Dict[str, Any]],
+    selected_branches: Sequence[str] | None = None,
+    *,
+    progress_callback: ProgressCallback | None = None,
+    progress_step: int = _FILTER_PROGRESS_STEP,
+) -> List[Dict[str, Any]]:
+    row_list = list(rows or [])
     branch_names = normalize_branch_selection(selected_branches)
     branch_cmd_ids = {BRANCH_CMD_ID_MAP[name] for name in branch_names}
     if not branch_cmd_ids:
-        return list(rows or [])
+        preserved_count = len(row_list)
+        _emit_progress(
+            progress_callback,
+            stage="branch_filtering",
+            message=f"分局过滤完成：未选择分局，保留 {preserved_count} 条",
+            stats={
+                "branch_scanned_count": preserved_count,
+                "branch_filtered_count": preserved_count,
+            },
+        )
+        return row_list
 
     filtered: List[Dict[str, Any]] = []
-    for row in rows or []:
+    total = len(row_list)
+    for index, row in enumerate(row_list, start=1):
         cmd_id = str(row.get("cmdId") or "").strip()
         if cmd_id in branch_cmd_ids:
             filtered.append(row)
+        if index % progress_step == 0 or index == total:
+            _emit_progress(
+                progress_callback,
+                stage="branch_filtering",
+                message=f"分局过滤中：已扫描 {index} 条，保留 {len(filtered)} 条",
+                stats={
+                    "branch_scanned_count": index,
+                    "branch_filtered_count": len(filtered),
+                },
+            )
     return filtered
 
 
@@ -352,16 +513,24 @@ def collect_cmd_id_samples(rows: Iterable[Dict[str, Any]], limit: int = 8) -> Li
     return samples
 
 
+def summarize_rule_groups(rules: Sequence[Dict[str, Any]]) -> List[str]:
+    summaries: List[str] = []
+    for group_no, group_rules in _enabled_rule_groups(rules):
+        rule_text = " & ".join(f"{rule['field_name']}:{rule['operator']}" for rule in group_rules)
+        summaries.append(f"G{group_no}({rule_text})")
+    return summaries
+
+
 def collect_rule_hit_samples(rows: Iterable[Dict[str, Any]], rules: Sequence[Dict[str, Any]], limit: int = 5) -> List[Dict[str, str]]:
     samples: List[Dict[str, str]] = []
-    enabled_rules = [rule for rule in rules if rule.get("is_enabled", True)]
+    rule_group_summary = summarize_rule_groups(rules)
     for row in rows or []:
         combined_text = _row_field_text(row, "combined_text").replace("\r", " ")
         samples.append(
             {
                 "case_no": str(row.get("caseNo") or ""),
                 "cmd_id": str(row.get("cmdId") or ""),
-                "rules": " | ".join(f"{rule['field_name']}:{rule['operator']}" for rule in enabled_rules),
+                "rules": " | ".join(rule_group_summary),
                 "snippet": combined_text[:120],
             }
         )
@@ -381,35 +550,92 @@ def query_special_case_records(
     branches: Sequence[str] | None,
     page_num: int,
     page_size: int,
+    progress_callback: ProgressCallback | None = None,
+    include_hit_keyword_details: bool = False,
 ) -> Dict[str, Any]:
     trace_id = uuid.uuid4().hex[:10]
     begin_date = normalize_datetime_text(start_time) if start_time else default_time_range()[0]
     end_date = normalize_datetime_text(end_time) if end_time else default_time_range()[1]
+    progress_stats = {
+        "upstream_row_count": 0,
+        "rule_scanned_count": 0,
+        "rule_match_count": 0,
+        "branch_scanned_count": 0,
+        "branch_filtered_count": 0,
+    }
+
+    def report(stage: str, message: str, stats: Dict[str, int] | None = None) -> None:
+        if stats:
+            progress_stats.update(stats)
+        _emit_progress(
+            progress_callback,
+            stage=stage,
+            message=message,
+            stats=progress_stats,
+        )
+
+    report("fetching", "正在拉取警情...", {})
     rows = fetch_all_special_case_rows(begin_date, end_date)
+    report(
+        "fetching",
+        f"警情拉取完成，共 {len(rows)} 条",
+        {
+            "upstream_row_count": len(rows),
+        },
+    )
     normalized_branches = normalize_branch_selection(branches)
-    rule_filtered_rows = filter_rows_by_rules(rows, rules)
-    branch_filtered_rows = filter_rows_by_branches(rule_filtered_rows, selected_branches=branches)
+    rule_filtered_rows = filter_rows_by_rules(
+        rows,
+        rules,
+        progress_callback=lambda payload: report(
+            payload.get("stage") or "rule_filtering",
+            payload.get("message") or "规则过滤中...",
+            payload.get("stats") or {},
+        ),
+    )
+    branch_filtered_rows = filter_rows_by_branches(
+        rule_filtered_rows,
+        selected_branches=branches,
+        progress_callback=lambda payload: report(
+            payload.get("stage") or "branch_filtering",
+            payload.get("message") or "分局过滤中...",
+            payload.get("stats") or {},
+        ),
+    )
     paged = paginate_rows(branch_filtered_rows, page_num=page_num, page_size=page_size)
+    if include_hit_keyword_details:
+        paged["rows"] = [
+            {
+                **row,
+                "hitKeywordDetails": "；".join(collect_rule_hit_keyword_details(row, rules)),
+            }
+            for row in paged["rows"]
+        ]
+    enabled_rule_groups = _enabled_rule_groups(rules)
     debug_info = {
         "trace_id": trace_id,
         "requested_branches": list(branches or []),
         "normalized_branches": normalized_branches,
         "branch_cmd_ids": [BRANCH_CMD_ID_MAP[name] for name in normalized_branches],
         "upstream_row_count": len(rows),
+        "rule_scanned_count": progress_stats["rule_scanned_count"] or len(rows),
+        "rule_group_count": len(enabled_rule_groups),
         "rule_match_count": len(rule_filtered_rows),
+        "branch_scanned_count": progress_stats["branch_scanned_count"] or len(rule_filtered_rows),
         "branch_filtered_count": len(branch_filtered_rows),
         "page_row_count": len(paged["rows"]),
         "sample_cmd_ids": collect_cmd_id_samples(rows),
         "rule_hit_samples": collect_rule_hit_samples(rule_filtered_rows, rules),
     }
     logger.info(
-        "[trace:%s][custom-case-monitor] scheme_id=%s scheme_name=%s start=%s end=%s rules=%s req_branches=%s normalized_branches=%s upstream=%s rule_match=%s branch_filtered=%s page_num=%s page_size=%s page_rows=%s sample_cmd_ids=%s",
+        "[trace:%s][custom-case-monitor] scheme_id=%s scheme_name=%s start=%s end=%s rules=%s rule_groups=%s req_branches=%s normalized_branches=%s upstream=%s rule_match=%s branch_filtered=%s page_num=%s page_size=%s page_rows=%s sample_cmd_ids=%s",
         trace_id,
         scheme_id,
         scheme_name,
         begin_date,
         end_date,
         len([rule for rule in rules if rule.get("is_enabled", True)]),
+        len(enabled_rule_groups),
         list(branches or []),
         normalized_branches,
         len(rows),
@@ -419,6 +645,14 @@ def query_special_case_records(
         paged["page_size"],
         len(paged["rows"]),
         debug_info["sample_cmd_ids"],
+    )
+    report(
+        "done",
+        f"查询完成：命中 {len(branch_filtered_rows)} 条",
+        {
+            "branch_scanned_count": len(rule_filtered_rows),
+            "branch_filtered_count": len(branch_filtered_rows),
+        },
     )
     return {
         "success": True,

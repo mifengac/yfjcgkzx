@@ -1,60 +1,72 @@
-<section class="filter-form special-case-form" data-special-case-type="custom-case-monitor">
-    <div class="filter-row">
-        <div class="filter-group">
-            <label for="customMonitorStartTime">报警时间开始</label>
-            <input id="customMonitorStartTime" type="datetime-local" step="1">
-        </div>
-        <div class="filter-group">
-            <label for="customMonitorEndTime">报警时间结束</label>
-            <input id="customMonitorEndTime" type="datetime-local" step="1">
-        </div>
-        <div class="filter-group">
-            <label>分局</label>
-            <div class="multi-select-box special-branch-display" id="customMonitorBranchDisplay">
-                <span>全部</span>
+<div class="custom-monitor-page" data-special-case-type="custom-case-monitor">
+    <section class="filter-form special-case-form">
+        <div class="filter-row">
+            <div class="filter-group">
+                <label for="customMonitorStartTime">报警时间开始</label>
+                <input id="customMonitorStartTime" type="datetime-local" step="1">
             </div>
-            <div class="multi-select-menu special-branch-dropdown" id="customMonitorBranchDropdown"></div>
+            <div class="filter-group">
+                <label for="customMonitorEndTime">报警时间结束</label>
+                <input id="customMonitorEndTime" type="datetime-local" step="1">
+            </div>
+            <div class="filter-group">
+                <label>分局</label>
+                <div class="multi-select-box special-branch-display" id="customMonitorBranchDisplay">
+                    <span>全部</span>
+                </div>
+                <div class="multi-select-menu special-branch-dropdown" id="customMonitorBranchDropdown"></div>
+            </div>
+            <div class="filter-group">
+                <label for="customMonitorScheme">监测方案</label>
+                <select id="customMonitorScheme"></select>
+            </div>
+            <div class="filter-group special-case-actions">
+                <div class="custom-monitor-action-row">
+                    <button type="button" class="module-button" id="customMonitorManageBtn">方案管理</button>
+                    <button type="button" class="module-button" data-action="query">查询</button>
+                </div>
+            </div>
         </div>
-        <div class="filter-group">
-            <label for="customMonitorScheme">监测方案</label>
-            <select id="customMonitorScheme"></select>
-        </div>
-        <div class="filter-group special-case-actions">
-            <div class="custom-monitor-action-row">
-                <button type="button" class="module-button" id="customMonitorManageBtn">方案管理</button>
-                <button type="button" class="module-button" data-action="query">查询</button>
+        <div id="customMonitorEmptyState" class="monitor-empty-state special-case-hidden"></div>
+        <div id="customMonitorErr" class="error-message special-case-hidden"></div>
+    </section>
+
+    <div class="results-header">
+        <div class="results-info" id="customMonitorStatus"></div>
+        <div class="download-menu" id="customMonitorDownloadMenu">
+            <button type="button" class="module-button" data-action="toggle-export">导出</button>
+            <div class="download-menu-content">
+                <button type="button" data-action="export" data-format="xlsx">Excel (xlsx)</button>
+                <button type="button" data-action="export" data-format="csv">CSV</button>
             </div>
         </div>
     </div>
-    <div id="customMonitorEmptyState" class="monitor-empty-state special-case-hidden"></div>
-    <div id="customMonitorErr" class="error-message special-case-hidden"></div>
-</section>
 
-<div class="results-header">
-    <div class="results-info" id="customMonitorStatus"></div>
-    <div class="download-menu" id="customMonitorDownloadMenu">
-        <button type="button" class="module-button" data-action="toggle-export">导出</button>
-        <div class="download-menu-content">
-            <button type="button" data-action="export" data-format="xlsx">Excel (xlsx)</button>
-            <button type="button" data-action="export" data-format="csv">CSV</button>
+    <div class="results-table-container">
+        <table id="customMonitorTable" class="special-case-table"></table>
+    </div>
+
+    <div class="pagination special-case-pagination" id="customMonitorPagination"></div>
+
+    <div id="customMonitorBusyMask" class="custom-monitor-busy-mask" aria-live="polite" aria-busy="true">
+        <div class="custom-monitor-busy-card">
+            <span class="custom-monitor-busy-dot"></span>
+            <div class="custom-monitor-busy-copy">
+                <div id="customMonitorBusyText" class="custom-monitor-busy-title">正在查询，请稍候...</div>
+                <div id="customMonitorBusyStats" class="custom-monitor-busy-detail">已拉取 0 条；已扫描 0 条；已保留 0 条</div>
+            </div>
         </div>
     </div>
 </div>
 
-<div class="results-table-container">
-    <table id="customMonitorTable" class="special-case-table"></table>
-</div>
-
-<div class="pagination special-case-pagination" id="customMonitorPagination"></div>
-
-<div class="modal-backdrop" id="customMonitorModalBackdrop"></div>
-<div class="modal" id="customMonitorSchemeModal">
-    <div class="panel custom-monitor-modal-panel">
-        <div class="hd">
+<div class="custom-monitor-scheme-drawer" id="customMonitorSchemeDrawer">
+    <div class="custom-monitor-scheme-drawer-mask" id="customMonitorModalBackdrop"></div>
+    <div class="custom-monitor-scheme-drawer-panel" id="customMonitorSchemeModal">
+        <div class="custom-monitor-scheme-drawer-head">
             <strong>自定义警情监测方案管理</strong>
             <button type="button" class="module-button custom-monitor-secondary-btn" id="customMonitorCloseModal">关闭</button>
         </div>
-        <div class="bd">
+        <div class="custom-monitor-scheme-drawer-body">
             <div class="custom-monitor-modal-layout">
                 <section class="custom-monitor-scheme-list">
                     <div class="custom-monitor-panel-head">
@@ -82,13 +94,16 @@
                     </label>
                     <div class="custom-monitor-panel-head custom-monitor-rule-head">
                         <strong>规则列表</strong>
-                        <button type="button" class="module-button" id="customMonitorAddRuleBtn">新增规则</button>
+                        <div class="custom-monitor-action-row">
+                            <button type="button" class="module-button custom-monitor-secondary-btn" id="customMonitorAddGroupBtn">新增规则组</button>
+                            <button type="button" class="module-button" id="customMonitorAddRuleBtn">新增规则</button>
+                        </div>
                     </div>
                     <div id="customMonitorRuleList" class="custom-monitor-rule-list"></div>
                 </section>
             </div>
         </div>
-        <div class="ft">
+        <div class="custom-monitor-scheme-drawer-foot">
             <button type="button" class="module-button custom-monitor-secondary-btn" id="customMonitorCancelBtn">取消</button>
             <button type="button" class="module-button" id="customMonitorSaveSchemeBtn">保存方案</button>
         </div>

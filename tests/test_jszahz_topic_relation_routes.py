@@ -140,6 +140,7 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
                 "person_types": [],
                 "risk_labels": [],
                 "managed_only": True,
+                "relation_types": ["case", "clinic", "racing"],
             },
             "records": [
                 {
@@ -158,19 +159,46 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
                     "关联飙车炸街": None,
                 }
             ],
+            "count": 1,
             "message": "",
+            "page": 1,
+            "page_size": 20,
+            "page_size_value": "20",
+            "page_size_label": "20条",
+            "page_record_count": 1,
+            "total_pages": 1,
+            "page_numbers": [1],
+            "has_previous": False,
+            "has_next": False,
+            "previous_page": 1,
+            "next_page": 1,
+            "page_size_options": [
+                {"value": "20", "label": "20条", "selected": True},
+                {"value": "50", "label": "50条", "selected": False},
+                {"value": "100", "label": "100条", "selected": False},
+                {"value": "all", "label": "全部", "selected": False},
+            ],
+            "relation_type_options": [
+                {"value": "case", "label": "关联案件", "checked": True},
+                {"value": "clinic", "label": "关联门诊", "checked": True},
+                {"value": "racing", "label": "关联飙车炸街", "checked": True},
+            ],
+            "selected_relation_types": ["case", "clinic", "racing"],
+            "visible_relation_columns": ["关联案件", "关联门诊", "关联飙车炸街"],
         }
         with patch(
             "jszahzyj.routes.jszahzyj_routes.get_database_connection",
             return_value=_DummyConnection((1,)),
         ), patch(
-            "jszahzyj.routes.jszahz_topic_routes_impl.query_detail_payload",
+            "jszahzyj.routes.jszahz_topic_routes_impl.query_detail_page_payload",
             return_value=fake_payload,
-        ):
+        ) as mock_query:
             response = self.client.get(
                 "/jszahzyj/jszahzztk/detail_page"
                 "?branch_code=445302000000&branch_name=%E4%BA%91%E5%9F%8E%E5%88%86%E5%B1%80"
                 "&managed_only=1"
+                "&relation_types=case&relation_types=clinic&relation_types=racing"
+                "&page=2&page_size=50"
             )
 
         body = response.get_data(as_text=True)
@@ -180,6 +208,27 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
         self.assertIn('data-relation-type="case"', body)
         self.assertIn('data-relation-type="clinic"', body)
         self.assertIn('data-relation-type="racing"', body)
+        self.assertIn("当前共 <strong>1</strong> 人，本页 <strong>1</strong> 人", body)
+        self.assertEqual(mock_query.call_args.kwargs["relation_types"], ["case", "clinic", "racing"])
+        self.assertEqual(mock_query.call_args.kwargs["page"], "2")
+        self.assertEqual(mock_query.call_args.kwargs["page_size"], "50")
+
+    def test_detail_page_rejects_invalid_relation_type(self) -> None:
+        self._login()
+        with patch(
+            "jszahzyj.routes.jszahzyj_routes.get_database_connection",
+            return_value=_DummyConnection((1,)),
+        ), patch(
+            "jszahzyj.routes.jszahz_topic_routes_impl.query_detail_page_payload",
+            side_effect=ValueError("不支持的关联类型: bad"),
+        ):
+            response = self.client.get(
+                "/jszahzyj/jszahzztk/detail_page"
+                "?branch_code=445302000000&relation_types=bad"
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("不支持的关联类型", response.get_data(as_text=True))
 
     def test_detail_relation_counts_api_returns_counts(self) -> None:
         self._login()
@@ -192,14 +241,44 @@ class TestJszahzTopicRelationRoutes(unittest.TestCase):
         ) as mock_build:
             response = self.client.post(
                 "/jszahzyj/api/jszahzztk/detail_relation_counts",
-                json={"zjhms": ["440123199001011111"]},
+                json={
+                    "zjhms": ["440123199001011111"],
+                    "relation_types": ["alarm", "case"],
+                },
             )
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertTrue(payload["success"])
         self.assertEqual(payload["counts"]["alarm"]["440123199001011111"], 2)
-        mock_build.assert_called_once_with(["440123199001011111"])
+        mock_build.assert_called_once_with(
+            ["440123199001011111"],
+            relation_types=["alarm", "case"],
+        )
+
+    def test_download_detail_passes_relation_types(self) -> None:
+        self._login()
+        with patch(
+            "jszahzyj.routes.jszahzyj_routes.get_database_connection",
+            return_value=_DummyConnection((1,)),
+        ), patch(
+            "jszahzyj.routes.jszahz_topic_routes_impl.export_detail_xlsx",
+            return_value=(b"xlsx-bytes", "detail.xlsx"),
+        ) as mock_export:
+            response = self.client.get(
+                "/jszahzyj/download/jszahzztk/detail"
+                "?branch_code=445302000000"
+                "&branch_name=%E4%BA%91%E5%9F%8E%E5%88%86%E5%B1%80"
+                "&person_types=%E5%BC%B1%E7%9B%91%E6%8A%A4"
+                "&risk_labels=1%E7%BA%A7%E6%82%A3%E8%80%85"
+                "&managed_only=1"
+                "&relation_types=case&relation_types=clinic"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("detail.xlsx", response.headers["Content-Disposition"])
+        self.assertEqual(mock_export.call_args.kwargs["branch_name"], "云城分局")
+        self.assertEqual(mock_export.call_args.kwargs["relation_types"], ["case", "clinic"])
 
 
 if __name__ == "__main__":
