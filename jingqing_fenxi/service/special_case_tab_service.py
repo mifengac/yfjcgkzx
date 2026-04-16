@@ -61,6 +61,8 @@ RULE_OPERATOR_OPTIONS = [
     {"value": "not_contains_any", "label": "不包含任一值"},
     {"value": "equals", "label": "完全等于"},
     {"value": "in_list", "label": "属于值列表"},
+    {"value": "regex_any", "label": "正则命中任一条"},
+    {"value": "regex_all", "label": "正则同时命中全部"},
 ]
 
 ALLOWED_RULE_FIELDS = {item["value"] for item in RULE_FIELD_OPTIONS}
@@ -70,6 +72,7 @@ HIT_KEYWORD_HEADER = ("hitKeywords", "命中关键字")
 _FILENAME_SAFE_PATTERN = re.compile(r'[\\/:*?"<>|\r\n\t]+')
 _SHEET_TITLE_SAFE_PATTERN = re.compile(r"[\[\]\*?:/\\]")
 _FILTER_PROGRESS_STEP = 100
+_REGEX_RULE_OPERATORS = {"regex_any", "regex_all"}
 ProgressCallback = Callable[[Dict[str, Any]], None]
 
 
@@ -201,12 +204,13 @@ def fetch_all_special_case_rows(begin_date: str, end_date: str) -> List[Dict[str
     )
 
 
-def normalize_rule_values(values: Any) -> List[str]:
+def normalize_rule_values(values: Any, operator: str | None = None) -> List[str]:
     result: List[str] = []
     seen = set()
+    split_pattern = r"[\r\n]+" if operator in _REGEX_RULE_OPERATORS else r"[\r\n,]+"
 
     def add_token(raw_value: Any) -> None:
-        for item in re.split(r"[\r\n,]+", str(raw_value or "")):
+        for item in re.split(split_pattern, str(raw_value or "")):
             token = item.strip()
             if not token or token in seen:
                 continue
@@ -238,7 +242,7 @@ def validate_scheme_rules(rules: Sequence[Dict[str, Any]]) -> List[Dict[str, Any
     for index, rule in enumerate(rules or [], start=1):
         field_name = str(rule.get("field_name") or "").strip()
         operator = str(rule.get("operator") or "").strip()
-        rule_values = normalize_rule_values(rule.get("rule_values"))
+        rule_values = normalize_rule_values(rule.get("rule_values"), operator)
         group_no = normalize_rule_group_no(rule.get("group_no"), default=1)
         if field_name not in ALLOWED_RULE_FIELDS:
             raise ValueError(f"规则字段不支持：{field_name}")
@@ -246,6 +250,12 @@ def validate_scheme_rules(rules: Sequence[Dict[str, Any]]) -> List[Dict[str, Any
             raise ValueError(f"规则操作符不支持：{operator}")
         if not rule_values:
             raise ValueError("规则值列表不能为空")
+        if operator in _REGEX_RULE_OPERATORS:
+            for rule_value in rule_values:
+                try:
+                    re.compile(rule_value)
+                except re.error as exc:
+                    raise ValueError(f"正则表达式不合法：{rule_value}") from exc
         normalized.append(
             {
                 "field_name": field_name,
@@ -269,10 +279,64 @@ def _row_field_text(row: Dict[str, Any], field_name: str) -> str:
     return str(row.get(field_name) or "").strip()
 
 
+def _ordered_unique(values: Iterable[str]) -> List[str]:
+    result: List[str] = []
+    seen = set()
+    for value in values:
+        token = str(value or "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        result.append(token)
+    return result
+
+
+def _compile_rule_patterns(rule: Dict[str, Any]) -> List[re.Pattern[str]]:
+    cached = rule.get("_compiled_patterns")
+    if isinstance(cached, list):
+        return cached
+
+    operator = str(rule.get("operator") or "").strip()
+    patterns = [
+        re.compile(rule_value)
+        for rule_value in normalize_rule_values(rule.get("rule_values"), operator)
+    ]
+    rule["_compiled_patterns"] = patterns
+    return patterns
+
+
+def _pattern_hit_values(pattern: re.Pattern[str], target: str) -> List[str]:
+    hits: List[str] = []
+    seen = set()
+    for match in pattern.finditer(target):
+        hit_text = str(match.group(0) or "").strip()
+        if not hit_text or hit_text in seen:
+            continue
+        seen.add(hit_text)
+        hits.append(hit_text)
+    return hits
+
+
+def _regex_rule_hit_values(target: str, rule: Dict[str, Any], *, require_all: bool) -> List[str]:
+    collected: List[str] = []
+    for pattern in _compile_rule_patterns(rule):
+        hits = _pattern_hit_values(pattern, target)
+        if require_all and not hits:
+            return []
+        collected.extend(hits)
+    if not require_all and not collected:
+        return []
+    return _ordered_unique(collected)
+
+
 def _rule_hit_values(row: Dict[str, Any], rule: Dict[str, Any]) -> List[str]:
     target = _row_field_text(row, rule["field_name"])
-    values = normalize_rule_values(rule.get("rule_values"))
     operator = str(rule.get("operator") or "").strip()
+    values = normalize_rule_values(rule.get("rule_values"), operator)
+    if operator == "regex_any":
+        return _regex_rule_hit_values(target, rule, require_all=False)
+    if operator == "regex_all":
+        return _regex_rule_hit_values(target, rule, require_all=True)
     if operator == "contains_any":
         return [value for value in values if value in target]
     if operator == "contains_all":
@@ -288,16 +352,21 @@ def _rule_hit_values(row: Dict[str, Any], rule: Dict[str, Any]) -> List[str]:
 
 def _rule_matches_row(row: Dict[str, Any], rule: Dict[str, Any]) -> bool:
     target = _row_field_text(row, rule["field_name"])
-    values = normalize_rule_values(rule.get("rule_values"))
-    if rule["operator"] == "contains_any":
+    operator = str(rule.get("operator") or "").strip()
+    values = normalize_rule_values(rule.get("rule_values"), operator)
+    if operator == "regex_any":
+        return bool(_regex_rule_hit_values(target, rule, require_all=False))
+    if operator == "regex_all":
+        return bool(_regex_rule_hit_values(target, rule, require_all=True))
+    if operator == "contains_any":
         return any(value in target for value in values)
-    if rule["operator"] == "contains_all":
+    if operator == "contains_all":
         return all(value in target for value in values)
-    if rule["operator"] == "not_contains_any":
+    if operator == "not_contains_any":
         return all(value not in target for value in values)
-    if rule["operator"] == "equals":
+    if operator == "equals":
         return any(target == value for value in values)
-    if rule["operator"] == "in_list":
+    if operator == "in_list":
         return target in set(values)
     return False
 
@@ -373,7 +442,7 @@ def _resolve_hit_field_labels(row: Dict[str, Any], rule: Dict[str, Any], value: 
     case_text = str(row.get("caseContents") or "").strip()
     reply_text = str(row.get("replies") or "").strip()
     labels: List[str] = []
-    if operator in {"contains_any", "contains_all"}:
+    if operator in {"contains_any", "contains_all", "regex_any", "regex_all"}:
         if value in case_text:
             labels.append(RULE_FIELD_LABEL_MAP["caseContents"])
         if value in reply_text:

@@ -448,6 +448,13 @@
         }).join("");
     }
 
+    function ruleValuePlaceholder(operator) {
+        if (operator === "regex_any" || operator === "regex_all") {
+            return "正则模式请一行一条，不要用逗号分隔；例如：(持|拿).{0,6}(刀|械)";
+        }
+        return "一行一个值，或用逗号分隔";
+    }
+
     function normalizeRuleValueText(ruleValues) {
         if (Array.isArray(ruleValues)) return ruleValues.join("\n");
         return ruleValues || "";
@@ -525,7 +532,7 @@
                 "<label class='custom-monitor-rule-field'>字段<select data-role='field'>" + createSelectOptions(state.fieldOptions, rule.field_name) + "</select></label>" +
                 "<label class='custom-monitor-rule-field'>操作符<select data-role='operator'>" + createSelectOptions(state.operatorOptions, rule.operator) + "</select></label>" +
                 "</div>" +
-                "<label class='custom-monitor-rule-values'>值列表<textarea data-role='values' rows='5' placeholder='一行一个值，或用逗号分隔'>" + escapeHtml(normalizeRuleValueText(rule.rule_values)) + "</textarea></label>" +
+                "<label class='custom-monitor-rule-values'>值列表<textarea data-role='values' rows='5' placeholder='" + escapeHtml(ruleValuePlaceholder(rule.operator)) + "'>" + escapeHtml(normalizeRuleValueText(rule.rule_values)) + "</textarea></label>" +
                 "</div>";
         });
         container.innerHTML = html;
@@ -535,6 +542,15 @@
                 if (!row || !row.parentNode) return;
                 row.parentNode.removeChild(row);
                 if (!container.querySelector(".custom-monitor-rule-row")) renderRuleList([]);
+            });
+        });
+        Array.prototype.forEach.call(container.querySelectorAll("[data-role='operator']"), function(select) {
+            select.addEventListener("change", function() {
+                var row = select.closest(".custom-monitor-rule-row");
+                if (!row) return;
+                var textarea = row.querySelector("[data-role='values']");
+                if (!textarea) return;
+                textarea.setAttribute("placeholder", ruleValuePlaceholder(select.value));
             });
         });
     }

@@ -27,6 +27,22 @@ class TestCustomCaseMonitorService(unittest.TestCase):
         self.assertEqual(rules[0]["rule_values"], ["流浪", "乞讨"])
         self.assertTrue(rules[0]["is_enabled"])
 
+    def test_validate_rules_accepts_regex_values_with_quantifier_commas(self) -> None:
+        rules = special_service.validate_scheme_rules(
+            [
+                {
+                    "field_name": "combined_text",
+                    "operator": "regex_any",
+                    "rule_values": "(?:持|拿).{0,6}(?:刀|械)\n(?:手持|携带).{0,4}(?:钢管|铁棍)",
+                }
+            ]
+        )
+
+        self.assertEqual(
+            rules[0]["rule_values"],
+            ["(?:持|拿).{0,6}(?:刀|械)", "(?:手持|携带).{0,4}(?:钢管|铁棍)"],
+        )
+
     def test_validate_rules_rejects_empty_values(self) -> None:
         with self.assertRaises(ValueError):
             special_service.validate_scheme_rules(
@@ -35,6 +51,18 @@ class TestCustomCaseMonitorService(unittest.TestCase):
                         "field_name": "combined_text",
                         "operator": "contains_any",
                         "rule_values": "",
+                    }
+                ]
+            )
+
+    def test_validate_rules_rejects_invalid_regex(self) -> None:
+        with self.assertRaisesRegex(ValueError, "正则表达式不合法"):
+            special_service.validate_scheme_rules(
+                [
+                    {
+                        "field_name": "combined_text",
+                        "operator": "regex_any",
+                        "rule_values": "(持刀",
                     }
                 ]
             )
@@ -92,6 +120,28 @@ class TestCustomCaseMonitorService(unittest.TestCase):
         matched = special_service.filter_rows_by_rules(rows, rules)
 
         self.assertEqual([row["caseNo"] for row in matched], ["A001", "A002"])
+
+    def test_filter_rows_by_regex_rules_supports_variable_middle_text(self) -> None:
+        rules = special_service.validate_scheme_rules(
+            [
+                {
+                    "field_name": "combined_text",
+                    "operator": "regex_any",
+                    "rule_values": "(?:持|拿|携带|手持).{0,6}(?:刀|匕首|砍刀|械|钢管)",
+                    "group_no": 1,
+                }
+            ]
+        )
+        rows = [
+            {"caseNo": "A001", "caseContents": "现场有人持砍刀伤人", "replies": ""},
+            {"caseNo": "A002", "caseContents": "对方拿着菜刀威胁", "replies": ""},
+            {"caseNo": "A003", "caseContents": "", "replies": "反馈称手持钢管追赶他人"},
+            {"caseNo": "A004", "caseContents": "普通纠纷", "replies": ""},
+        ]
+
+        matched = special_service.filter_rows_by_rules(rows, rules)
+
+        self.assertEqual([row["caseNo"] for row in matched], ["A001", "A002", "A003"])
 
     def test_filter_rows_by_rules_reports_progress(self) -> None:
         rules = special_service.validate_scheme_rules(
@@ -177,6 +227,25 @@ class TestCustomCaseMonitorService(unittest.TestCase):
         )
 
         self.assertEqual(details, ["报警内容→持刀", "反馈内容→持械"])
+
+    def test_collect_rule_hit_keyword_details_uses_actual_regex_match_fragment(self) -> None:
+        rules = special_service.validate_scheme_rules(
+            [
+                {
+                    "field_name": "combined_text",
+                    "operator": "regex_all",
+                    "rule_values": "(?:持|拿).{0,6}(?:刀|械)\n(?:伤人|打架|威胁)",
+                    "group_no": 1,
+                }
+            ]
+        )
+
+        details = special_service.collect_rule_hit_keyword_details(
+            {"caseContents": "报警称有人持砍刀伤人", "replies": ""},
+            rules,
+        )
+
+        self.assertEqual(details, ["报警内容→持砍刀", "报警内容→伤人"])
 
     def test_combined_text_matches_when_case_contents_only_hits(self) -> None:
         rule = {
