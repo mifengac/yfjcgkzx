@@ -347,13 +347,6 @@ class TestCustomCaseMonitorService(unittest.TestCase):
             "page_size": 15,
             "total": 2,
             "rows": [{"caseNo": "A001"}, {"caseNo": "A002"}],
-            "debug": {
-                "upstream_row_count": 5,
-                "rule_scanned_count": 5,
-                "rule_match_count": 3,
-                "branch_scanned_count": 3,
-                "branch_filtered_count": 2,
-            },
         }
 
         class _ImmediateThread:

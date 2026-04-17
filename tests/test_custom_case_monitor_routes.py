@@ -93,7 +93,6 @@ class TestCustomCaseMonitorRoutes(unittest.TestCase):
             "page_size": 15,
             "total": 1,
             "rows": [{"caseNo": "A001"}],
-            "debug": {"upstream_row_count": 3, "rule_match_count": 1, "branch_filtered_count": 1},
         }
         with patch(
             "jingqing_fenxi.routes.custom_case_monitor_routes.query_custom_case_monitor_records",

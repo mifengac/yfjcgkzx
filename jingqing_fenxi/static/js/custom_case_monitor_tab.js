@@ -233,13 +233,7 @@
     function renderStatus(result) {
         var node = document.getElementById("customMonitorStatus");
         if (!node) return;
-        var debug = result.debug || {};
-        var traceId = debug.trace_id ? ("；trace=" + debug.trace_id) : "";
-        var stats = "";
-        if (typeof debug.upstream_row_count !== "undefined") {
-            stats = "；上游返回 " + debug.upstream_row_count + " 条；规则命中 " + (debug.rule_match_count || 0) + " 条；分局过滤后 " + (debug.branch_filtered_count || 0) + " 条";
-        }
-        node.textContent = "方案：" + (result.scheme_name || "") + "；时间范围：" + result.start_time + " 至 " + result.end_time + "；命中 " + result.total + " 条" + stats + traceId;
+        node.textContent = "方案：" + (result.scheme_name || "") + "；时间范围：" + result.start_time + " 至 " + result.end_time + "；命中 " + result.total + " 条";
     }
 
     function buildPayload(pageNum) {

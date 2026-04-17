@@ -6,8 +6,7 @@
     var lastAnalyzeState = {
         data: null,
         base: null,
-        dims: [],
-        traceId: ""
+        dims: []
     };
 
     function setError(message) {
@@ -499,7 +498,6 @@
                 lastAnalyzeState.data = result.data || {};
                 lastAnalyzeState.base = result.analysisBase || {};
                 lastAnalyzeState.dims = selectedDims;
-                lastAnalyzeState.traceId = result.trace_id || "";
                 setError("");
                 renderFromCurrentState();
             })

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import uuid
-
 from flask import Response, jsonify, request, send_file
 
 from jingqing_fenxi.routes.jingqing_fenxi_routes import jingqing_fenxi_bp
@@ -40,12 +38,10 @@ def _collect_params() -> dict[str, str]:
 def api_fight_topic_analyze() -> Response:
     params = _collect_params()
     dimensions = _get_dimensions_from_request()
-    trace_id = uuid.uuid4().hex[:12]
     try:
         results, analysis_base, _all_data, analysis_options, _meta = run_fight_topic_analysis(
             params,
             dimensions,
-            trace_id=trace_id,
         )
         return jsonify(
             {
@@ -53,7 +49,6 @@ def api_fight_topic_analyze() -> Response:
                 "data": results,
                 "analysisBase": analysis_base,
                 "analysisOptions": analysis_options,
-                "trace_id": trace_id,
             }
         )
     except ValueError as exc:
@@ -66,12 +61,10 @@ def api_fight_topic_analyze() -> Response:
 def download_fight_topic() -> Response:
     params = _collect_params()
     dimensions = _get_dimensions_from_request()
-    trace_id = uuid.uuid4().hex[:12]
     try:
         results, _analysis_base, all_data, analysis_options, meta = run_fight_topic_analysis(
             params,
             dimensions,
-            trace_id=trace_id,
             include_detail_rows=True,
         )
         export_file = generate_fight_topic_excel(

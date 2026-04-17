@@ -59,9 +59,9 @@ def fetch_all_case_list(base_payload, max_page_size=2000):
     return all_rows
 
 
-def fetch_srr_list(payload, trace_id=None):
+def fetch_srr_list(payload):
     """Fetch SRR data directly from upstream API."""
-    return api_client.get_srr_list(payload, trace_id=trace_id)
+    return api_client.get_srr_list(payload)
 
 
 def _normalize_time_bucket_hours(bucket_hours):

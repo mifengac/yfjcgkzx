@@ -125,8 +125,7 @@ class JingQingApiClient:
             return response.json()
         return []
 
-    def get_srr_list(self, payload, trace_id=None):
-        trace = trace_id or "-"
+    def get_srr_list(self, payload):
         body = urllib.parse.urlencode(payload, quote_via=urllib.parse.quote, safe="[]")
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
@@ -137,8 +136,7 @@ class JingQingApiClient:
         chara_no = str((payload or {}).get("charaNo", "")).strip()
         jsession = self.session.cookies.get("JSESSIONID") if self.session else ""
         logger.info(
-            "[trace:%s] SRR request charaNoLen=%s hasJSESSIONID=%s body=%s",
-            trace,
+            "SRR request charaNoLen=%s hasJSESSIONID=%s body=%s",
             len(chara_no),
             bool(jsession),
             body[:300],
@@ -149,15 +147,14 @@ class JingQingApiClient:
         )
         if not response or response.status_code != 200:
             logger.error(
-                "[trace:%s] SRR list request failed, status=%s",
-                trace,
+                "SRR list request failed, status=%s",
                 response.status_code if response else "None",
             )
             return {"total": 0, "rows": [], "code": -1}
 
         content_type = (response.headers.get("Content-Type", "") or "").lower()
         if "json" not in content_type and self._looks_like_login_page(response.text):
-            logger.warning("[trace:%s] SRR non-JSON looks like login page, force relogin+retry", trace)
+            logger.warning("SRR non-JSON looks like login page, force relogin+retry")
             self._logged_in = False
             if not self.login(force=True):
                 return {"total": 0, "rows": [], "code": -1}
@@ -165,15 +162,14 @@ class JingQingApiClient:
                 "POST", "/dsjfx/srr/list", data=body, headers=headers, timeout=20
             )
             if not response or response.status_code != 200:
-                logger.error("[trace:%s] SRR retry after relogin failed", trace)
+                logger.error("SRR retry after relogin failed")
                 return {"total": 0, "rows": [], "code": -1}
 
         try:
             result = response.json()
         except Exception as exc:
             logger.error(
-                "[trace:%s] SRR list JSON parse failed: %s | body=%s",
-                trace,
+                "SRR list JSON parse failed: %s | body=%s",
                 exc,
                 (response.text or "")[:500],
             )
@@ -181,8 +177,7 @@ class JingQingApiClient:
 
         rows_len = len(result.get("rows", []))
         logger.info(
-            "[trace:%s] SRR list response code=%s total=%s rows=%s",
-            trace,
+            "SRR list response code=%s total=%s rows=%s",
             result.get("code"),
             result.get("total"),
             rows_len,
@@ -191,8 +186,7 @@ class JingQingApiClient:
         upstream_code = result.get("code")
         if upstream_code != 0:
             logger.error(
-                "[trace:%s] SRR upstream business error code=%s msg=%s head=%s",
-                trace,
+                "SRR upstream business error code=%s msg=%s head=%s",
                 upstream_code,
                 result.get("msg"),
                 (response.text or "")[:300],
@@ -200,11 +194,8 @@ class JingQingApiClient:
             return result
 
         if rows_len == 0 and chara_no:
-            logger.warning(
-                "[trace:%s] SRR empty rows with non-empty charaNo; no relogin retry (business-empty)",
-                trace,
-            )
-            logger.warning("[trace:%s] SRR empty response head=%s", trace, (response.text or "")[:300])
+            logger.warning("SRR empty rows with non-empty charaNo; no relogin retry (business-empty)")
+            logger.warning("SRR empty response head=%s", (response.text or "")[:300])
 
         return result
 

@@ -361,7 +361,6 @@ def run_fight_topic_analysis(
     params: Mapping[str, Any],
     dimensions_selected: Sequence[str],
     *,
-    trace_id: str | None = None,
     include_detail_rows: bool = False,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     dims = normalize_dimensions(dimensions_selected)
@@ -376,11 +375,9 @@ def run_fight_topic_analysis(
     results: Dict[str, Any] = {}
     analysis_base: Dict[str, Any] = {}
     all_data: List[Dict[str, Any]] = []
-    trace = trace_id or "-"
 
     logger.info(
-        "[trace:%s][fight-topic] analyze begin=%s end=%s dims=%s tagCount=%s options=%s",
-        trace,
+        "[fight-topic] analyze begin=%s end=%s dims=%s tagCount=%s options=%s",
         begin_date,
         end_date,
         dims,
@@ -423,7 +420,7 @@ def run_fight_topic_analysis(
             tag_csv,
             chara_name_csv,
         )
-        srr_result = fetch_srr_list(srr_payload, trace_id=trace)
+        srr_result = fetch_srr_list(srr_payload)
         if srr_result.get("code") == 0:
             results["srr"] = srr_result.get("rows", [])
         else:
@@ -431,7 +428,6 @@ def run_fight_topic_analysis(
             results["srr_error"] = {
                 "upstream_code": srr_result.get("code", -1),
                 "message": srr_result.get("msg") or "上游接口异常",
-                "trace_id": trace,
             }
 
     meta = {

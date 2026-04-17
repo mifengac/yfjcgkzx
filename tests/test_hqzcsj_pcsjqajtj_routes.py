@@ -81,6 +81,42 @@ class TestPcsjqajtjRoutes(unittest.TestCase):
         self.assertEqual(mock_build_summary.call_args.kwargs["end_time"], "2026-04-08 00:00:00")
         self.assertEqual(mock_build_summary.call_args.kwargs["leixing_list"], ["治安"])
         self.assertEqual(mock_build_summary.call_args.kwargs["ssfjdm_list"], ["445302"])
+        self.assertIsNone(mock_build_summary.call_args.kwargs["hb_start_time"])
+        self.assertIsNone(mock_build_summary.call_args.kwargs["hb_end_time"])
+
+    def test_summary_passes_hb_time_range_when_provided(self) -> None:
+        self._login()
+        with patch(
+            "hqzcsj.routes.pcsjqajtj_routes.get_database_connection",
+            return_value=_DummyConnection((1,)),
+        ), patch(
+            "hqzcsj.routes.pcsjqajtj_routes.pcsjqajtj_service.build_summary",
+            return_value=(
+                SimpleNamespace(
+                    start_time="2026-04-01 00:00:00",
+                    end_time="2026-04-08 00:00:00",
+                    yoy_start_time="2025-04-01 00:00:00",
+                    yoy_end_time="2025-04-08 00:00:00",
+                    hb_start_time="2026-03-24 23:59:59",
+                    hb_end_time="2026-03-31 23:59:59",
+                ),
+                [],
+            ),
+        ) as mock_build_summary:
+            response = self.client.get(
+                "/pcsjqajtj/api/summary"
+                "?start_time=2026-04-01%2000:00:00"
+                "&end_time=2026-04-08%2000:00:00"
+                "&hb_start_time=2026-03-24%2023:59:59"
+                "&hb_end_time=2026-03-31%2023:59:59"
+            )
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["meta"]["hb_start_time"], "2026-03-24 23:59:59")
+        self.assertEqual(mock_build_summary.call_args.kwargs["hb_start_time"], "2026-03-24 23:59:59")
+        self.assertEqual(mock_build_summary.call_args.kwargs["hb_end_time"], "2026-03-31 23:59:59")
 
     def test_detail_page_renders_context_from_filters(self) -> None:
         self._login()

@@ -21,13 +21,27 @@
         return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     }
 
-    function setDefaultTimeRange(startEl, endEl) {
+    function setDefaultTimeRange(arg1, arg2) {
+        const config = (arg1 && typeof arg1 === "object" && ("startEl" in arg1 || "hbStartEl" in arg1))
+            ? arg1
+            : { startEl: arg1, endEl: arg2 };
+        const startEl = config.startEl || null;
+        const endEl = config.endEl || null;
+        const hbStartEl = config.hbStartEl || null;
+        const hbEndEl = config.hbEndEl || null;
         const now = new Date();
         const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
         const start = new Date(today0);
         start.setDate(start.getDate() - 7);
+        const hbStart = new Date(today0);
+        hbStart.setDate(hbStart.getDate() - 14);
+        const hbEnd = new Date(today0);
+        hbEnd.setDate(hbEnd.getDate() - 7);
+        hbEnd.setSeconds(hbEnd.getSeconds() - 1);
         if (startEl) startEl.value = formatDateTimeLocal(start);
         if (endEl) endEl.value = formatDateTimeLocal(today0);
+        if (hbStartEl) hbStartEl.value = formatDateTimeLocal(hbStart);
+        if (hbEndEl) hbEndEl.value = formatDateTimeLocal(hbEnd);
     }
 
     function escapeHtml(text) {

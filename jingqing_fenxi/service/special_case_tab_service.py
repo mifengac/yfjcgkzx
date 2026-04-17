@@ -4,7 +4,6 @@ import csv
 import io
 import logging
 import re
-import uuid
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Sequence, Tuple
 
@@ -568,46 +567,6 @@ def paginate_rows(rows: Sequence[Dict[str, Any]], page_num: int = 1, page_size: 
     }
 
 
-def collect_cmd_id_samples(rows: Iterable[Dict[str, Any]], limit: int = 8) -> List[str]:
-    samples: List[str] = []
-    seen = set()
-    for row in rows or []:
-        cmd_id = str(row.get("cmdId") or "").strip()
-        if not cmd_id or cmd_id in seen:
-            continue
-        seen.add(cmd_id)
-        samples.append(cmd_id)
-        if len(samples) >= limit:
-            break
-    return samples
-
-
-def summarize_rule_groups(rules: Sequence[Dict[str, Any]]) -> List[str]:
-    summaries: List[str] = []
-    for group_no, group_rules in _enabled_rule_groups(rules):
-        rule_text = " & ".join(f"{rule['field_name']}:{rule['operator']}" for rule in group_rules)
-        summaries.append(f"G{group_no}({rule_text})")
-    return summaries
-
-
-def collect_rule_hit_samples(rows: Iterable[Dict[str, Any]], rules: Sequence[Dict[str, Any]], limit: int = 5) -> List[Dict[str, str]]:
-    samples: List[Dict[str, str]] = []
-    rule_group_summary = summarize_rule_groups(rules)
-    for row in rows or []:
-        combined_text = _row_field_text(row, "combined_text").replace("\r", " ")
-        samples.append(
-            {
-                "case_no": str(row.get("caseNo") or ""),
-                "cmd_id": str(row.get("cmdId") or ""),
-                "rules": " | ".join(rule_group_summary),
-                "snippet": combined_text[:120],
-            }
-        )
-        if len(samples) >= limit:
-            break
-    return samples
-
-
 def query_special_case_records(
     *,
     label: str,
@@ -622,7 +581,6 @@ def query_special_case_records(
     progress_callback: ProgressCallback | None = None,
     include_hit_keyword_details: bool = False,
 ) -> Dict[str, Any]:
-    trace_id = uuid.uuid4().hex[:10]
     begin_date = normalize_datetime_text(start_time) if start_time else default_time_range()[0]
     end_date = normalize_datetime_text(end_time) if end_time else default_time_range()[1]
     progress_stats = {
@@ -680,31 +638,13 @@ def query_special_case_records(
             }
             for row in paged["rows"]
         ]
-    enabled_rule_groups = _enabled_rule_groups(rules)
-    debug_info = {
-        "trace_id": trace_id,
-        "requested_branches": list(branches or []),
-        "normalized_branches": normalized_branches,
-        "branch_cmd_ids": [BRANCH_CMD_ID_MAP[name] for name in normalized_branches],
-        "upstream_row_count": len(rows),
-        "rule_scanned_count": progress_stats["rule_scanned_count"] or len(rows),
-        "rule_group_count": len(enabled_rule_groups),
-        "rule_match_count": len(rule_filtered_rows),
-        "branch_scanned_count": progress_stats["branch_scanned_count"] or len(rule_filtered_rows),
-        "branch_filtered_count": len(branch_filtered_rows),
-        "page_row_count": len(paged["rows"]),
-        "sample_cmd_ids": collect_cmd_id_samples(rows),
-        "rule_hit_samples": collect_rule_hit_samples(rule_filtered_rows, rules),
-    }
     logger.info(
-        "[trace:%s][custom-case-monitor] scheme_id=%s scheme_name=%s start=%s end=%s rules=%s rule_groups=%s req_branches=%s normalized_branches=%s upstream=%s rule_match=%s branch_filtered=%s page_num=%s page_size=%s page_rows=%s sample_cmd_ids=%s",
-        trace_id,
+        "[custom-case-monitor] scheme_id=%s scheme_name=%s start=%s end=%s rules=%s req_branches=%s normalized_branches=%s upstream=%s rule_match=%s branch_filtered=%s page_num=%s page_size=%s page_rows=%s",
         scheme_id,
         scheme_name,
         begin_date,
         end_date,
         len([rule for rule in rules if rule.get("is_enabled", True)]),
-        len(enabled_rule_groups),
         list(branches or []),
         normalized_branches,
         len(rows),
@@ -713,7 +653,6 @@ def query_special_case_records(
         paged["page_num"],
         paged["page_size"],
         len(paged["rows"]),
-        debug_info["sample_cmd_ids"],
     )
     report(
         "done",
@@ -731,7 +670,6 @@ def query_special_case_records(
         "start_time": begin_date,
         "end_time": end_date,
         "branches": normalized_branches,
-        "debug": debug_info,
         **paged,
     }
 

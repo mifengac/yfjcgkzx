@@ -6,13 +6,13 @@ Flask 应用入口。
 本文件负责：
 1. 初始化 Flask 实例与全局配置。
 2. 注册三个业务模块的蓝图：警情案件、巡防统计、治综数据统计。
-3. 提供首页、健康检查以及若干调试接口。
+3. 提供首页、健康检查等基础接口。
 4. 对外暴露案件统计相关的 REST API。
 """
 
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List
 
 import psycopg2
@@ -243,53 +243,6 @@ def health_check():
         status["services"]["login_test"] = f"failed: {exc}"
 
     return jsonify(status)
-
-
-# ---------------------------------------------------------------------------
-# 调试接口：便于排查会话/登录问题
-# ---------------------------------------------------------------------------
-
-@app.route("/debug/login")
-def debug_login():
-    """
-    查看当前会话状态，并尝试执行一次登录检测。
-    """
-    try:
-        login_test = session_manager.test_login()
-        response = {
-            "session_exists": session_manager.session is not None,
-            "last_login_time": session_manager.last_login_time.isoformat()
-            if session_manager.last_login_time
-            else None,
-            "failure_count": session_manager.login_failure_count,
-            "cooldown_active": (
-                session_manager.last_login_failure_time
-                and datetime.now() - session_manager.last_login_failure_time < session_manager.login_failure_cooldown
-            ),
-            "login_test": login_test,
-        }
-        return jsonify(response)
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
-
-
-@app.route("/debug/reset_login")
-def reset_login_state():
-    """
-    将会话管理器重置为初始状态：
-    - 清零失败次数
-    - 清空会话缓存
-    - 恢复冷却时间
-    """
-    try:
-        session_manager.login_failure_count = 0
-        session_manager.last_login_failure_time = None
-        session_manager.login_failure_cooldown = timedelta(minutes=1)
-        session_manager.session = None
-        session_manager.last_login_time = None
-        return jsonify({"success": True, "message": "登录状态已重置"})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
 
 
 # ---------------------------------------------------------------------------

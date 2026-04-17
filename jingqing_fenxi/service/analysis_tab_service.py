@@ -207,59 +207,15 @@ def _build_srr_payload(form):
     }
 
 
-def build_debug_srr_payload():
-    now = datetime.now()
-    start = (now - timedelta(days=7)).strftime('%Y-%m-%d 00:00:00')
-    end = now.strftime('%Y-%m-%d 23:59:59')
-    m2m_start = (now - timedelta(days=14)).strftime('%Y-%m-%d 00:00:00')
-    m2m_end = (now - timedelta(days=7)).strftime('%Y-%m-%d 23:59:59')
-    y2y_start = (now.replace(year=now.year - 1) - timedelta(days=7)).strftime('%Y-%m-%d 00:00:00')
-    y2y_end = now.replace(year=now.year - 1).strftime('%Y-%m-%d 23:59:59')
-    return {
-        'params[startTime]': start,
-        'params[endTime]': end,
-        'groupField': 'duty_dept_no',
-        'caseLevel': '',
-        'charaNo': '',
-        'chara': '',
-        'charaType': 'chara_ori',
-        'charaLevel': '1',
-        'params[y2yStartTime]': y2y_start,
-        'params[y2yEndTime]': y2y_end,
-        'dutyDeptNo': '',
-        'dutyDeptName': '全部',
-        'newRecvType': '',
-        'newRecvTypeName': '全部',
-        'newCaseSourceNo': '',
-        'newCaseSource': '全部',
-        'params[m2mStartTime]': m2m_start,
-        'params[m2mEndTime]': m2m_end,
-        'params[searchAnd]': '',
-        'params[searchOr]': '',
-        'params[searchNot]': '',
-        'caseContents': 'on',
-        'replies': 'on',
-        'pageNum': 'NaN',
-        'orderByColumn': '',
-        'isAsc': 'asc',
-    }
-
-
-def get_srr_debug_result(payload):
-    return api_client.get_srr_list(payload)
-
-
-def run_analysis(form, dimensions_selected, trace_id=None):
+def run_analysis(form, dimensions_selected):
     results = {}
     analysis_base = {}
     all_data = []
-    trace = trace_id or '-'
     analysis_options = _build_analysis_options(form)
 
     chara_no = _normalize_csv(form.get('newOriCharaSubclassNo', ''))
     logger.info(
-        '[trace:%s] analyze form begin=%s end=%s dims=%s charaNoLen=%s charaNoHead=%s options=%s',
-        trace,
+        'analyze form begin=%s end=%s dims=%s charaNoLen=%s charaNoHead=%s options=%s',
         form.get('beginDate', ''),
         form.get('endDate', ''),
         list(dimensions_selected or []),
@@ -286,18 +242,16 @@ def run_analysis(form, dimensions_selected, trace_id=None):
     if 'srr' in dimensions_selected:
         srr_payload = _build_srr_payload(form)
         logger.info(
-            '[trace:%s] srr payload charaNoLen=%s y2yStart=%s y2yEnd=%s m2mStart=%s m2mEnd=%s',
-            trace,
+            'srr payload charaNoLen=%s y2yStart=%s y2yEnd=%s m2mStart=%s m2mEnd=%s',
             len(str(srr_payload.get('charaNo', ''))),
             srr_payload.get('params[y2yStartTime]', ''),
             srr_payload.get('params[y2yEndTime]', ''),
             srr_payload.get('params[m2mStartTime]', ''),
             srr_payload.get('params[m2mEndTime]', ''),
         )
-        srr_res = fetch_srr_list(srr_payload, trace_id=trace)
+        srr_res = fetch_srr_list(srr_payload)
         logger.info(
-            '[trace:%s] SRR analyze result: code=%s total=%s rows=%s',
-            trace,
+            'SRR analyze result: code=%s total=%s rows=%s',
             srr_res.get('code'),
             srr_res.get('total'),
             len(srr_res.get('rows', [])),
@@ -309,7 +263,6 @@ def run_analysis(form, dimensions_selected, trace_id=None):
             results['srr_error'] = {
                 'upstream_code': srr_res.get('code', -1),
                 'message': srr_res.get('msg') or '上游接口异常',
-                'trace_id': trace,
             }
 
     return results, analysis_base, all_data, analysis_options

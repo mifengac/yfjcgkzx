@@ -191,10 +191,12 @@ def fetch_summary_rows(
         ),
         daibu_stats AS (
             SELECT
-                LEFT(dbz.dbz_cbqy_bh_dm, 8) || '0000' AS pcsdm,
+                LEFT(dbz.dbz_cbdw_bh_dm, 8) || '0000' AS pcsdm,
                 COUNT(*)                              AS daibu_cnt
             FROM ywdata.zq_zfba_dbz dbz
             CROSS JOIN params p
+            LEFT JOIN ywdata.zq_zfba_ajxx aj_dbz
+                   ON aj_dbz.ajxx_ajbh = dbz.ajxx_ajbh
             WHERE dbz.dbz_pzdbsj >= p.start_time
               AND dbz.dbz_pzdbsj <= p.end_time
               AND (
@@ -203,10 +205,10 @@ def fetch_summary_rows(
                         SELECT 1
                         FROM ywdata.case_type_config ctc
                         WHERE ctc.leixing = ANY(p.leixing)
-                          AND COALESCE(dbz.dbz_ay_mc, '') SIMILAR TO ctc.ay_pattern
+                          AND COALESCE(aj_dbz.ajxx_aymc, '') SIMILAR TO ctc.ay_pattern
                    )
               )
-            GROUP BY LEFT(dbz.dbz_cbqy_bh_dm, 8) || '0000'
+            GROUP BY LEFT(dbz.dbz_cbdw_bh_dm, 8) || '0000'
         ),
         qisu_stats AS (
             SELECT
@@ -214,6 +216,8 @@ def fetch_summary_rows(
                 COUNT(*)                                    AS qisu_cnt
             FROM ywdata.zq_zfba_qsryxx qsryxx
             CROSS JOIN params p
+            LEFT JOIN ywdata.zq_zfba_ajxx aj_qs
+                   ON aj_qs.ajxx_ajbh = qsryxx.ajxx_ajbh
             WHERE qsryxx.qsryxx_tfsj >= p.start_time
               AND qsryxx.qsryxx_tfsj <= p.end_time
               AND (
@@ -222,7 +226,7 @@ def fetch_summary_rows(
                         SELECT 1
                         FROM ywdata.case_type_config ctc
                         WHERE ctc.leixing = ANY(p.leixing)
-                          AND COALESCE(qsryxx.ajxx_ay, '') SIMILAR TO ctc.ay_pattern
+                          AND COALESCE(aj_qs.ajxx_aymc, '') SIMILAR TO ctc.ay_pattern
                    )
               )
             GROUP BY LEFT(qsryxx.qsryxx_cbdw_bh_dm, 8) || '0000'
@@ -578,13 +582,13 @@ def fetch_detail_rows(
                     EXISTS (
                         SELECT 1
                         FROM unnest(%s::text[]) p(pattern)
-                        WHERE COALESCE(dbz.dbz_ay_mc, '') SIMILAR TO p.pattern
+                        WHERE COALESCE(aj_dbz.ajxx_aymc, '') SIMILAR TO p.pattern
                     )
                     """
                 )
                 params.append(patterns)
             if not is_all:
-                where_parts.append("LEFT(dbz.dbz_cbqy_bh_dm, 8) || '0000' = %s")
+                where_parts.append("LEFT(dbz.dbz_cbdw_bh_dm, 8) || '0000' = %s")
                 params.append(pcsdm_text)
             sql_text = f"""
                 SELECT
@@ -595,9 +599,11 @@ def fetch_detail_rows(
                     dbz.dbz_dbyy AS "逮捕原因",
                     dbz.dbz_pzdbsj AS "批准逮捕时间",
                     dbz.dbz_cbdw_mc AS "办案单位",
-                    LEFT(dbz.dbz_cbqy_bh_dm, 8) || '0000' AS "派出所代码",
+                    LEFT(dbz.dbz_cbdw_bh_dm, 8) || '0000' AS "派出所代码",
                     dbz.dbz_wsh AS "文书号"
                 FROM ywdata.zq_zfba_dbz dbz
+                LEFT JOIN ywdata.zq_zfba_ajxx aj_dbz
+                       ON aj_dbz.ajxx_ajbh = dbz.ajxx_ajbh
                 WHERE {" AND ".join(where_parts)}
                 ORDER BY dbz.dbz_pzdbsj DESC
             """
@@ -619,7 +625,7 @@ def fetch_detail_rows(
                     EXISTS (
                         SELECT 1
                         FROM unnest(%s::text[]) p(pattern)
-                        WHERE COALESCE(qs.ajxx_ay, '') SIMILAR TO p.pattern
+                        WHERE COALESCE(aj_qs.ajxx_aymc, '') SIMILAR TO p.pattern
                     )
                     """
                 )
@@ -638,6 +644,8 @@ def fetch_detail_rows(
                     LEFT(qs.qsryxx_cbdw_bh_dm, 8) || '0000' AS "派出所代码",
                     qs.qsryxx_wsh AS "文书号"
                 FROM ywdata.zq_zfba_qsryxx qs
+                LEFT JOIN ywdata.zq_zfba_ajxx aj_qs
+                       ON aj_qs.ajxx_ajbh = qs.ajxx_ajbh
                 WHERE {" AND ".join(where_parts)}
                 ORDER BY qs.qsryxx_tfsj DESC
             """

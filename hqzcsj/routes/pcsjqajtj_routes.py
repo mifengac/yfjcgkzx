@@ -109,6 +109,8 @@ def api_fenju() -> Any:
 def api_summary() -> Any:
     start_time = str(request.args.get("start_time") or "").strip()
     end_time = str(request.args.get("end_time") or "").strip()
+    hb_start_time = str(request.args.get("hb_start_time") or "").strip()
+    hb_end_time = str(request.args.get("hb_end_time") or "").strip()
     if not start_time or not end_time:
         start_time, end_time = pcsjqajtj_service.default_time_range_for_page()
     leixing = _parse_list_args("leixing")
@@ -119,13 +121,17 @@ def api_summary() -> Any:
             end_time=end_time,
             leixing_list=leixing,
             ssfjdm_list=ssfjdm,
+            hb_start_time=hb_start_time or None,
+            hb_end_time=hb_end_time or None,
         )
         return jsonify({"success": True, "meta": meta.__dict__, "rows": rows})
     except Exception as exc:
         logging.exception(
-            "pcsjqajtj api_summary failed: start=%s end=%s leixing=%s ssfjdm=%s",
+            "pcsjqajtj api_summary failed: start=%s end=%s hb_start=%s hb_end=%s leixing=%s ssfjdm=%s",
             start_time,
             end_time,
+            hb_start_time,
+            hb_end_time,
             leixing,
             ssfjdm,
         )

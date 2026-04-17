@@ -322,7 +322,10 @@ def _run_query_job(
             progress_callback=on_progress,
         )
         final_stats = _default_query_stats()
-        final_stats.update((result.get("debug") or {}))
+        with _STATUS_LOCK:
+            current_status = deepcopy(_QUERY_JOB_STATUS.get(key) or {})
+        final_stats.update(current_status.get("stats") or {})
+        final_stats["branch_filtered_count"] = int(result.get("total") or final_stats["branch_filtered_count"] or 0)
         _update_query_job_status(
             key,
             state="success",

@@ -6,10 +6,13 @@
 
     const startEl = document.getElementById("pcsjqajtjStart");
     const endEl = document.getElementById("pcsjqajtjEnd");
+    const hbStartEl = document.getElementById("pcsjqajtjHbStart");
+    const hbEndEl = document.getElementById("pcsjqajtjHbEnd");
     const fenjuDisplay = document.getElementById("pcsjqajtjFenjuDisplay");
     const fenjuDropdown = document.getElementById("pcsjqajtjFenjuDropdown");
     const typesDisplay = document.getElementById("pcsjqajtjTypesDisplay");
     const typesDropdown = document.getElementById("pcsjqajtjTypesDropdown");
+    const showHbEl = document.getElementById("pcsjqajtjShowHb");
     const showRatioEl = document.getElementById("pcsjqajtjShowRatio");
     const queryBtn = document.getElementById("pcsjqajtjQueryBtn");
     const exportBtn = document.getElementById("pcsjqajtjExportBtn");
@@ -21,8 +24,9 @@
     const busyTextEl = document.getElementById("pcsjqajtjBusyText");
 
     if (
-        !startEl || !endEl || !fenjuDisplay || !fenjuDropdown || !typesDisplay || !typesDropdown ||
-        !showRatioEl || !queryBtn || !exportBtn || !exportDd || !statusEl || !errEl || !tbl
+        !startEl || !endEl || !hbStartEl || !hbEndEl || !fenjuDisplay || !fenjuDropdown ||
+        !typesDisplay || !typesDropdown || !showHbEl || !showRatioEl || !queryBtn || !exportBtn ||
+        !exportDd || !statusEl || !errEl || !tbl
     ) {
         return;
     }
@@ -158,15 +162,23 @@
         const endTime = timeOverride && timeOverride.end_time
             ? timeOverride.end_time
             : H.formatDateTime(endEl.value);
+        const hbStartTime = timeOverride && timeOverride.hb_start_time
+            ? timeOverride.hb_start_time
+            : H.formatDateTime(hbStartEl.value);
+        const hbEndTime = timeOverride && timeOverride.hb_end_time
+            ? timeOverride.hb_end_time
+            : H.formatDateTime(hbEndEl.value);
         if (startTime) usp.set("start_time", startTime);
         if (endTime) usp.set("end_time", endTime);
+        if (hbStartTime) usp.set("hb_start_time", hbStartTime);
+        if (hbEndTime) usp.set("hb_end_time", hbEndTime);
         for (const type of selectedValues(typesDropdown)) usp.append("leixing", type);
         for (const code of selectedValues(fenjuDropdown)) usp.append("ssfjdm", code);
         return usp;
     }
 
     function getDisplayColumns() {
-        return C.getDisplayColumns(!!showRatioEl.checked);
+        return C.getDisplayColumns(!!showRatioEl.checked, !!showHbEl.checked);
     }
 
     function isClickableCol(col) {
@@ -186,8 +198,9 @@
                 if (isClickableCol(col) && Number(value) > 0) {
                     const metric = C.METRIC_BY_COL[col] || "";
                     const isYoy = String(col).startsWith("同比");
-                    const st = isYoy ? (meta.yoy_start_time || "") : (meta.start_time || "");
-                    const et = isYoy ? (meta.yoy_end_time || "") : (meta.end_time || "");
+                    const isHb = String(col).startsWith("环比");
+                    const st = isYoy ? (meta.yoy_start_time || "") : (isHb ? (meta.hb_start_time || "") : (meta.start_time || ""));
+                    const et = isYoy ? (meta.yoy_end_time || "") : (isHb ? (meta.hb_end_time || "") : (meta.end_time || ""));
                     const usp = buildQueryParams({ start_time: st, end_time: et });
                     usp.set("metric", metric);
                     usp.set("pcsdm", row["派出所代码"] || "");
@@ -231,7 +244,7 @@
             lastSelectedFenjuNames = fenjuMeta.selectedNames;
             lastAllFenjuSelected = fenjuMeta.allSelected;
 
-            statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}`;
+            statusEl.textContent = `当前：${data.meta.start_time} ~ ${data.meta.end_time}；同比：${data.meta.yoy_start_time} ~ ${data.meta.yoy_end_time}；环比：${data.meta.hb_start_time} ~ ${data.meta.hb_end_time}`;
             renderTable(lastRows, data.meta || {});
         } catch (e) {
             errEl.textContent = e && e.message ? e.message : String(e);
@@ -295,6 +308,11 @@
             renderTable(lastRows, lastMeta || {});
         });
     }
+    if (showHbEl) {
+        showHbEl.addEventListener("change", () => {
+            renderTable(lastRows, lastMeta || {});
+        });
+    }
 
     queryBtn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -344,7 +362,7 @@
         renderMultiLabel(fenjuDisplay, fenjuDropdown, "未选择(默认全量)");
     });
 
-    H.setDefaultTimeRange(startEl, endEl);
+    H.setDefaultTimeRange({ startEl, endEl, hbStartEl, hbEndEl });
 
     Promise.all([loadTypes(), loadFenju()])
         .catch((e) => {
