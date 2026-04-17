@@ -387,6 +387,43 @@ def _filter_rows_by_place_keywords(
     return out
 
 
+def _case_number(row: Dict[str, Any]) -> str:
+    return str(row.get("案件编号") or "").strip()
+
+
+def _merge_rows_by_case_number(
+    *row_groups: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Merge multiple row groups and deduplicate by case number.
+
+    Rows without a case number are kept as-is because they cannot participate in
+    the requested de-duplication rule.
+    """
+    merged_rows: List[Dict[str, Any]] = []
+    index_by_case_number: Dict[str, Dict[str, Any]] = {}
+
+    for rows in row_groups:
+        for row in rows or []:
+            item = dict(row)
+            case_number = _case_number(item)
+            if not case_number:
+                merged_rows.append(item)
+                continue
+
+            existing = index_by_case_number.get(case_number)
+            if existing is None:
+                index_by_case_number[case_number] = item
+                merged_rows.append(item)
+                continue
+
+            for key, value in item.items():
+                if value in (None, ""):
+                    continue
+                if existing.get(key) in (None, ""):
+                    existing[key] = value
+    return merged_rows
+
+
 def _classify_bqh_rows(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
     if not rows:
         return [], False
@@ -1982,7 +2019,6 @@ def _populate_base_counts_and_place_rows(
         metric="案件(场所)",
     )
     counts["jq_changsuo"] = _count_rows_by_region(jq_changsuo_rows)
-    counts["aj_changsuo"] = _count_rows_by_region(aj_changsuo_rows)
     mark_perf("place_detail_ms", t)
     return jq_changsuo_rows, aj_changsuo_rows
 
@@ -2063,7 +2099,7 @@ def _populate_case_counts(
     cs_rows = _filter_changsuo_bqh_rows(_attach_region_fields(cs_base_rows))
     counts["cs_bqh_case"] = _count_rows_by_region(cs_rows)
     mark_perf("bqh_and_changsuo_summary_ms", t)
-    return [], []
+    return [], cs_rows
 
 
 def _populate_zmjz_cover_counts(
@@ -2471,11 +2507,25 @@ def fetch_metric_detail_rows(
         return normalize_rows_for_output(rows)
 
     if metric == "aj_changsuo":
-        _, empty = _patterns_and_empty()
+        patterns, empty = _patterns_and_empty()
         if empty:
             return []
-        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
-                                 leixing_list=leixing, metric="案件(场所)")
+        aj_rows = _load_detail_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing,
+            metric="案件(场所)",
+        )
+        bqh_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            patterns=patterns,
+            diqu=None,
+        )
+        cs_rows = _filter_changsuo_bqh_rows(_attach_region_fields(bqh_base_rows))
+        rows = _merge_rows_by_case_number(aj_rows, cs_rows)
         return normalize_rows_for_output(rows)
 
     # 刑事占比：分子取 wcnr 刑事，分母取 jq_aj 总刑事
@@ -2664,6 +2714,8 @@ def fetch_period_data(
         counts=counts,
         mark_perf=_mark,
     )
+    merged_aj_changsuo_rows = _merge_rows_by_case_number(aj_changsuo_rows, cs_bqh_rows)
+    counts["aj_changsuo"] = _count_rows_by_region(merged_aj_changsuo_rows)
     zmjz_cover_num_rows, zmjz_cover_den_rows = _populate_zmjz_cover_counts(
         conn,
         start_time=start_time,
@@ -2718,7 +2770,7 @@ def fetch_period_data(
             end_time=end_time,
             leixing_list=leixing,
             jq_changsuo_rows=jq_changsuo_rows,
-            aj_changsuo_rows=aj_changsuo_rows,
+            aj_changsuo_rows=merged_aj_changsuo_rows,
             bqh_rows=bqh_rows,
             cs_bqh_rows=cs_bqh_rows,
             wfzf_rows=wfzf_rows,
