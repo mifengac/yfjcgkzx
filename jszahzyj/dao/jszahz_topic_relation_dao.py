@@ -181,13 +181,27 @@ RELATION_DETAIL_SQLS = {
         SELECT
             vv."wfbh" AS "违法编号",
             vv."wfsj" AS "违法时间",
-            vv."wfdd" AS "违法地点",
+            COALESCE(surveil."wfdz", vv."wfdz", vv."wfdd") AS "违法地点",
             vv."hphm" AS "号牌号码",
             vv."hpzl" AS "号牌种类",
+            COALESCE(surveil."jdcsyr", vv."jdcsyr") AS "机动车所有人",
             vv."wfxw" AS "违法行为",
             vv."fkje" AS "罚款金额",
             vv."wfjfs" AS "违法记分数"
         FROM "ywdata"."vio_violation" vv
+        LEFT JOIN LATERAL (
+            SELECT
+                vs."wfdz",
+                vs."jdcsyr"
+            FROM "ywdata"."vio_surveil" vs
+            WHERE vs."wfbh" = vv."wfbh"
+            ORDER BY
+                vs."gxsj" DESC NULLS LAST,
+                vs."lrsj" DESC NULLS LAST,
+                vs."xh" DESC
+            LIMIT 1
+        ) surveil
+          ON TRUE
         WHERE vv."jszh" = %s
         ORDER BY vv."wfsj" DESC NULLS LAST
     """,
@@ -296,13 +310,27 @@ RELATION_BATCH_DETAIL_SQLS = {
             UPPER(vv."jszh") AS "身份证号",
             vv."wfbh" AS "违法编号",
             vv."wfsj" AS "违法时间",
-            vv."wfdd" AS "违法地点",
+            COALESCE(surveil."wfdz", vv."wfdz", vv."wfdd") AS "违法地点",
             vv."hphm" AS "号牌号码",
             vv."hpzl" AS "号牌种类",
+            COALESCE(surveil."jdcsyr", vv."jdcsyr") AS "机动车所有人",
             vv."wfxw" AS "违法行为",
             vv."fkje" AS "罚款金额",
             vv."wfjfs" AS "违法记分数"
         FROM "ywdata"."vio_violation" vv
+        LEFT JOIN LATERAL (
+            SELECT
+                vs."wfdz",
+                vs."jdcsyr"
+            FROM "ywdata"."vio_surveil" vs
+            WHERE vs."wfbh" = vv."wfbh"
+            ORDER BY
+                vs."gxsj" DESC NULLS LAST,
+                vs."lrsj" DESC NULLS LAST,
+                vs."xh" DESC
+            LIMIT 1
+        ) surveil
+          ON TRUE
         WHERE vv."jszh" = ANY(%s::text[])
         ORDER BY UPPER(vv."jszh"), vv."wfsj" DESC NULLS LAST
     """,
