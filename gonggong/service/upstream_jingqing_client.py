@@ -125,6 +125,12 @@ class JingQingApiClient:
             return response.json()
         return []
 
+    def get_nature_tree_new_view_data(self):
+        response = self.request_with_retry("GET", "/dsjfx/nature/treeNewViewData", timeout=15)
+        if response and response.status_code == 200:
+            return response.json()
+        return []
+
     def get_srr_list(self, payload):
         body = urllib.parse.urlencode(payload, quote_via=urllib.parse.quote, safe="[]")
         headers = {

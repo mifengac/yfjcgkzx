@@ -27,11 +27,20 @@
                 </div>
             </div>
 
+            <div>
+                <label for="jiemiansanleiStreetFilterMode">街面口径:</label>
+                <select id="jiemiansanleiStreetFilterMode" name="jiemiansanleiStreetFilterMode">
+                    <option value="model" selected>街面(模型)</option>
+                    <option value="content_road">街面(报警内容-路面)</option>
+                    <option value="content_public">街面(报警内容-公共)</option>
+                    <option value="reply_road">街面(处警-路面)</option>
+                    <option value="reply_public">街面(处警-公共)</option>
+                    <option value="text_any">街面(综合关键字)</option>
+                    <option value="none">不限街面</option>
+                </select>
+            </div>
+
             <div style="display:flex; align-items:center; gap:12px; padding-top: 22px;">
-                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
-                    <input type="checkbox" id="jiemiansanleiStreetOnly" checked>
-                    <span>街面</span>
-                </label>
                 <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
                     <input type="checkbox" id="jiemiansanleiMinorOnly">
                     <span>未成年</span>
@@ -77,6 +86,7 @@
 
     <div class="result-container" id="jiemiansanleiResultContainer" style="display: none;">
         <h4>查询结果</h4>
+        <div id="jiemiansanleiStreetFilterNote" style="display:none; margin: 0 0 12px 0; padding: 10px 12px; background: #f5f7fb; border-left: 4px solid #1976d2; color: #333; line-height: 1.5;"></div>
         <div id="jiemiansanleiResultTable"></div>
         <div id="jiemiansanleiResultControls" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:16px;">
             <div>

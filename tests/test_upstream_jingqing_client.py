@@ -46,6 +46,21 @@ class TestUpstreamJingqingClient(unittest.TestCase):
         client.login.assert_called_once_with()
         fake_session.get.assert_called_once()
 
+    def test_get_nature_tree_new_view_data_uses_nature_endpoint(self) -> None:
+        fake_session = Mock()
+        with patch.object(client_module.requests, "Session", return_value=fake_session):
+            client = client_module.JingQingApiClient()
+
+        with patch.object(
+            client,
+            "request_with_retry",
+            return_value=_FakeResponse(json_data=[{"id": "01", "name": "测试"}]),
+        ) as mock_request:
+            data = client.get_nature_tree_new_view_data()
+
+        self.assertEqual(data, [{"id": "01", "name": "测试"}])
+        mock_request.assert_called_once_with("GET", "/dsjfx/nature/treeNewViewData", timeout=15)
+
 
 if __name__ == "__main__":
     unittest.main()

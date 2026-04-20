@@ -1,5 +1,8 @@
 (function() {
     var treeDataRaw = [];
+    var caseTypeSource = 'nature';
+    var caseTypeDataLoaded = false;
+    var caseTypeRequestSeq = 0;
     var chartsMap = {};
     var TIME_BUCKET_CHOICES = [1, 2, 3, 4, 6, 8, 12];
     var lastAnalyzeState = {
@@ -39,6 +42,8 @@
         }
 
         function renderLabel() {
+            var sourceApi = window.AnalysisCaseTypeSource;
+            var sourceLabel = sourceApi ? sourceApi.getSourceLabel(caseTypeSource) : '警情类型';
             var boxes = dropdown.querySelectorAll('input[type="checkbox"]');
             var total = 0;
             var checked = 0;
@@ -48,18 +53,18 @@
                 if (boxes[i].checked) checked++;
             }
             if (total === 0) {
-                display.innerHTML = '加载中...';
+                display.innerHTML = sourceLabel + '：' + (caseTypeDataLoaded ? '无可选项' : '加载中...');
                 return;
             }
             if (checked === 0) {
-                display.innerHTML = '未选择(默认全量)';
+                display.innerHTML = sourceLabel + '：未选择';
                 return;
             }
             if (checked === total) {
-                display.innerHTML = '全部';
+                display.innerHTML = sourceLabel + '：全部';
                 return;
             }
-            display.innerHTML = '已选 ' + checked + ' 项';
+            display.innerHTML = sourceLabel + '：已选 ' + checked + ' 项';
         }
 
         display.onclick = function(e) {
@@ -75,6 +80,10 @@
         dropdown.onclick = function(e) {
             e = e || window.event;
             if (e.stopPropagation) e.stopPropagation(); else e.cancelBubble = true;
+            var t = e.target || e.srcElement;
+            if (t && t.getAttribute && t.getAttribute('data-case-type-source')) {
+                loadTreeData(t.getAttribute('data-case-type-source'));
+            }
         };
 
         dropdown.onchange = function(e) {
@@ -507,44 +516,96 @@
         updateDimensionOptionVisibility();
     }
 
-    function loadTreeData() {
-        fetch('/jingqing_fenxi/treeData')
+    function renderCaseTypeSourceSwitch(dropdown) {
+        var sourceApi = window.AnalysisCaseTypeSource;
+        var wrap = document.createElement('div');
+        wrap.className = 'case-type-source-switch';
+        ['nature', 'plan'].forEach(function(source) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'case-type-source-btn' + (caseTypeSource === source ? ' active' : '');
+            btn.setAttribute('data-case-type-source', source);
+            btn.appendChild(document.createTextNode(sourceApi.getSourceLabel(source)));
+            wrap.appendChild(btn);
+        });
+        dropdown.appendChild(wrap);
+    }
+
+    function renderCaseTypeOptions() {
+        var sourceApi = window.AnalysisCaseTypeSource;
+        var dropdown = document.getElementById('caseTypeMsDropdown');
+        if (!dropdown || !sourceApi) return;
+        dropdown.innerHTML = '';
+        renderCaseTypeSourceSwitch(dropdown);
+
+        var allLabel = document.createElement('label');
+        allLabel.className = 'multi-select-option';
+        allLabel.style.cssText = 'border-bottom:1px solid #eee;font-weight:bold;';
+        var allCb = document.createElement('input');
+        allCb.type = 'checkbox';
+        allCb.value = '_all';
+        allLabel.appendChild(allCb);
+        allLabel.appendChild(document.createTextNode(' 全选'));
+        dropdown.appendChild(allLabel);
+
+        var parents = sourceApi.getVisibleNodes(treeDataRaw, caseTypeSource);
+        parents.forEach(function(p) {
+            var label = document.createElement('label');
+            label.className = 'multi-select-option';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = p.id;
+            cb.dataset.name = p.name;
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(' ' + p.name));
+            dropdown.appendChild(label);
+        });
+
+        if (window._caseTypeSyncLabel) window._caseTypeSyncLabel();
+    }
+
+    function renderCaseTypeLoading() {
+        var sourceApi = window.AnalysisCaseTypeSource;
+        var dropdown = document.getElementById('caseTypeMsDropdown');
+        var display = document.getElementById('caseTypeMsDisplay');
+        if (!dropdown || !sourceApi) return;
+        dropdown.innerHTML = '';
+        renderCaseTypeSourceSwitch(dropdown);
+        dropdown.appendChild(document.createTextNode('加载中...'));
+        if (display) display.innerHTML = sourceApi.getSourceLabel(caseTypeSource) + '：加载中...';
+    }
+
+    function loadTreeData(source) {
+        var sourceApi = window.AnalysisCaseTypeSource;
+        if (!sourceApi) return;
+        caseTypeSource = sourceApi.normalizeSource(source || caseTypeSource);
+        caseTypeDataLoaded = false;
+        treeDataRaw = [];
+        var requestSeq = ++caseTypeRequestSeq;
+        renderCaseTypeLoading();
+
+        fetch(sourceApi.getSourceEndpoint(caseTypeSource))
             .then(function(res) { return res.json(); })
             .then(function(data) {
+                if (requestSeq !== caseTypeRequestSeq) return;
                 treeDataRaw = data || [];
-                var dropdown = document.getElementById('caseTypeMsDropdown');
-                if (!dropdown) return;
-                dropdown.innerHTML = '';
-
-                var allLabel = document.createElement('label');
-                allLabel.className = 'multi-select-option';
-                allLabel.style.cssText = 'border-bottom:1px solid #eee;font-weight:bold;';
-                var allCb = document.createElement('input');
-                allCb.type = 'checkbox';
-                allCb.value = '_all';
-                allLabel.appendChild(allCb);
-                allLabel.appendChild(document.createTextNode(' 全选'));
-                dropdown.appendChild(allLabel);
-
-                var parents = treeDataRaw.filter(function(item) { return !item.pId; });
-                parents.forEach(function(p) {
-                    var label = document.createElement('label');
-                    label.className = 'multi-select-option';
-                    var cb = document.createElement('input');
-                    cb.type = 'checkbox';
-                    cb.value = p.id;
-                    cb.dataset.name = p.name;
-                    label.appendChild(cb);
-                    label.appendChild(document.createTextNode(' ' + p.name));
-                    dropdown.appendChild(label);
-                });
-
-                if (window._caseTypeSyncLabel) window._caseTypeSyncLabel();
+                caseTypeDataLoaded = true;
+                renderCaseTypeOptions();
             })
             .catch(function(err) {
+                if (requestSeq !== caseTypeRequestSeq) return;
                 console.error(err);
                 var dropdown = document.getElementById('caseTypeMsDropdown');
-                if (dropdown) dropdown.innerHTML = '<div style="padding:5px;">加载失败</div>';
+                caseTypeDataLoaded = true;
+                if (dropdown) {
+                    dropdown.innerHTML = '';
+                    renderCaseTypeSourceSwitch(dropdown);
+                    var error = document.createElement('div');
+                    error.style.padding = '5px';
+                    error.appendChild(document.createTextNode('加载失败'));
+                    dropdown.appendChild(error);
+                }
+                if (window._caseTypeSyncLabel) window._caseTypeSyncLabel();
             });
     }
 
@@ -563,32 +624,16 @@
         }
 
         var typeBoxes = document.querySelectorAll('#caseTypeMsDropdown input[type="checkbox"]');
-        var names = [];
-        var tags = [];
         var selectedParentIds = [];
-        var tagSeen = {};
-        var nameSeen = {};
         for (var k = 0; k < typeBoxes.length; k++) {
             if (typeBoxes[k].value === '_all' || !typeBoxes[k].checked) continue;
-            var pid = typeBoxes[k].value;
-            selectedParentIds.push(pid);
-            var children = treeDataRaw.filter(function(item) { return item.pId === pid; });
-            children.forEach(function(c) {
-                if (c.tag) {
-                    if (!tagSeen[c.tag]) {
-                        tags.push(c.tag);
-                        tagSeen[c.tag] = true;
-                    }
-                    if (c.name && !nameSeen[c.name]) {
-                        names.push(c.name);
-                        nameSeen[c.name] = true;
-                    }
-                }
-            });
+            selectedParentIds.push(typeBoxes[k].value);
         }
+        var payload = window.AnalysisCaseTypeSource.collectSelectionPayload(treeDataRaw, selectedParentIds, caseTypeSource);
 
-        form.append('newOriCharaSubclassNo', tags.join(','));
-        form.append('newOriCharaSubclass', names.join(','));
+        form.append('newOriCharaSubclassNo', payload.codes.join(','));
+        form.append('newOriCharaSubclass', payload.names.join(','));
+        form.append('caseTypeSource', caseTypeSource);
         for (var x = 0; x < selectedParentIds.length; x++) form.append('caseTypeIds[]', selectedParentIds[x]);
 
         var options = getAnalysisOptionValues();
@@ -673,7 +718,7 @@
         initDimensionMultiSelect();
         initDates();
         initAnalysisOptions();
-        loadTreeData();
+        loadTreeData('nature');
         document.getElementById('analysisDoAnalyzeBtn').addEventListener('click', doAnalyze);
         document.getElementById('analysisDoExportBtn').addEventListener('click', doExport);
     }

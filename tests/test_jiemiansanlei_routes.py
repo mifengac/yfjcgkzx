@@ -79,6 +79,7 @@ class TestJiemiansanleiRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["success"])
         self.assertTrue(mock_query.call_args.kwargs["street_only"])
+        self.assertEqual(mock_query.call_args.kwargs["street_filter_mode"], "model")
         self.assertTrue(mock_query.call_args.kwargs["minor_only"])
 
     def test_export_forwards_street_and_minor_filters(self) -> None:
@@ -105,9 +106,37 @@ class TestJiemiansanleiRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("attachment;", response.headers["Content-Disposition"])
         self.assertTrue(mock_export.call_args.kwargs["street_only"])
+        self.assertEqual(mock_export.call_args.kwargs["street_filter_mode"], "model")
         self.assertTrue(mock_export.call_args.kwargs["minor_only"])
 
-    def test_export_report_only_forwards_time_filters(self) -> None:
+    def test_query_forwards_dropdown_street_filter_mode(self) -> None:
+        self._login()
+        with patch(
+            "xunfang.routes.xunfang_routes.get_database_connection",
+            return_value=_DummyConnection((1,)),
+        ), patch(
+            "xunfang.routes.jiemiansanlei_routes.query_classified",
+            return_value={"total": 1, "page": 1, "page_size": 20, "rows": []},
+        ) as mock_query:
+            response = self.client.post(
+                "/xunfang/jiemiansanlei/query",
+                json={
+                    "startTime": "2026-03-01 00:00:00",
+                    "endTime": "2026-03-02 00:00:00",
+                    "leixingList": ["盗窃"],
+                    "yuanshiquerenList": ["原始"],
+                    "page": 1,
+                    "pageSize": 20,
+                    "streetFilterMode": "content_road",
+                    "minorOnly": False,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mock_query.call_args.kwargs["street_only"])
+        self.assertEqual(mock_query.call_args.kwargs["street_filter_mode"], "content_road")
+
+    def test_export_report_forwards_time_and_street_filter_mode(self) -> None:
         self._login()
         with patch(
             "xunfang.routes.xunfang_routes.get_database_connection",
@@ -127,6 +156,7 @@ class TestJiemiansanleiRoutes(unittest.TestCase):
                     "endTime": "2026-03-02 00:00:00",
                     "hbStartTime": "2026-02-22 00:00:00",
                     "hbEndTime": "2026-02-23 00:00:00",
+                    "streetFilterMode": "reply_public",
                 },
             )
 
@@ -138,6 +168,7 @@ class TestJiemiansanleiRoutes(unittest.TestCase):
                 "end_time": "2026-03-02 00:00:00",
                 "hb_start_time": "2026-02-22 00:00:00",
                 "hb_end_time": "2026-02-23 00:00:00",
+                "street_filter_mode": "reply_public",
             },
         )
 

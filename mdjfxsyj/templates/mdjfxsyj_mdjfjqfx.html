@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>矛盾纠纷警情统计</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/water.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('mdjfxsyj_mdjfjqfx.static', filename='vendor/flatpickr/flatpickr.min.css') }}" />
+    <style>
+      body.mdjfjqfx-body { max-width: none; margin: 0; padding: 12px 16px 28px; background: #f7f5ef; color: #17202a; }
+      body.mdjfjqfx-drawer-lock { overflow: hidden; }
+      .mdjfjqfx-shell { display: flex; flex-direction: column; gap: 14px; }
+      .mdjfjqfx-card { background: #fffdf8; border: 1px solid #e5dece; border-radius: 16px; box-shadow: 0 10px 26px rgba(77, 58, 24, 0.08); padding: 16px; }
+      .mdjfjqfx-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+      .mdjfjqfx-head h2 { margin: 0; letter-spacing: 0.02em; }
+      .mdjfjqfx-muted { color: #6c6253; font-size: 13px; margin: 4px 0 0; }
+      .mdjfjqfx-toolbar { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+      .mdjfjqfx-toolbar label { display: flex; flex-direction: column; gap: 4px; min-width: 180px; font-size: 13px; font-weight: 700; }
+      .mdjfjqfx-toolbar input, .mdjfjqfx-toolbar select { height: 34px; box-sizing: border-box; border: 1px solid #d5cab8; border-radius: 10px; padding: 0 10px; background: #fff; }
+      .mdjfjqfx-btn { height: 36px; border: 0; border-radius: 999px; background: #17624a; color: #fff; padding: 0 16px; font-weight: 800; cursor: pointer; }
+      .mdjfjqfx-btn.secondary { background: #8d5e27; }
+      .mdjfjqfx-btn.ghost { background: #ebe3d4; color: #2f2a23; }
+      .mdjfjqfx-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+      .mdjfjqfx-status { min-height: 20px; color: #6c6253; white-space: pre-wrap; }
+      .mdjfjqfx-status.error { color: #b42318; }
+      .mdjfjqfx-ms { position: relative; min-width: 220px; }
+      .mdjfjqfx-ms-display { height: 34px; border: 1px solid #d5cab8; border-radius: 10px; padding: 0 10px; display: flex; align-items: center; background: #fff; cursor: pointer; font-weight: 500; }
+      .mdjfjqfx-ms-menu { display: none; position: absolute; left: 0; top: 40px; z-index: 40; min-width: 260px; max-height: 320px; overflow: auto; background: #fff; border: 1px solid #e0d6c6; border-radius: 12px; box-shadow: 0 14px 28px rgba(40, 31, 19, 0.16); padding: 8px; }
+      .mdjfjqfx-ms-menu.open { display: block; }
+      .mdjfjqfx-ms-option { display: flex; align-items: center; gap: 8px; padding: 7px 4px; font-size: 13px; }
+      .mdjfjqfx-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .mdjfjqfx-section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .mdjfjqfx-section-head h3 { margin: 0; }
+      .mdjfjqfx-table-pager { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #6c6253; font-size: 13px; }
+      .mdjfjqfx-table-pager label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+      .mdjfjqfx-table-pager select { height: 32px; border: 1px solid #d5cab8; border-radius: 10px; padding: 0 8px; background: #fff; }
+      .mdjfjqfx-table-pager .mdjfjqfx-btn { height: 32px; padding: 0 12px; }
+      .mdjfjqfx-table-wrap { overflow: auto; border: 1px solid #e5dece; border-radius: 14px; background: #fff; }
+      .mdjfjqfx-table { border-collapse: collapse; width: 100%; min-width: 860px; }
+      .mdjfjqfx-table th, .mdjfjqfx-table td { border-bottom: 1px solid #eee7dc; padding: 9px 10px; text-align: center; white-space: nowrap; font-size: 13px; }
+      .mdjfjqfx-table th { position: sticky; top: 0; background: #fbf6e9; z-index: 2; color: #423322; }
+      .mdjfjqfx-table td:first-child, .mdjfjqfx-table th:first-child { text-align: left; }
+      .mdjfjqfx-link { color: #17624a; cursor: pointer; text-decoration: underline; font-weight: 800; }
+      .mdjfjqfx-empty { padding: 18px; text-align: center; color: #7d7466; }
+      .mdjfjqfx-drawer { position: fixed; inset: 0; pointer-events: none; z-index: 80; }
+      .mdjfjqfx-drawer.open { pointer-events: auto; }
+      .mdjfjqfx-drawer-shade { position: absolute; inset: 0; background: rgba(18, 17, 14, 0.34); opacity: 0; transition: opacity 0.18s ease; }
+      .mdjfjqfx-drawer.open .mdjfjqfx-drawer-shade { opacity: 1; }
+      .mdjfjqfx-drawer-panel { position: absolute; top: 0; right: 0; width: min(1320px, 96vw); height: 100%; background: #fffdf8; box-shadow: -18px 0 36px rgba(29, 22, 12, 0.18); transform: translateX(102%); transition: transform 0.22s ease; display: flex; flex-direction: column; }
+      .mdjfjqfx-drawer.open .mdjfjqfx-drawer-panel { transform: translateX(0); }
+      .mdjfjqfx-drawer-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #e5dece; }
+      .mdjfjqfx-drawer-title { font-weight: 900; }
+      .mdjfjqfx-drawer-body { flex: 1; min-height: 0; overflow: hidden; padding: 12px 16px; display: flex; flex-direction: column; }
+      .mdjfjqfx-detail-table-wrap { flex: 1; min-height: 0; overflow: auto; }
+      .mdjfjqfx-detail-table { min-width: 1900px; table-layout: fixed; }
+      .mdjfjqfx-detail-table th, .mdjfjqfx-detail-table td { text-align: left; vertical-align: top; white-space: normal; word-break: break-word; overflow-wrap: anywhere; line-height: 1.45; }
+      .mdjfjqfx-detail-table th { white-space: nowrap; }
+      .mdjfjqfx-detail-table td { background-clip: padding-box; height: 74px; }
+      .mdjfjqfx-detail-cell { max-height: 4.35em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+      .mdjfjqfx-detail-table tbody tr:nth-child(even) td { background: #fffaf0; }
+      .mdjfjqfx-detail-table tbody tr:hover td { background: #f3f7ee; }
+      .mdjfjqfx-pager { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid #e5dece; background: #fffdf8; flex-shrink: 0; }
+      @media (max-width: 760px) { .mdjfjqfx-toolbar label, .mdjfjqfx-ms { min-width: 100%; } .mdjfjqfx-actions { width: 100%; } .mdjfjqfx-drawer-panel { width: 100vw; } .mdjfjqfx-drawer-head { align-items: flex-start; flex-direction: column; } }
+    </style>
+    <script src="{{ url_for('mdjfxsyj_mdjfjqfx.static', filename='vendor/flatpickr/flatpickr.min.js') }}"></script>
+    <script src="{{ url_for('mdjfxsyj_mdjfjqfx.static', filename='vendor/flatpickr/l10n/zh.js') }}"></script>
+  </head>
+  <body class="mdjfjqfx-body">
+    <main class="mdjfjqfx-shell">
+      <section class="mdjfjqfx-card">
+        <div class="mdjfjqfx-head">
+          <div>
+            <h2>矛盾纠纷警情统计</h2>
+            <p class="mdjfjqfx-muted">基于警情接口原始矛盾纠纷类数据统计转案、双性质与重复警情情况。</p>
+          </div>
+          <div class="mdjfjqfx-actions">
+            <button class="mdjfjqfx-btn secondary" type="button" id="mdjfjqfxExportSummary">导出汇总</button>
+            <button class="mdjfjqfx-btn secondary" type="button" id="mdjfjqfxExportDetails">导出详情</button>
+          </div>
+        </div>
+        <div class="mdjfjqfx-toolbar" style="margin-top:14px;">
+          <label>开始时间<input id="mdjfjqfxStart" type="text" placeholder="YYYY-MM-DD HH:MM:SS" /></label>
+          <label>结束时间<input id="mdjfjqfxEnd" type="text" placeholder="YYYY-MM-DD HH:MM:SS" /></label>
+          <label>统计维度
+            <select id="mdjfjqfxGroupBy">
+              <option value="fenju">分局</option>
+              <option value="paichusuo">派出所</option>
+            </select>
+          </label>
+          <label>重复次数
+            <select id="mdjfjqfxRepeatMin">
+              {% for value in range(2, 11) %}<option value="{{ value }}">{{ value }} 次及以上</option>{% endfor %}
+            </select>
+          </label>
+          <label>所属分局
+            <div class="mdjfjqfx-ms" id="mdjfjqfxBranchMs">
+              <div class="mdjfjqfx-ms-display" id="mdjfjqfxBranchText">全部分局</div>
+              <div class="mdjfjqfx-ms-menu" id="mdjfjqfxBranchMenu"></div>
+            </div>
+          </label>
+          <button class="mdjfjqfx-btn" type="button" id="mdjfjqfxQuery">查询</button>
+        </div>
+        <div class="mdjfjqfx-status" id="mdjfjqfxStatus"></div>
+      </section>
+
+      <section class="mdjfjqfx-card"><h3>总体统计</h3><div id="mdjfjqfxOverall"></div></section>
+      <section class="mdjfjqfx-card">
+        <div class="mdjfjqfx-section-head">
+          <h3>细类统计</h3>
+          <div class="mdjfjqfx-table-pager" aria-label="细类统计分页">
+            <label>每页
+              <select id="mdjfjqfxFinePageSize">
+                <option value="10" selected>10 组</option>
+                <option value="20">20 组</option>
+                <option value="50">50 组</option>
+                <option value="0">全部</option>
+              </select>
+            </label>
+            <button class="mdjfjqfx-btn ghost" type="button" id="mdjfjqfxFinePrev">上一页</button>
+            <span id="mdjfjqfxFinePageInfo">第 1 / 1 页，共 0 组</span>
+            <button class="mdjfjqfx-btn ghost" type="button" id="mdjfjqfxFineNext">下一页</button>
+          </div>
+        </div>
+        <div id="mdjfjqfxFine" style="margin-top:12px;"></div>
+      </section>
+      <section class="mdjfjqfx-card"><h3>重复警情统计</h3><div id="mdjfjqfxRepeat"></div></section>
+    </main>
+
+    <aside class="mdjfjqfx-drawer" id="mdjfjqfxDrawer">
+      <div class="mdjfjqfx-drawer-shade" id="mdjfjqfxDrawerShade"></div>
+      <div class="mdjfjqfx-drawer-panel">
+        <div class="mdjfjqfx-drawer-head">
+          <div><div class="mdjfjqfx-drawer-title" id="mdjfjqfxDrawerTitle">详情</div><div class="mdjfjqfx-muted" id="mdjfjqfxDrawerMeta"></div></div>
+          <div class="mdjfjqfx-actions">
+            <button class="mdjfjqfx-btn secondary" type="button" id="mdjfjqfxExportDetail">导出当前详情</button>
+            <button class="mdjfjqfx-btn ghost" type="button" id="mdjfjqfxCloseDrawer">关闭</button>
+          </div>
+        </div>
+        <div class="mdjfjqfx-drawer-body" id="mdjfjqfxDetailBody"></div>
+        <div class="mdjfjqfx-pager">
+          <button class="mdjfjqfx-btn ghost" type="button" id="mdjfjqfxPrev">上一页</button>
+          <span id="mdjfjqfxPageInfo">第 1 / 1 页</span>
+          <button class="mdjfjqfx-btn ghost" type="button" id="mdjfjqfxNext">下一页</button>
+        </div>
+      </div>
+    </aside>
+
+    <script>
+      window.__MDJFJQFX_ENDPOINTS__ = {
+        options: "{{ url_for('mdjfxsyj_mdjfjqfx.api_options') }}",
+        summary: "{{ url_for('mdjfxsyj_mdjfjqfx.api_summary') }}",
+        detail: "{{ url_for('mdjfxsyj_mdjfjqfx.api_detail') }}",
+        exportSummary: "{{ url_for('mdjfxsyj_mdjfjqfx.export_summary') }}",
+        exportDetails: "{{ url_for('mdjfxsyj_mdjfjqfx.export_details') }}",
+        exportDetail: "{{ url_for('mdjfxsyj_mdjfjqfx.export_detail') }}"
+      };
+    </script>
+    <script src="{{ url_for('mdjfxsyj_mdjfjqfx.static', filename='mdjfxsyj_mdjfjqfx.js') }}"></script>
+  </body>
+</html>

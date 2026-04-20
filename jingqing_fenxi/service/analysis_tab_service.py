@@ -22,6 +22,18 @@ def get_tree_view_data():
     return api_client.get_tree_view_data()
 
 
+def get_nature_tree_new_view_data():
+    getter = getattr(api_client, 'get_nature_tree_new_view_data', None)
+    if callable(getter):
+        return getter()
+
+    # 兼容开发环境热加载时 api_client 单例仍是旧类实例的情况。
+    response = api_client.request_with_retry("GET", "/dsjfx/nature/treeNewViewData", timeout=15)
+    if response and response.status_code == 200:
+        return response.json()
+    return []
+
+
 def _normalize_csv(value):
     tokens = [token.strip() for token in str(value or '').split(',') if token and token.strip()]
     seen = set()
@@ -149,7 +161,10 @@ def _build_chara_no_from_case_type_ids(case_type_ids):
 
 def _build_srr_payload(form):
     selected_ids = form.getlist('caseTypeIds[]')
-    chara_no = _build_chara_no_from_case_type_ids(selected_ids)
+    case_type_source = str(form.get('caseTypeSource', 'plan') or 'plan').strip().lower()
+    chara_no = ''
+    if case_type_source == 'plan':
+        chara_no = _build_chara_no_from_case_type_ids(selected_ids)
     if not chara_no:
         chara_no = _normalize_csv(form.get('newOriCharaSubclassNo', ''))
 

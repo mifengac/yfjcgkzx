@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from io import BytesIO
 from unittest.mock import patch
 
@@ -72,6 +73,62 @@ class TestJiemiansanleiService(unittest.TestCase):
         self.assertEqual(result["page"], 2)
         self.assertEqual(len(result["rows"]), 1)
         self.assertEqual(result["rows"][0]["分类结果"], "街面与公共区域")
+
+    def test_query_classified_filters_by_case_contents_keywords(self) -> None:
+        rows = [
+            {
+                "leixing": "盗窃",
+                "source": "原始",
+                "bureau": "云城分局",
+                "station_no": "001",
+                "station_name": "A所",
+                "call_time": "2026-03-01 10:00:00",
+                "address": "地址1",
+                "case_contents": "群众报警称路口有人争吵",
+                "replies": "",
+                "case_type_name": "盗窃",
+            },
+            {
+                "leixing": "盗窃",
+                "source": "原始",
+                "bureau": "云城分局",
+                "station_no": "002",
+                "station_name": "B所",
+                "call_time": "2026-03-01 11:00:00",
+                "address": "地址2",
+                "case_contents": "群众报警称家中发生纠纷",
+                "replies": "到场处置",
+                "case_type_name": "盗窃",
+            },
+        ]
+
+        with patch.object(service, "_fetch_rows_for_filters", return_value=rows), patch.object(
+            service, "_append_predictions", side_effect=lambda _rows: None
+        ):
+            result = service.query_classified(
+                start_time="2026-03-01 00:00:00",
+                end_time="2026-03-02 00:00:00",
+                leixing_list=["盗窃"],
+                source_list=["原始"],
+                page=1,
+                page_size=None,
+                street_only=True,
+                street_filter_mode="content_road",
+                minor_only=False,
+            )
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["rows"][0]["警情地址"], "地址1")
+        self.assertEqual(result["street_filter"]["label"], "街面(报警内容-路面)")
+        self.assertEqual(result["street_filter"]["fields"], ["报警内容"])
+        self.assertIn("路口", result["street_filter"]["keywords"])
+
+    def test_get_street_filter_description_for_model_mode(self) -> None:
+        info = service.get_street_filter_description("model")
+
+        self.assertEqual(info["label"], "街面(模型)")
+        self.assertEqual(info["fields"], ["警情地址"])
+        self.assertEqual(info["keywords"], [service.STREET_LABEL])
 
     def test_build_case_payload_uses_minor_case_mark_and_original_codes(self) -> None:
         payload = service._build_case_payload(  # noqa: SLF001
@@ -179,6 +236,45 @@ class TestJiemiansanleiService(unittest.TestCase):
         exported = load_workbook(BytesIO(file_bytes))
         self.assertEqual(exported["人身伤害类"]["C6"].value, 1)
         self.assertEqual(exported["三类合计"]["C6"].value, 1)
+
+    def test_build_report_counts_uses_reply_keyword_filter_mode(self) -> None:
+        rows = [
+            {
+                "case_no": "A001",
+                "leixing": "人身伤害类",
+                "source": "原始",
+                "bureau": "云城分局",
+                "call_time": "2026-03-01 10:00:00",
+                "replies": "民警在广场附近处置完毕",
+            },
+            {
+                "case_no": "A002",
+                "leixing": "人身伤害类",
+                "source": "原始",
+                "bureau": "云城分局",
+                "call_time": "2026-03-01 11:00:00",
+                "replies": "民警到报警人家中处置",
+            },
+        ]
+
+        counts = service._build_report_counts(  # noqa: SLF001
+            rows_year=rows,
+            rows_last_year=[],
+            street_filter_mode="reply_public",
+            segments_year=[
+                (
+                    "current",
+                    datetime(2026, 3, 1, 0, 0, 0),
+                    datetime(2026, 3, 2, 0, 0, 0),
+                    "C",
+                    "D",
+                )
+            ],
+            segments_last_year=[],
+        )
+
+        self.assertEqual(counts[("人身伤害类", "云城分局", "C")], 1)
+        self.assertEqual(counts[("三类合计", "ALL", "C")], 1)
 
 
 if __name__ == "__main__":

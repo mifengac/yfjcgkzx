@@ -142,5 +142,29 @@ class TestAnalysisExportRoute(unittest.TestCase):
         self.assertEqual(response.data, b"test-export")
 
 
+class TestAnalysisTreeRoutes(unittest.TestCase):
+    def setUp(self):
+        app = Flask(__name__)
+        app.secret_key = "test-secret"
+        app.register_blueprint(jingqing_fenxi_bp, url_prefix="/jingqing_fenxi")
+        self.client = app.test_client()
+
+    def test_tree_routes_return_matching_sources(self):
+        with patch(
+            "jingqing_fenxi.routes.analysis_tab_routes.get_tree_view_data",
+            return_value=[{"id": "plan-root", "name": "预案"}],
+        ), patch(
+            "jingqing_fenxi.routes.analysis_tab_routes.get_nature_tree_new_view_data",
+            return_value=[{"id": "01", "name": "警情性质"}],
+        ):
+            legacy_response = self.client.get("/jingqing_fenxi/treeData")
+            plan_response = self.client.get("/jingqing_fenxi/planTreeData")
+            nature_response = self.client.get("/jingqing_fenxi/natureTreeData")
+
+        self.assertEqual(legacy_response.get_json(), [{"id": "plan-root", "name": "预案"}])
+        self.assertEqual(plan_response.get_json(), [{"id": "plan-root", "name": "预案"}])
+        self.assertEqual(nature_response.get_json(), [{"id": "01", "name": "警情性质"}])
+
+
 if __name__ == "__main__":
     unittest.main()

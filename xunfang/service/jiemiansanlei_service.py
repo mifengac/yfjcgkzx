@@ -22,10 +22,76 @@ from xunfang.dao.jiemiansanlei_dao import (
 SourceType = Literal["原始", "确认"]
 ExportFormat = Literal["xlsx", "xls"]
 ReportBureau = Literal["云城分局", "云安分局", "罗定市公安局", "新兴县公安局", "郁南县公安局", "ALL"]
+StreetFilterMode = Literal[
+    "none",
+    "model",
+    "content_road",
+    "content_public",
+    "reply_road",
+    "reply_public",
+    "text_any",
+]
 
 REPORT_LEIXING_LIST = ["人身伤害类", "侵犯财产类", "扰乱秩序类"]
 MINOR_CASE_MARK_NO = "01020201,0102020101,0102020102,0102020103"
 STREET_LABEL = "街面与公共区域"
+STREET_FILTER_MODE_DEFAULT: StreetFilterMode = "model"
+STREET_FILTER_MODES = {
+    "none",
+    "model",
+    "content_road",
+    "content_public",
+    "reply_road",
+    "reply_public",
+    "text_any",
+}
+_ROAD_KEYWORDS = (
+    "街面",
+    "路面",
+    "路边",
+    "路口",
+    "路段",
+    "道路",
+    "马路",
+    "街道",
+    "人行道",
+    "斑马线",
+    "公路",
+    "大道",
+    "桥",
+)
+_PUBLIC_KEYWORDS = (
+    "广场",
+    "公园",
+    "市场",
+    "商场",
+    "超市",
+    "车站",
+    "公交站",
+    "公共场所",
+    "门口",
+    "现场",
+)
+_STREET_FILTER_LABELS = {
+    "none": "不限街面",
+    "model": "街面(模型)",
+    "content_road": "街面(报警内容-路面)",
+    "content_public": "街面(报警内容-公共)",
+    "reply_road": "街面(处警-路面)",
+    "reply_public": "街面(处警-公共)",
+    "text_any": "街面(综合关键字)",
+}
+_STREET_FIELD_LABELS = {
+    "case_contents": "报警内容",
+    "replies": "处警情况",
+}
+_STREET_KEYWORD_RULES: Dict[str, Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
+    "content_road": (("case_contents",), _ROAD_KEYWORDS),
+    "content_public": (("case_contents",), _PUBLIC_KEYWORDS),
+    "reply_road": (("replies",), _ROAD_KEYWORDS),
+    "reply_public": (("replies",), _PUBLIC_KEYWORDS),
+    "text_any": (("case_contents", "replies"), _ROAD_KEYWORDS + _PUBLIC_KEYWORDS),
+}
 _PAGE_SIZE = 5000
 
 _MODEL_LOCK = threading.Lock()
@@ -53,6 +119,7 @@ def query_classified(
     page: int,
     page_size: Optional[int],
     street_only: bool = False,
+    street_filter_mode: StreetFilterMode = STREET_FILTER_MODE_DEFAULT,
     minor_only: bool = False,
 ) -> Dict[str, Any]:
     rows = _fetch_rows_for_filters(
@@ -64,8 +131,8 @@ def query_classified(
     )
     _append_predictions(rows)
 
-    if street_only:
-        rows = _filter_street_rows(rows)
+    effective_street_mode = _resolve_street_filter_mode(street_filter_mode, street_only=street_only)
+    rows = _filter_street_rows(rows, effective_street_mode)
 
     total = len(rows)
     current_page = 1 if page_size is None else max(1, int(page or 1))
@@ -74,7 +141,42 @@ def query_classified(
         "total": total,
         "page": current_page,
         "page_size": page_size,
+        "street_filter": get_street_filter_description(effective_street_mode),
         "rows": _serialize_rows(page_rows),
+    }
+
+
+def get_street_filter_description(mode: Any, *, street_only: bool = True) -> Dict[str, Any]:
+    effective_mode = _resolve_street_filter_mode(mode, street_only=street_only)
+    label = _STREET_FILTER_LABELS.get(effective_mode, _STREET_FILTER_LABELS[STREET_FILTER_MODE_DEFAULT])
+
+    if effective_mode == "none":
+        return {
+            "mode": effective_mode,
+            "label": label,
+            "fields": [],
+            "keywords": [],
+            "description": "当前未启用街面过滤，统计结果包含所选警情性质和口径下的全部数据。",
+        }
+
+    if effective_mode == "model":
+        return {
+            "mode": effective_mode,
+            "label": label,
+            "fields": ["警情地址"],
+            "keywords": [STREET_LABEL],
+            "description": f"当前按警情地址模型分类结果过滤，分类结果为“{STREET_LABEL}”。",
+        }
+
+    fields, keywords = _STREET_KEYWORD_RULES.get(effective_mode, ((), ()))
+    field_labels = [_STREET_FIELD_LABELS.get(field, field) for field in fields]
+    keyword_list = list(keywords)
+    return {
+        "mode": effective_mode,
+        "label": label,
+        "fields": field_labels,
+        "keywords": keyword_list,
+        "description": f"当前按{'、'.join(field_labels)}字段过滤，关键字：{'、'.join(keyword_list)}。",
     }
 
 
@@ -86,6 +188,7 @@ def export_classified(
     source_list: Sequence[SourceType],
     fmt: ExportFormat,
     street_only: bool = False,
+    street_filter_mode: StreetFilterMode = STREET_FILTER_MODE_DEFAULT,
     minor_only: bool = False,
 ) -> Tuple[bytes, str, str]:
     rows = _fetch_rows_for_filters(
@@ -96,8 +199,8 @@ def export_classified(
         minor_only=minor_only,
     )
     _append_predictions(rows)
-    if street_only:
-        rows = _filter_street_rows(rows)
+    effective_street_mode = _resolve_street_filter_mode(street_filter_mode, street_only=street_only)
+    rows = _filter_street_rows(rows, effective_street_mode)
 
     grouped_rows: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for row in rows:
@@ -133,6 +236,7 @@ def export_report(
     end_time: str,
     hb_start_time: str,
     hb_end_time: str,
+    street_filter_mode: StreetFilterMode = STREET_FILTER_MODE_DEFAULT,
 ) -> Tuple[bytes, str, str]:
     try:
         from openpyxl import load_workbook  # type: ignore
@@ -143,6 +247,7 @@ def export_report(
     current_end = _parse_dt(end_time)
     hb_start = _parse_dt(hb_start_time)
     hb_end = _parse_dt(hb_end_time)
+    effective_street_mode = _resolve_street_filter_mode(street_filter_mode, street_only=True)
 
     if current_start >= current_end:
         raise ValueError("开始时间必须早于结束时间")
@@ -178,7 +283,8 @@ def export_report(
             )
         )
     ]
-    _append_predictions(rows_year)
+    if effective_street_mode == "model":
+        _append_predictions(rows_year)
 
     rows_last_year = [
         _normalize_db_report_row(row)
@@ -194,11 +300,13 @@ def export_report(
             )
         )
     ]
-    _append_predictions(rows_last_year)
+    if effective_street_mode == "model":
+        _append_predictions(rows_last_year)
 
     counts = _build_report_counts(
         rows_year=rows_year,
         rows_last_year=rows_last_year,
+        street_filter_mode=effective_street_mode,
         segments_year=[
             ("current", current_start, current_end, "C", "D"),
             ("hb", hb_start, hb_end, "K", "N"),
@@ -583,8 +691,33 @@ def _build_xls_bytes(
     return bio.read()
 
 
-def _filter_street_rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [row for row in rows if str(row.get("pred_label") or "").strip() == STREET_LABEL]
+def _resolve_street_filter_mode(mode: Any, *, street_only: bool) -> StreetFilterMode:
+    if not street_only:
+        return "none"
+    value = str(mode or STREET_FILTER_MODE_DEFAULT).strip()
+    if value in STREET_FILTER_MODES:
+        return value  # type: ignore[return-value]
+    return STREET_FILTER_MODE_DEFAULT
+
+
+def _filter_street_rows(rows: Sequence[Dict[str, Any]], mode: StreetFilterMode) -> List[Dict[str, Any]]:
+    if mode == "none":
+        return list(rows)
+    return [row for row in rows if _row_matches_street_filter(row, mode)]
+
+
+def _row_matches_street_filter(row: Dict[str, Any], mode: StreetFilterMode) -> bool:
+    if mode == "none":
+        return True
+    if mode == "model":
+        return str(row.get("pred_label") or "").strip() == STREET_LABEL
+
+    fields, keywords = _STREET_KEYWORD_RULES.get(mode, ((), ()))
+    for field in fields:
+        text = str(row.get(field) or "")
+        if any(keyword in text for keyword in keywords):
+            return True
+    return False
 
 
 def _paginate_rows(
@@ -873,6 +1006,7 @@ def _build_report_counts(
     *,
     rows_year: Sequence[Dict[str, Any]],
     rows_last_year: Sequence[Dict[str, Any]],
+    street_filter_mode: StreetFilterMode,
     segments_year: Sequence[Tuple[str, datetime, datetime, str, str]],
     segments_last_year: Sequence[Tuple[str, datetime, datetime, str, str]],
 ) -> Dict[Tuple[str, ReportBureau, str], int]:
@@ -895,7 +1029,7 @@ def _build_report_counts(
             source = str(row.get("source") or "").strip()
             if leixing not in REPORT_LEIXING_LIST or source not in target_sources:
                 continue
-            if str(row.get("pred_label") or "").strip() != STREET_LABEL:
+            if not _row_matches_street_filter(row, street_filter_mode):
                 continue
 
             call_time = _as_dt(row.get("call_time"))
