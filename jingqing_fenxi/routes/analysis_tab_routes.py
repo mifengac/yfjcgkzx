@@ -3,6 +3,7 @@ from flask import jsonify, request, send_file
 from jingqing_fenxi.routes.jingqing_fenxi_routes import jingqing_fenxi_bp
 from jingqing_fenxi.service.analysis_tab_service import (
     generate_excel_report,
+    get_nature_tree_new_view_data,
     get_tree_view_data,
     run_analysis,
 )
@@ -11,6 +12,16 @@ from jingqing_fenxi.service.analysis_tab_service import (
 @jingqing_fenxi_bp.route('/treeData', methods=['GET'])
 def tree_data():
     return jsonify(get_tree_view_data())
+
+
+@jingqing_fenxi_bp.route('/planTreeData', methods=['GET'])
+def plan_tree_data():
+    return jsonify(get_tree_view_data())
+
+
+@jingqing_fenxi_bp.route('/natureTreeData', methods=['GET'])
+def nature_tree_data():
+    return jsonify(get_nature_tree_new_view_data())
 
 
 @jingqing_fenxi_bp.route('/analyze', methods=['POST'])

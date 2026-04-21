@@ -65,6 +65,32 @@
         }
         .multi-select-option:hover { background: #f0f0f0; }
         .multi-select-option input { margin-right: 5px; }
+        .case-type-source-switch {
+            display: flex;
+            gap: 6px;
+            padding: 6px 4px 8px;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 4px;
+            position: sticky;
+            top: 0;
+            background: #fff;
+            z-index: 1;
+        }
+        .case-type-source-btn {
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: #334155;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .case-type-source-btn.active {
+            border-color: #1976d2;
+            background: #1976d2;
+            color: #fff;
+            font-weight: 600;
+        }
 
         .fenxi-container {
             padding: 20px;
@@ -751,6 +777,7 @@
 </div>
 
 <script src="/jingqing_fenxi/static/js/chart.min.js"></script>
+<script src="/jingqing_fenxi/static/js/analysis_case_type_source.js"></script>
 <script src="/jingqing_fenxi/static/js/analysis_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/fight_topic_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/custom_case_monitor_tab.js"></script>

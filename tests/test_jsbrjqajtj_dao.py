@@ -21,6 +21,8 @@ class TestJsbrjqajtjDao(unittest.TestCase):
         sql, params = mock_execute.call_args[0]
         self.assertIn("cmdid = ANY(%s)", sql)
         self.assertIn("spiritcausetrouble IS NOT NULL", sql)
+        self.assertIn("newcharacategory AS 警情性质", sql)
+        self.assertIn("jq.警情性质", sql)
         self.assertIn("LEFT JOIN ywdata.zq_zfba_ajxx aj", sql)
         self.assertEqual(
             params,

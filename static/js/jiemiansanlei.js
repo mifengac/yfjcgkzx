@@ -231,6 +231,8 @@ function _getJiemiansanleiPageSizeRaw() {
 }
 
 function _getJiemiansanleiFilters() {
+  const streetModeEl = document.getElementById("jiemiansanleiStreetFilterMode");
+  const streetFilterMode = (streetModeEl && streetModeEl.value) || "model";
   return {
     startTime: document.getElementById("jiemiansanleiStartTime").value,
     endTime: document.getElementById("jiemiansanleiEndTime").value,
@@ -238,7 +240,8 @@ function _getJiemiansanleiFilters() {
     hbEndTime: document.getElementById("jiemiansanleiHbEndTime").value,
     leixingList: getMultiSelectValues("jiemiansanleiCaseTypesMs"),
     yuanshiquerenList: getMultiSelectValues("jiemiansanleiSourcesMs"),
-    streetOnly: !!(document.getElementById("jiemiansanleiStreetOnly") || {}).checked,
+    streetFilterMode: streetFilterMode,
+    streetOnly: streetFilterMode !== "none",
     minorOnly: !!(document.getElementById("jiemiansanleiMinorOnly") || {}).checked,
     pageSizeRaw: _getJiemiansanleiPageSizeRaw(),
   };
@@ -250,7 +253,7 @@ function _buildJiemiansanleiFilterKey(filters) {
     endTime: filters.endTime,
     leixingList: filters.leixingList.slice().sort(),
     yuanshiquerenList: filters.yuanshiquerenList.slice().sort(),
-    streetOnly: filters.streetOnly,
+    streetFilterMode: filters.streetFilterMode,
     minorOnly: filters.minorOnly,
     pageSizeRaw: filters.pageSizeRaw,
   });
@@ -308,6 +311,7 @@ function jiemiansanleiQuery(page) {
       yuanshiquerenList: filters.yuanshiquerenList,
       page: _jiemiansanleiState.page,
       pageSize: pageSize,
+      streetFilterMode: filters.streetFilterMode,
       streetOnly: filters.streetOnly,
       minorOnly: filters.minorOnly,
     }),
@@ -323,7 +327,7 @@ function jiemiansanleiQuery(page) {
       const data = resp.data || {};
       _jiemiansanleiState.total = data.total || 0;
       _jiemiansanleiState.page = data.page || 1;
-      renderJiemiansanleiTable(data.rows || []);
+      renderJiemiansanleiTable(data.rows || [], data.street_filter || null);
       updateJiemiansanleiPager();
       showJiemiansanleiMessage("查询完成，共 " + _jiemiansanleiState.total + " 条", "success");
     })
@@ -333,10 +337,12 @@ function jiemiansanleiQuery(page) {
     });
 }
 
-function renderJiemiansanleiTable(rows) {
+function renderJiemiansanleiTable(rows, streetFilterInfo) {
   const container = document.getElementById("jiemiansanleiResultTable");
   const resultContainer = document.getElementById("jiemiansanleiResultContainer");
   if (!container || !resultContainer) return;
+
+  renderJiemiansanleiStreetFilterNote(streetFilterInfo);
 
   if (!rows.length) {
     container.innerHTML = "<p>暂无数据</p>";
@@ -361,6 +367,18 @@ function renderJiemiansanleiTable(rows) {
   html += "</tbody></table>";
   container.innerHTML = html;
   resultContainer.style.display = "block";
+}
+
+function renderJiemiansanleiStreetFilterNote(info) {
+  const note = document.getElementById("jiemiansanleiStreetFilterNote");
+  if (!note) return;
+  if (!info || !info.description) {
+    note.style.display = "none";
+    note.innerHTML = "";
+    return;
+  }
+  note.innerHTML = escapeHtml(String(info.description));
+  note.style.display = "block";
 }
 
 function escapeHtml(unsafe) {
@@ -421,6 +439,7 @@ function jiemiansanleiExport(fmt) {
       leixingList: filters.leixingList,
       yuanshiquerenList: filters.yuanshiquerenList,
       format: fmt,
+      streetFilterMode: filters.streetFilterMode,
       streetOnly: filters.streetOnly,
       minorOnly: filters.minorOnly,
     }),
@@ -489,6 +508,7 @@ function jiemiansanleiExportReport() {
       endTime: jiemiansanleiFormatDateTime(filters.endTime),
       hbStartTime: jiemiansanleiFormatDateTime(filters.hbStartTime),
       hbEndTime: jiemiansanleiFormatDateTime(filters.hbEndTime),
+      streetFilterMode: filters.streetFilterMode,
     }),
   })
     .then((resp) => {
