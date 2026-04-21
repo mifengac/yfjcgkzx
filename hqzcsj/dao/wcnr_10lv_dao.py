@@ -22,6 +22,10 @@ REGION_CODE_NAME: Dict[str, str] = {
 REGION_CODES: Tuple[str, ...] = tuple(REGION_CODE_NAME.keys())
 REGION_NAME_CODE: Dict[str, str] = {v: k for k, v in REGION_CODE_NAME.items()}
 TARGET_CHANGSUO_LABELS = {"重点管控行业"}
+CASE_SOURCE_FIELD = "来源字段"
+SUSPECT_CASE_SOURCE = "嫌疑人"
+VICTIM_CASE_SOURCE = "被侵害"
+MERGED_CASE_TYPES: Tuple[str, str] = ("行政", "刑事")
 _CHANGSUO_JYAQ_KEYWORDS: Tuple[Tuple[str, str], ...] = (
     ("ktv", "KTV"),
     ("酒吧", "酒吧"),
@@ -391,6 +395,20 @@ def _case_number(row: Dict[str, Any]) -> str:
     return str(row.get("案件编号") or "").strip()
 
 
+def _merge_source_field(existing: Dict[str, Any], value: Any) -> None:
+    source = str(value or "").strip()
+    if not source:
+        return
+    current = str(existing.get(CASE_SOURCE_FIELD) or "").strip()
+    if not current:
+        existing[CASE_SOURCE_FIELD] = source
+        return
+    parts = [part for part in current.split("、") if part]
+    if source not in parts:
+        parts.append(source)
+        existing[CASE_SOURCE_FIELD] = "、".join(parts)
+
+
 def _merge_rows_by_case_number(
     *row_groups: Sequence[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -417,11 +435,68 @@ def _merge_rows_by_case_number(
                 continue
 
             for key, value in item.items():
+                if key == CASE_SOURCE_FIELD:
+                    _merge_source_field(existing, value)
+                    continue
                 if value in (None, ""):
                     continue
                 if existing.get(key) in (None, ""):
                     existing[key] = value
     return merged_rows
+
+
+def _with_case_source(rows: Sequence[Dict[str, Any]], source: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        item = dict(row)
+        item[CASE_SOURCE_FIELD] = source
+        out.append(item)
+    return out
+
+
+def _filter_rows_by_case_type(rows: Sequence[Dict[str, Any]], case_type: str) -> List[Dict[str, Any]]:
+    target = str(case_type or "").strip()
+    return [dict(row) for row in (rows or []) if str(row.get("案件类型") or "").strip() == target]
+
+
+def _merge_case_rows_by_type(
+    suspect_rows: Sequence[Dict[str, Any]],
+    victim_rows: Sequence[Dict[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    suspect_with_source = _with_case_source(_attach_region_fields(suspect_rows), SUSPECT_CASE_SOURCE)
+    victim_with_source = _with_case_source(_attach_region_fields(victim_rows), VICTIM_CASE_SOURCE)
+    return {
+        case_type: _merge_rows_by_case_number(
+            _filter_rows_by_case_type(suspect_with_source, case_type),
+            _filter_rows_by_case_type(victim_with_source, case_type),
+        )
+        for case_type in MERGED_CASE_TYPES
+    }
+
+
+def _fetch_merged_case_rows_by_type(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    patterns: Sequence[str],
+) -> Tuple[Dict[str, List[Dict[str, Any]]], List[Dict[str, Any]]]:
+    suspect_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_ajxx_changsuo_base_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+        diqu=None,
+    )
+    victim_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+        diqu=None,
+    )
+    victim_rows = _attach_region_fields(victim_base_rows)
+    return _merge_case_rows_by_type(suspect_base_rows, victim_rows), victim_rows
 
 
 def _classify_bqh_rows(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
@@ -1919,7 +1994,7 @@ def _fetch_zmjz_ratio_rows(
 
 
 def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str], metric: str) -> List[Dict[str, Any]]:
-    if metric in ("警情", "转案数", "行政", "刑事"):
+    if metric in ("警情", "转案数"):
         rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
             conn,
             metric=metric,
@@ -1931,6 +2006,19 @@ def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Seq
             limit=0,
         )
         return _attach_region_fields(rows)
+
+    if metric in MERGED_CASE_TYPES:
+        leixing = _normalize_leixing_for_query(conn, leixing_list)
+        patterns = zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing)
+        if leixing and not patterns:
+            return []
+        merged_rows_by_type, _victim_rows = _fetch_merged_case_rows_by_type(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            patterns=patterns,
+        )
+        return merged_rows_by_type.get(metric, [])
 
     if metric == "警情(场所)":
         rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
@@ -2047,15 +2135,15 @@ def _populate_case_counts(
         return [], []
 
     t = time.perf_counter()
-    ajxx = zfba_wcnr_jqaj_dao.count_wcnr_ajxx_by_diqu_and_ajlx(
+    merged_rows_by_type, bqh_rows = _fetch_merged_case_rows_by_type(
         conn,
         start_time=start_time,
         end_time=end_time,
         patterns=patterns,
     )
-    counts["xingzheng"] = _normalize_count_map(ajxx.get("行政", {}))
-    counts["xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
-    counts["wcnr_xingshi"] = _normalize_count_map(ajxx.get("刑事", {}))
+    counts["xingzheng"] = _count_rows_by_region(merged_rows_by_type.get("行政", []))
+    counts["xingshi"] = _count_rows_by_region(merged_rows_by_type.get("刑事", []))
+    counts["wcnr_xingshi"] = _count_rows_by_region(merged_rows_by_type.get("刑事", []))
     jqaj_ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(
         conn,
         start_time=start_time,
@@ -2063,42 +2151,12 @@ def _populate_case_counts(
         patterns=patterns,
     )
     counts["jqaj_xingshi"] = _normalize_count_map(jqaj_ajxx.get("刑事", {}))
-    mark_perf("count_ajxx_ms", t)
-
-    if include_details:
-        t = time.perf_counter()
-        bqh_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
-            conn,
-            start_time=start_time,
-            end_time=end_time,
-            patterns=patterns,
-            diqu=None,
-        )
-        bqh_rows = _attach_region_fields(bqh_base_rows)
-        counts["bqh_case"] = _count_rows_by_region(bqh_rows)
-        cs_bqh_rows = _filter_changsuo_bqh_rows(bqh_rows)
-        counts["cs_bqh_case"] = _count_rows_by_region(cs_bqh_rows)
-        mark_perf("bqh_and_changsuo_detail_ms", t)
-        return bqh_rows, cs_bqh_rows
-
-    t = time.perf_counter()
-    bqh_counts = zfba_wcnr_jqaj_dao.count_wcnr_shr_ajxx_by_diqu(
-        conn,
-        start_time=start_time,
-        end_time=end_time,
-        patterns=patterns,
-    )
-    counts["bqh_case"] = _normalize_count_map(bqh_counts)
-    cs_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows(
-        conn,
-        start_time=start_time,
-        end_time=end_time,
-        patterns=patterns,
-        diqu=None,
-    )
-    cs_rows = _filter_changsuo_bqh_rows(_attach_region_fields(cs_base_rows))
+    counts["bqh_case"] = _count_rows_by_region(bqh_rows)
+    cs_rows = _filter_changsuo_bqh_rows(bqh_rows)
     counts["cs_bqh_case"] = _count_rows_by_region(cs_rows)
-    mark_perf("bqh_and_changsuo_summary_ms", t)
+    mark_perf("count_ajxx_and_bqh_ms", t)
+    if include_details:
+        return bqh_rows, cs_rows
     return [], cs_rows
 
 

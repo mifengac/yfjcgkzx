@@ -5,6 +5,7 @@ from hqzcsj.dao.wcnr_10lv_dao import (
     _fetch_zmjz_ratio_rows,
     _is_zmjz_ratio_den_row,
     _is_zmjz_ratio_num_row,
+    _merge_case_rows_by_type,
     _normalize_person_name_sql,
     fetch_metric_detail_rows,
     fetch_period_data,
@@ -222,6 +223,61 @@ class TestWcnr10lvDao(unittest.TestCase):
         self.assertEqual(rows[1]["\u5730\u533a\u4ee3\u7801"], "445302")
         self.assertEqual(mock_fetch_rows.call_args.kwargs["patterns"], [".*"])
         self.assertIsNone(mock_fetch_rows.call_args.kwargs["diqu"])
+
+    def test_merge_case_rows_by_type_splits_bqh_rows_and_dedupes_case_no(self) -> None:
+        rows_by_type = _merge_case_rows_by_type(
+            [
+                {"地区": "445302", "案件编号": "A1", "案件类型": "行政", "案件名称": "嫌疑人行政"},
+                {"地区": "445303", "案件编号": "B1", "案件类型": "刑事", "案件名称": "嫌疑人刑事"},
+            ],
+            [
+                {"地区": "445302", "案件编号": "A1", "案件类型": "行政", "案件名称": "被侵害行政"},
+                {"地区": "445321", "案件编号": "A2", "案件类型": "行政", "案件名称": "被侵害行政2"},
+                {"地区": "445303", "案件编号": "B2", "案件类型": "刑事", "案件名称": "被侵害刑事"},
+            ],
+        )
+
+        self.assertEqual([row["案件编号"] for row in rows_by_type["行政"]], ["A1", "A2"])
+        self.assertEqual([row["案件编号"] for row in rows_by_type["刑事"]], ["B1", "B2"])
+        self.assertEqual(rows_by_type["行政"][0]["来源字段"], "嫌疑人、被侵害")
+        self.assertEqual(rows_by_type["行政"][1]["来源字段"], "被侵害")
+        self.assertEqual(rows_by_type["刑事"][0]["来源字段"], "嫌疑人")
+
+    def test_xingzheng_detail_merges_bqh_admin_cases_with_source_field(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_jq_aj_dao.fetch_ay_patterns",
+            return_value=[".*"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_ajxx_changsuo_base_rows",
+            return_value=[
+                {"地区": "445302", "案件编号": "A1", "案件类型": "行政"},
+                {"地区": "445303", "案件编号": "B1", "案件类型": "刑事"},
+            ],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows",
+            return_value=[
+                {"地区": "445302", "案件编号": "A1", "案件类型": "行政"},
+                {"地区": "445321", "案件编号": "A2", "案件类型": "行政"},
+                {"地区": "445303", "案件编号": "B2", "案件类型": "刑事"},
+            ],
+        ):
+            rows = fetch_metric_detail_rows(
+                object(),
+                metric="xingzheng",
+                part="value",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+            )
+
+        self.assertEqual([row["案件编号"] for row in rows], ["A1", "A2"])
+        self.assertEqual(rows[0]["来源字段"], "嫌疑人、被侵害")
+        self.assertEqual(rows[1]["来源字段"], "被侵害")
+        self.assertEqual(rows[0]["地区"], "云城")
+        self.assertEqual(rows[1]["地区"], "新兴")
 
     def test_fetch_zmjz_ratio_rows_falls_back_when_view_lacks_name_normalization(self) -> None:
         conn = _FakeConnection()
