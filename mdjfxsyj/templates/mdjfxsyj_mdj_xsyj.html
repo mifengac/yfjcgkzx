@@ -184,6 +184,7 @@
       <div class="tabs" id="mdjTabs">
         <button class="tab-btn active" data-tab="xsyj">线索移交</button>
         <button class="tab-btn" data-tab="cfbj">重复报警统计</button>
+        <button class="tab-btn" data-tab="mdjfjqfx">矛盾纠纷警情统计</button>
         <button class="tab-btn" data-tab="yyjdjc">扬言极端监测</button>
       </div>
 
@@ -332,6 +333,16 @@
           loading="lazy"
         ></iframe>
       </div>
+
+      <div class="tab-panel" id="tab-mdjfjqfx">
+        <iframe
+          id="mdjfjqfxFrame"
+          class="tab-embedded-frame"
+          src="{{ url_for('mdjfxsyj_mdjfjqfx.index') }}"
+          title="矛盾纠纷警情统计"
+          loading="lazy"
+        ></iframe>
+      </div>
     </div>
 
     <script>
@@ -348,10 +359,10 @@
     <script>
       (function () {
         window.addEventListener('message', function (event) {
-          if (!event.data || event.data.type !== 'mdj-yyjdjc-height') {
+          if (!event.data || (event.data.type !== 'mdj-yyjdjc-height' && event.data.type !== 'mdj-mdjfjqfx-height')) {
             return;
           }
-          var iframe = document.getElementById('yyjdjcFrame');
+          var iframe = document.getElementById(event.data.type === 'mdj-mdjfjqfx-height' ? 'mdjfjqfxFrame' : 'yyjdjcFrame');
           if (!iframe) {
             return;
           }
