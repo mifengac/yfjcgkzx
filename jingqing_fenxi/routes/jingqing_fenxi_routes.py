@@ -10,3 +10,4 @@ def index():
 from jingqing_fenxi.routes import analysis_tab_routes  # noqa: E402,F401
 from jingqing_fenxi.routes import custom_case_monitor_routes  # noqa: E402,F401
 from jingqing_fenxi.routes import fight_topic_routes  # noqa: E402,F401
+from jingqing_fenxi.routes import gambling_topic_routes  # noqa: E402,F401

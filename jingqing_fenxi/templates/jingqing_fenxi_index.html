@@ -210,7 +210,8 @@
         }
         .btn:hover { background: #0056b3; }
         #loading,
-        #fightTopicLoading {
+        #fightTopicLoading,
+        #gamblingTopicLoading {
             display: none;
             color: #ff9800;
             font-weight: bold;
@@ -757,6 +758,7 @@
         <div class="tab-nav">
             <button type="button" class="tab-btn active" data-tab-target="analysis">警情分析</button>
             <button type="button" class="tab-btn" data-tab-target="fight-topic">打架斗殴专题</button>
+            <button type="button" class="tab-btn" data-tab-target="gambling-topic">赌博专题</button>
             <button type="button" class="tab-btn" data-tab-target="custom-case-monitor">自定义警情监测</button>
         </div>
 
@@ -767,6 +769,10 @@
 
             <div class="tab-panel" data-tab-panel="fight-topic">
                 {% include "fight_topic_tab.html" %}
+            </div>
+
+            <div class="tab-panel" data-tab-panel="gambling-topic">
+                {% include "gambling_topic_tab.html" %}
             </div>
 
             <div class="tab-panel" data-tab-panel="custom-case-monitor">
@@ -780,6 +786,7 @@
 <script src="/jingqing_fenxi/static/js/analysis_case_type_source.js"></script>
 <script src="/jingqing_fenxi/static/js/analysis_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/fight_topic_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/gambling_topic_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/custom_case_monitor_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/jingqing_fenxi_tabs.js"></script>
 </body>

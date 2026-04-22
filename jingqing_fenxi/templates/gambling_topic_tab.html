@@ -1,0 +1,138 @@
+<div class="fenxi-container">
+    <div class="query-area">
+        <div class="query-item">
+            <label>开始时间:</label>
+            <input type="datetime-local" step="1" id="gamblingBeginDate">
+        </div>
+        <div class="query-item">
+            <label>结束时间:</label>
+            <input type="datetime-local" step="1" id="gamblingEndDate">
+        </div>
+        <div class="query-item">
+            <label>环比开始:</label>
+            <input type="datetime-local" step="1" id="gamblingM2mStartTime">
+        </div>
+        <div class="query-item">
+            <label>环比结束:</label>
+            <input type="datetime-local" step="1" id="gamblingM2mEndTime">
+        </div>
+
+        <div class="query-item">
+            <label>分析维度:</label>
+            <div class="multi-select" id="gamblingDimMs">
+                <div class="multi-select-display" id="gamblingDimMsDisplay">全部</div>
+                <div class="multi-select-dropdown" id="gamblingDimMsDropdown">
+                    <label class="multi-select-option" style="border-bottom:1px solid #eee;font-weight:bold;"><input type="checkbox" value="_all" checked> 全选</label>
+                    <label class="multi-select-option"><input type="checkbox" value="srr" checked> 各地同比环比</label>
+                    <label class="multi-select-option"><input type="checkbox" value="time" checked> 时段</label>
+                    <label class="multi-select-option"><input type="checkbox" value="dept" checked> 派出所</label>
+                    <label class="multi-select-option"><input type="checkbox" value="phone" checked> 重复报警电话</label>
+                    <label class="multi-select-option"><input type="checkbox" value="cluster" checked> 重复报警地址</label>
+                    <label class="multi-select-option"><input type="checkbox" value="addr" checked> 警情地址统计</label>
+                    <label class="multi-select-option"><input type="checkbox" value="gambling_way" checked> 赌博方式</label>
+                    <label class="multi-select-option"><input type="checkbox" value="wilderness" checked> 涉山林野外赌博</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="query-item">
+            <button class="btn" id="gamblingTopicAnalyzeBtn">统计</button>
+            <button class="btn" id="gamblingTopicExportBtn" style="background:#28a745">导出</button>
+            <span id="gamblingTopicLoading">正在处理中，请稍候...</span>
+        </div>
+    </div>
+
+    <div id="gamblingTopicError" class="error-message special-case-hidden"></div>
+
+    <div class="charts-container">
+        <div class="chart-box" id="gambling-box-srr" style="grid-column: 1 / -1;">
+            <div id="gambling-table-srr"></div>
+        </div>
+
+        <div class="chart-box" id="gambling-box-way" style="grid-column: 1 / -1;">
+            <div class="chart-head">
+                <h3>赌博方式</h3>
+            </div>
+            <div id="gambling-table-way"></div>
+        </div>
+
+        <div class="chart-box" id="gambling-box-wilderness" style="grid-column: 1 / -1;">
+            <div class="chart-head">
+                <h3>涉山林野外赌博</h3>
+            </div>
+            <div id="gambling-table-wilderness"></div>
+        </div>
+
+        <div class="chart-box" id="gambling-box-time">
+            <div class="chart-head">
+                <h3>时段</h3>
+                <div class="chart-opt" id="gambling-opt-time">
+                    <label>分组:</label>
+                    <input type="range" id="gamblingOptTimeBucketIndex" min="0" max="6" step="1" value="2">
+                    <span class="opt-value" id="gamblingOptTimeBucketLabel">3小时</span>
+                    <span class="opt-tip">仅支持可整除24小时: 1/2/3/4/6/8/12</span>
+                </div>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="gambling-chart-time"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="gambling-state-time"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="gambling-box-dept">
+            <div class="chart-head">
+                <h3>派出所</h3>
+                <div class="chart-opt" id="gambling-opt-dept">
+                    <label><input type="checkbox" id="gamblingOptDeptAll" checked> 全部</label>
+                    <input type="range" id="gamblingOptDeptTopN" min="1" max="100" step="1" value="20" disabled>
+                    <span class="opt-value" id="gamblingOptDeptTopNLabel">全部</span>
+                </div>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="gambling-chart-dept"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="gambling-state-dept"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="gambling-box-phone">
+            <div class="chart-head">
+                <h3>重复报警电话</h3>
+                <div class="chart-opt" id="gambling-opt-phone">
+                    <label>阈值:</label>
+                    <input type="range" id="gamblingOptPhoneMinCount" min="2" max="10" step="1" value="2">
+                    <span class="opt-value" id="gamblingOptPhoneMinCountLabel">&gt;=2次</span>
+                    <span class="opt-tip">自动过滤 00000000</span>
+                </div>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="gambling-chart-phone"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="gambling-state-phone"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="gambling-box-cluster">
+            <div class="chart-head">
+                <h3>重复报警地址</h3>
+                <div class="chart-opt" id="gambling-opt-cluster">
+                    <label>半径:</label>
+                    <input type="range" id="gamblingOptClusterRadius" min="50" max="500" step="50" value="50">
+                    <span class="opt-value" id="gamblingOptClusterRadiusLabel">50米</span>
+                </div>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="gambling-chart-cluster"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="gambling-state-cluster"></div>
+            </div>
+        </div>
+
+        <div class="chart-box" id="gambling-box-addr">
+            <div class="chart-head">
+                <h3>警情地址统计</h3>
+            </div>
+            <div class="fight-chart-wrap">
+                <canvas id="gambling-chart-addr"></canvas>
+                <div class="fight-chart-state special-case-hidden" id="gambling-state-addr"></div>
+            </div>
+        </div>
+    </div>
+</div>
