@@ -73,6 +73,7 @@ FETCH_SOURCE_REGISTRY: List[Dict[str, Any]] = [
     {"key": "dbz", "name": "逮捕证", "table": "zq_zfba_dbz", "pk_fields": ["dbz_id"], "time_field_codes": ["dbz_pzdbsj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "ysajtzs", "name": "移送案件通知书", "table": "zq_zfba_ysajtzs", "pk_fields": ["ysajtzs_id"], "time_field_codes": ["ysajtzs_pzsj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "qsryxx", "name": "起诉人员信息", "table": "zq_zfba_qsryxx", "pk_fields": ["ajxx_ajbh", "qsryxx_rybh"], "time_field_codes": ["qsryxx_tfsj"], "requires": "cookie+authorization", "time_mode": "range"},
+    {"key": "saryxx", "name": "涉案人员信息", "table": "zq_zfba_saryxx", "pk_fields": ["saryxx_id"], "time_field_codes": ["saryxx_lrsj"], "requires": "cookie+authorization", "time_mode": "range"},
     {"key": "xyrxx", "name": "嫌疑人信息", "table": "zq_zfba_xyrxx", "pk_fields": ["ajxx_join_ajxx_ajbh", "xyrxx_sfzh"], "time_field_codes": ["xyrxx_lrsj"], "requires": "cookie+authorization", "time_mode": "range"},
 ]
 
@@ -534,6 +535,13 @@ def _build_job_defs(*, base_forms: Dict[str, Dict[str, str]], start_time: str, e
                 pk_fields=["ajxx_ajbh", "qsryxx_rybh"],
                 base_form=_make_form_qsryxx(start_time=start_time, end_time=end_time, org_codes=org_codes),
                 time_field_codes=["qsryxx_tfsj"],
+            ),
+            ZongchaJobDef(
+                name="涉案人员信息",
+                table="zq_zfba_saryxx",
+                pk_fields=["saryxx_id"],
+                base_form=_make_form_saryxx(start_time=start_time, end_time=end_time),
+                time_field_codes=["saryxx_lrsj"],
             ),
             ZongchaJobDef(
                 name="嫌疑人信息",
@@ -1308,6 +1316,45 @@ def _make_form_qsryxx(*, start_time: str, end_time: str, org_codes: Sequence[str
         result_tab_id=tab_id,
         result_tab_code=tab_code,
         result_table_name="起诉人员信息",
+        tab_id=tab_id,
+        tab_code=tab_code,
+    )
+
+
+def _make_form_saryxx(*, start_time: str, end_time: str) -> Dict[str, str]:
+    tab_id = "51"
+    tab_code = "saryxx"
+    conds = [
+        {
+            "tabId": tab_id,
+            "tabCode": tab_code,
+            "fieldCode": "saryxx_isdel",
+            "tabType": "1",
+            "isPub": False,
+            "operateSign": "7",
+            "values": ["0"],
+            "isIncludeChilds": False,
+            "dicCode": "00",
+        },
+        {
+            "tabId": tab_id,
+            "tabCode": tab_code,
+            "fieldCode": "saryxx_lrsj",
+            "tabType": "1",
+            "isPub": False,
+            "operateSign": "10",
+            "values": [start_time, end_time],
+            "excludeDays": [],
+            "rangeIncludeType": "0",
+        },
+    ]
+    json_obj = {"paramArray": [{"conditions": conds, "tabId": tab_id, "tabCode": tab_code, "domainId": "11"}]}
+    return _make_form_base(
+        json_obj=json_obj,
+        domain_id="11",
+        result_tab_id=tab_id,
+        result_tab_code=tab_code,
+        result_table_name="涉案人员信息",
         tab_id=tab_id,
         tab_code=tab_code,
     )

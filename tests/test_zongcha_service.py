@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import patch
 
@@ -21,11 +22,37 @@ class TestZongchaService(unittest.TestCase):
         jobs = [
             service.ZongchaJobDef("训诫书", "t1", ["id"], {}, ["xjs_tfsj"]),
             service.ZongchaJobDef("案件信息", "t2", ["id"], {}, ["ajxx_lasj"]),
+            service.ZongchaJobDef("涉案人员信息", "t3", ["id"], {}, ["saryxx_lrsj"]),
         ]
 
-        filtered = service._filter_jobs(jobs, sources=["xjs", "案件信息"])  # noqa: SLF001
+        filtered = service._filter_jobs(jobs, sources=["xjs", "案件信息", "saryxx"])  # noqa: SLF001
 
-        self.assertEqual([job.name for job in filtered], ["训诫书", "案件信息"])
+        self.assertEqual([job.name for job in filtered], ["训诫书", "案件信息", "涉案人员信息"])
+
+    def test_saryxx_source_catalog_and_form_use_lrsj_range(self) -> None:
+        sources = service.get_fetch_sources()
+        saryxx = next(item for item in sources if item["key"] == "saryxx")
+
+        self.assertEqual(saryxx["name"], "涉案人员信息")
+        self.assertEqual(saryxx["table"], "zq_zfba_saryxx")
+        self.assertEqual(saryxx["pk_fields"], ["saryxx_id"])
+
+        form = service._make_form_saryxx(  # noqa: SLF001
+            start_time="2026-04-01 00:00:00",
+            end_time="2026-04-30 23:59:59",
+        )
+        payload = json.loads(form["json"])
+        conditions = payload["paramArray"][0]["conditions"]
+
+        self.assertEqual(form["domainId"], "11")
+        self.assertEqual(form["resultTabId"], "51")
+        self.assertEqual(form["resultTabCode"], "saryxx")
+        self.assertEqual(form["resultTableName"], "涉案人员信息")
+        self.assertEqual(form["tabId"], "51")
+        self.assertEqual(conditions[0]["fieldCode"], "saryxx_isdel")
+        self.assertEqual(conditions[0]["values"], ["0"])
+        self.assertEqual(conditions[1]["fieldCode"], "saryxx_lrsj")
+        self.assertEqual(conditions[1]["values"], ["2026-04-01 00:00:00", "2026-04-30 23:59:59"])
 
     def test_split_time_windows_returns_single_range_when_no_time_fields(self) -> None:
         job = service.ZongchaJobDef("测试", "demo", ["id"], {"pageSize": "100"}, [])
