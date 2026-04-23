@@ -674,14 +674,48 @@ def _fetch_graduate_reoffend(
     xingshi_cond = ""
     minor_cond = ""
     params: List[Any] = [start_time, end_time]
+    use_latest_wfry_base = not jz_time_lt6 and not xingshi_only and not minor_only
+    ay_column = 'x."ajxx_join_ajxx_ay"' if use_latest_wfry_base else 'x."xyrxx_ay_mc"'
+    latest_wfry_cte = ""
+    reoffend_join = """
+        JOIN "ywdata"."zq_zfba_wcnr_xyr" x
+          ON x."xyrxx_sfzh" = g."证件号码"
+         AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+    """
+    if use_latest_wfry_base:
+        latest_wfry_cte = """
+        ,
+        latest_wfry AS (
+            SELECT DISTINCT ON (w."xyrxx_sfzh")
+                w."xyrxx_sfzh",
+                w."ajxx_join_ajxx_ajbh",
+                w."ajxx_join_ajxx_ajmc",
+                w."ajxx_join_ajxx_ajlx",
+                w."ajxx_join_ajxx_ay",
+                w."ajxx_join_ajxx_lasj",
+                w."xyrxx_lrsj"
+            FROM "ywdata"."v_wcnr_wfry_jbxx_base" w
+            WHERE NULLIF(BTRIM(COALESCE(w."xyrxx_sfzh", '')), '') IS NOT NULL
+            ORDER BY
+                w."xyrxx_sfzh",
+                w."ajxx_join_ajxx_lasj" DESC NULLS LAST,
+                w."xyrxx_lrsj" DESC NULLS LAST,
+                w."ajxx_join_ajxx_ajbh" DESC
+        )
+        """
+        reoffend_join = """
+        JOIN latest_wfry x
+          ON x."xyrxx_sfzh" = g."证件号码"
+         AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+        """
 
     if leixing:
-        type_cond = """
+        type_cond = f"""
           AND EXISTS (
               SELECT 1
               FROM "ywdata"."case_type_config" ctc
               WHERE ctc."leixing" = ANY(%s)
-                AND COALESCE(x."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
+                AND COALESCE({ay_column}, '') SIMILAR TO ctc."ay_pattern"
           )
         """
         params.append(list(leixing))
@@ -715,6 +749,7 @@ def _fetch_graduate_reoffend(
               {jz_cond}
             ORDER BY zws."sfzhm", zws."lx_time" DESC
         )
+        {latest_wfry_cte}
         SELECT
             g."证件号码",
             g."姓名",
@@ -727,12 +762,10 @@ def _fetch_graduate_reoffend(
             x."ajxx_join_ajxx_ajbh" AS "再犯案件编号",
             x."ajxx_join_ajxx_ajmc" AS "再犯案件名称",
             x."ajxx_join_ajxx_ajlx" AS "再犯案件类型",
-            COALESCE(x."xyrxx_ay_mc", '') AS "再犯案由",
+            COALESCE({ay_column}, '') AS "再犯案由",
             TO_CHAR(x."ajxx_join_ajxx_lasj", 'YYYY-MM-DD HH24:MI:SS') AS "再犯立案时间"
         FROM grads g
-        JOIN "ywdata"."zq_zfba_wcnr_xyr" x
-          ON x."xyrxx_sfzh" = g."证件号码"
-         AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+        {reoffend_join}
         WHERE 1=1
         {xingshi_cond}
         {minor_cond}
@@ -764,14 +797,47 @@ def _count_graduate_reoffend_by_region(
     xingshi_cond = ""
     minor_cond = ""
     params: List[Any] = [start_time, end_time]
+    use_latest_wfry_base = not jz_time_lt6 and not xingshi_only and not minor_only
+    ay_column = 'x."ajxx_join_ajxx_ay"' if use_latest_wfry_base else 'x."xyrxx_ay_mc"'
+    latest_wfry_cte = ""
+    reoffend_join = """
+        JOIN "ywdata"."zq_zfba_wcnr_xyr" x
+          ON x."xyrxx_sfzh" = g."证件号码"
+         AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+    """
+    if use_latest_wfry_base:
+        latest_wfry_cte = """
+        ,
+        latest_wfry AS (
+            SELECT DISTINCT ON (w."xyrxx_sfzh")
+                w."xyrxx_sfzh",
+                w."ajxx_join_ajxx_ajbh",
+                w."ajxx_join_ajxx_ay",
+                w."ajxx_join_ajxx_ajlx",
+                w."ajxx_join_ajxx_lasj",
+                w."xyrxx_lrsj"
+            FROM "ywdata"."v_wcnr_wfry_jbxx_base" w
+            WHERE NULLIF(BTRIM(COALESCE(w."xyrxx_sfzh", '')), '') IS NOT NULL
+            ORDER BY
+                w."xyrxx_sfzh",
+                w."ajxx_join_ajxx_lasj" DESC NULLS LAST,
+                w."xyrxx_lrsj" DESC NULLS LAST,
+                w."ajxx_join_ajxx_ajbh" DESC
+        )
+        """
+        reoffend_join = """
+        JOIN latest_wfry x
+          ON x."xyrxx_sfzh" = g."证件号码"
+         AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+        """
 
     if leixing:
-        type_cond = """
+        type_cond = f"""
           AND EXISTS (
               SELECT 1
               FROM "ywdata"."case_type_config" ctc
               WHERE ctc."leixing" = ANY(%s)
-                AND COALESCE(x."xyrxx_ay_mc", '') SIMILAR TO ctc."ay_pattern"
+                AND COALESCE({ay_column}, '') SIMILAR TO ctc."ay_pattern"
           )
         """
         params.append(list(leixing))
@@ -800,11 +866,10 @@ def _count_graduate_reoffend_by_region(
               {jz_cond}
             ORDER BY zws."sfzhm", zws."lx_time" DESC
         )
+        {latest_wfry_cte}
         SELECT g."地区代码", COUNT(DISTINCT g."证件号码") AS cnt
         FROM grads g
-        JOIN "ywdata"."zq_zfba_wcnr_xyr" x
-          ON x."xyrxx_sfzh" = g."证件号码"
-         AND x."ajxx_join_ajxx_lasj" > g."离校时间_raw"
+        {reoffend_join}
         WHERE 1=1
         {xingshi_cond}
         {minor_cond}

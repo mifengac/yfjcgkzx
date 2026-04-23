@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import patch
 
 from hqzcsj.dao.wcnr_10lv_dao import (
+    _count_graduate_reoffend_by_region,
+    _fetch_graduate_reoffend,
     _fetch_zmjz_ratio_rows,
     _is_zmjz_ratio_den_row,
     _is_zmjz_ratio_num_row,
@@ -305,6 +307,71 @@ class TestWcnr10lvDao(unittest.TestCase):
             sql,
         )
         self.assertEqual(params[:2], ["2026-01-01 00:00:00", "2026-01-02 00:00:00"])
+
+    def test_fetch_graduate_reoffend_uses_latest_wfry_base_record(self) -> None:
+        conn = _FakeConnection()
+
+        rows = _fetch_graduate_reoffend(
+            conn,
+            start_time="2026-04-01 00:00:00",
+            end_time="2026-04-30 23:59:59",
+            leixing_list=["盗窃"],
+            jz_time_lt6=False,
+            xingshi_only=False,
+            minor_only=False,
+        )
+
+        self.assertEqual(rows, [])
+        sql, params = conn.cursors[-1].executed[-1]
+        self.assertIn('FROM "ywdata"."v_wcnr_wfry_jbxx_base" w', sql)
+        self.assertIn('SELECT DISTINCT ON (w."xyrxx_sfzh")', sql)
+        self.assertIn('w."ajxx_join_ajxx_lasj" DESC NULLS LAST', sql)
+        self.assertIn('JOIN latest_wfry x', sql)
+        self.assertIn('x."ajxx_join_ajxx_lasj" > g."离校时间_raw"', sql)
+        self.assertIn('COALESCE(x."ajxx_join_ajxx_ay", \'\') SIMILAR TO ctc."ay_pattern"', sql)
+        self.assertNotIn('JOIN "ywdata"."zq_zfba_wcnr_xyr" x', sql)
+        self.assertEqual(params, ["2026-04-01 00:00:00", "2026-04-30 23:59:59", ["盗窃"]])
+
+    def test_count_graduate_reoffend_uses_latest_wfry_base_record(self) -> None:
+        conn = _FakeConnection()
+
+        counts = _count_graduate_reoffend_by_region(
+            conn,
+            start_time="2026-04-01 00:00:00",
+            end_time="2026-04-30 23:59:59",
+            leixing_list=[],
+            jz_time_lt6=False,
+            xingshi_only=False,
+            minor_only=False,
+        )
+
+        self.assertEqual(counts["__ALL__"], 0)
+        sql, params = conn.cursors[-1].executed[-1]
+        self.assertIn('FROM "ywdata"."v_wcnr_wfry_jbxx_base" w', sql)
+        self.assertIn('SELECT DISTINCT ON (w."xyrxx_sfzh")', sql)
+        self.assertIn('JOIN latest_wfry x', sql)
+        self.assertIn('x."ajxx_join_ajxx_lasj" > g."离校时间_raw"', sql)
+        self.assertNotIn('JOIN "ywdata"."zq_zfba_wcnr_xyr" x', sql)
+        self.assertEqual(params, ["2026-04-01 00:00:00", "2026-04-30 23:59:59"])
+
+    def test_fetch_criminal_graduate_reoffend_keeps_legacy_source(self) -> None:
+        conn = _FakeConnection()
+
+        _fetch_graduate_reoffend(
+            conn,
+            start_time="2026-04-01 00:00:00",
+            end_time="2026-04-30 23:59:59",
+            leixing_list=["盗窃"],
+            jz_time_lt6=True,
+            xingshi_only=True,
+            minor_only=True,
+        )
+
+        sql, params = conn.cursors[-1].executed[-1]
+        self.assertIn('JOIN "ywdata"."zq_zfba_wcnr_xyr" x', sql)
+        self.assertIn('COALESCE(x."xyrxx_ay_mc", \'\') SIMILAR TO ctc."ay_pattern"', sql)
+        self.assertNotIn('v_wcnr_wfry_jbxx_base', sql)
+        self.assertEqual(params, ["2026-04-01 00:00:00", "2026-04-30 23:59:59", ["盗窃"]])
 
     def test_fetch_period_data_keeps_pattern_dependent_metrics_empty_when_no_patterns_match(self) -> None:
         with patch(
