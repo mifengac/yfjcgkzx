@@ -27,20 +27,11 @@
                 </div>
             </div>
 
-            <div>
-                <label for="jiemiansanleiStreetFilterMode">街面口径:</label>
-                <select id="jiemiansanleiStreetFilterMode" name="jiemiansanleiStreetFilterMode">
-                    <option value="model" selected>街面(模型)</option>
-                    <option value="content_road">街面(报警内容-路面)</option>
-                    <option value="content_public">街面(报警内容-公共)</option>
-                    <option value="reply_road">街面(处警-路面)</option>
-                    <option value="reply_public">街面(处警-公共)</option>
-                    <option value="text_any">街面(综合关键字)</option>
-                    <option value="none">不限街面</option>
-                </select>
-            </div>
-
             <div style="display:flex; align-items:center; gap:12px; padding-top: 22px;">
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                    <input type="checkbox" id="jiemiansanleiStreetOnly" checked>
+                    <span>街面</span>
+                </label>
                 <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
                     <input type="checkbox" id="jiemiansanleiMinorOnly">
                     <span>未成年</span>

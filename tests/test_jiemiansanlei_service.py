@@ -66,6 +66,7 @@ class TestJiemiansanleiService(unittest.TestCase):
                 page=2,
                 page_size=1,
                 street_only=True,
+                street_filter_mode="model",
                 minor_only=False,
             )
 
@@ -122,6 +123,134 @@ class TestJiemiansanleiService(unittest.TestCase):
         self.assertEqual(result["street_filter"]["label"], "街面(报警内容-路面)")
         self.assertEqual(result["street_filter"]["fields"], ["报警内容"])
         self.assertIn("路口", result["street_filter"]["keywords"])
+
+    def test_query_classified_uses_recommended_include_and_exclude_keywords(self) -> None:
+        rows = [
+            {
+                "leixing": "盗窃",
+                "source": "原始",
+                "bureau": "云城分局",
+                "station_no": "001",
+                "station_name": "A所",
+                "call_time": "2026-03-01 10:00:00",
+                "address": "人民路广场门口",
+                "case_contents": "群众报警称有人争吵",
+                "replies": "",
+                "case_type_name": "盗窃",
+            },
+            {
+                "leixing": "盗窃",
+                "source": "原始",
+                "bureau": "云城分局",
+                "station_no": "002",
+                "station_name": "B所",
+                "call_time": "2026-03-01 11:00:00",
+                "address": "人民路小区门口",
+                "case_contents": "群众报警称有纠纷",
+                "replies": "",
+                "case_type_name": "盗窃",
+            },
+            {
+                "leixing": "盗窃",
+                "source": "原始",
+                "bureau": "云城分局",
+                "station_no": "003",
+                "station_name": "C所",
+                "call_time": "2026-03-01 12:00:00",
+                "address": "办公楼内",
+                "case_contents": "群众报警称有纠纷",
+                "replies": "",
+                "case_type_name": "盗窃",
+            },
+        ]
+
+        with patch.object(service, "_fetch_rows_for_filters", return_value=rows), patch.object(
+            service, "_append_predictions", side_effect=lambda _rows: None
+        ):
+            result = service.query_classified(
+                start_time="2026-03-01 00:00:00",
+                end_time="2026-03-02 00:00:00",
+                leixing_list=["盗窃"],
+                source_list=["原始"],
+                page=1,
+                page_size=None,
+                street_only=True,
+                street_filter_mode="recommended",
+                minor_only=False,
+            )
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["rows"][0]["警情地址"], "人民路广场门口")
+        self.assertEqual(result["street_filter"]["label"], "街面")
+        self.assertEqual(result["street_filter"]["fields"], ["警情地址", "报警内容", "处警情况(清洗后)"])
+        self.assertIn("路", result["street_filter"]["keywords"])
+        self.assertIn("小区", result["street_filter"]["exclude_keywords"])
+        self.assertIn("工地", result["street_filter"]["exclude_keywords"])
+
+    def test_clean_replies_text_keeps_feedback_and_drops_dispatch_logs(self) -> None:
+        raw_replies = (
+            "暂无[2026-04-23 18:42:24 云浮市局指挥中心 张三]\n"
+            "派警至管辖单位：测试派出所\n\n"
+            "[2026-04-23 18:42:25 测试派出所 李四]\n"
+            "警情送达李四警务通\n\n"
+            "[2026-04-23 18:57:52 测试派出所 李四]\n"
+            "【过程反馈】：民警到达现场了解情况。\n\n"
+            "[2026-04-23 20:30:09 测试派出所 李四]\n"
+            "【结警反馈】：警情部位：城区道路，警情处理结果说明：已处理完毕。\n"
+        )
+
+        cleaned = service.clean_replies_text(raw_replies)
+
+        self.assertIn("过程反馈：民警到达现场了解情况。", cleaned)
+        self.assertIn("结警反馈：警情部位：城区道路", cleaned)
+        self.assertNotIn("派警至管辖单位", cleaned)
+        self.assertNotIn("警情送达", cleaned)
+
+    def test_query_classified_none_mode_does_not_filter_street_rows(self) -> None:
+        rows = [
+            {
+                "leixing": "盗窃",
+                "source": "原始",
+                "bureau": "云城分局",
+                "station_no": "001",
+                "station_name": "A所",
+                "call_time": "2026-03-01 10:00:00",
+                "address": "人民路广场门口",
+                "case_contents": "",
+                "replies": "",
+                "case_type_name": "盗窃",
+            },
+            {
+                "leixing": "盗窃",
+                "source": "原始",
+                "bureau": "云城分局",
+                "station_no": "002",
+                "station_name": "B所",
+                "call_time": "2026-03-01 11:00:00",
+                "address": "办公楼内",
+                "case_contents": "",
+                "replies": "",
+                "case_type_name": "盗窃",
+            },
+        ]
+
+        with patch.object(service, "_fetch_rows_for_filters", return_value=rows), patch.object(
+            service, "_append_predictions", side_effect=lambda _rows: None
+        ):
+            result = service.query_classified(
+                start_time="2026-03-01 00:00:00",
+                end_time="2026-03-02 00:00:00",
+                leixing_list=["盗窃"],
+                source_list=["原始"],
+                page=1,
+                page_size=None,
+                street_only=False,
+                street_filter_mode="none",
+                minor_only=False,
+            )
+
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["street_filter"]["label"], "不限街面")
 
     def test_get_street_filter_description_for_model_mode(self) -> None:
         info = service.get_street_filter_description("model")
@@ -198,7 +327,7 @@ class TestJiemiansanleiService(unittest.TestCase):
             "派出所编号": "001",
             "派出所名称": "测试所",
             "报警时间": "2026-03-01 10:00:00",
-            "警情地址": "测试地址",
+            "警情地址": "测试路口",
             "报警内容": "测试内容",
             "处警情况": "已处置",
             "经度": "113.1",
@@ -237,7 +366,7 @@ class TestJiemiansanleiService(unittest.TestCase):
         self.assertEqual(exported["人身伤害类"]["C6"].value, 1)
         self.assertEqual(exported["三类合计"]["C6"].value, 1)
 
-    def test_build_report_counts_uses_reply_keyword_filter_mode(self) -> None:
+    def test_build_report_counts_uses_recommended_filter_mode(self) -> None:
         rows = [
             {
                 "case_no": "A001",
@@ -245,7 +374,9 @@ class TestJiemiansanleiService(unittest.TestCase):
                 "source": "原始",
                 "bureau": "云城分局",
                 "call_time": "2026-03-01 10:00:00",
-                "replies": "民警在广场附近处置完毕",
+                "address": "",
+                "case_contents": "",
+                "replies": "【结警反馈】：警情部位：广场，警情处理结果说明：民警在广场附近处置完毕",
             },
             {
                 "case_no": "A002",
@@ -253,14 +384,16 @@ class TestJiemiansanleiService(unittest.TestCase):
                 "source": "原始",
                 "bureau": "云城分局",
                 "call_time": "2026-03-01 11:00:00",
-                "replies": "民警到报警人家中处置",
+                "address": "",
+                "case_contents": "",
+                "replies": "【过程反馈】：民警在路边村口处置",
             },
         ]
 
         counts = service._build_report_counts(  # noqa: SLF001
             rows_year=rows,
             rows_last_year=[],
-            street_filter_mode="reply_public",
+            street_filter_mode="recommended",
             segments_year=[
                 (
                     "current",

@@ -231,8 +231,8 @@ function _getJiemiansanleiPageSizeRaw() {
 }
 
 function _getJiemiansanleiFilters() {
-  const streetModeEl = document.getElementById("jiemiansanleiStreetFilterMode");
-  const streetFilterMode = (streetModeEl && streetModeEl.value) || "model";
+  const streetOnly = !!(document.getElementById("jiemiansanleiStreetOnly") || {}).checked;
+  const streetFilterMode = streetOnly ? "recommended" : "none";
   return {
     startTime: document.getElementById("jiemiansanleiStartTime").value,
     endTime: document.getElementById("jiemiansanleiEndTime").value,
@@ -241,7 +241,7 @@ function _getJiemiansanleiFilters() {
     leixingList: getMultiSelectValues("jiemiansanleiCaseTypesMs"),
     yuanshiquerenList: getMultiSelectValues("jiemiansanleiSourcesMs"),
     streetFilterMode: streetFilterMode,
-    streetOnly: streetFilterMode !== "none",
+    streetOnly: streetOnly,
     minorOnly: !!(document.getElementById("jiemiansanleiMinorOnly") || {}).checked,
     pageSizeRaw: _getJiemiansanleiPageSizeRaw(),
   };
@@ -509,6 +509,7 @@ function jiemiansanleiExportReport() {
       hbStartTime: jiemiansanleiFormatDateTime(filters.hbStartTime),
       hbEndTime: jiemiansanleiFormatDateTime(filters.hbEndTime),
       streetFilterMode: filters.streetFilterMode,
+      streetOnly: filters.streetOnly,
     }),
   })
     .then((resp) => {

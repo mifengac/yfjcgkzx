@@ -44,12 +44,16 @@ def _as_bool(val: Any, default: bool = False) -> bool:
     return str(val).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def _street_filter_mode(payload: dict, *, default_model: bool = False) -> str:
+def _street_filter_mode(payload: dict, *, default_street: bool = False) -> str:
     mode = str(payload.get("streetFilterMode") or "").strip()
+    if "streetOnly" in payload and not _as_bool(payload.get("streetOnly"), default=False):
+        return "none"
+    if mode == "none":
+        return "none"
     if mode:
-        return mode
-    if _as_bool(payload.get("streetOnly"), default=default_model):
-        return "model"
+        return "recommended"
+    if _as_bool(payload.get("streetOnly"), default=default_street):
+        return "recommended"
     return "none"
 
 
@@ -145,7 +149,7 @@ def jiemiansanlei_export_report() -> Response:
     end_time = str(payload.get("endTime") or "").strip()
     hb_start_time = str(payload.get("hbStartTime") or "").strip()
     hb_end_time = str(payload.get("hbEndTime") or "").strip()
-    street_filter_mode = _street_filter_mode(payload, default_model=True)
+    street_filter_mode = _street_filter_mode(payload, default_street=True)
 
     if not start_time or not end_time:
         return jsonify({"success": False, "message": "开始时间和结束时间不能为空"}), 400

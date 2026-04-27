@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -24,6 +25,7 @@ ExportFormat = Literal["xlsx", "xls"]
 ReportBureau = Literal["云城分局", "云安分局", "罗定市公安局", "新兴县公安局", "郁南县公安局", "ALL"]
 StreetFilterMode = Literal[
     "none",
+    "recommended",
     "model",
     "content_road",
     "content_public",
@@ -35,9 +37,10 @@ StreetFilterMode = Literal[
 REPORT_LEIXING_LIST = ["人身伤害类", "侵犯财产类", "扰乱秩序类"]
 MINOR_CASE_MARK_NO = "01020201,0102020101,0102020102,0102020103"
 STREET_LABEL = "街面与公共区域"
-STREET_FILTER_MODE_DEFAULT: StreetFilterMode = "model"
+STREET_FILTER_MODE_DEFAULT: StreetFilterMode = "recommended"
 STREET_FILTER_MODES = {
     "none",
+    "recommended",
     "model",
     "content_road",
     "content_public",
@@ -72,8 +75,66 @@ _PUBLIC_KEYWORDS = (
     "门口",
     "现场",
 )
+_RECOMMENDED_FIELDS = ("address", "case_contents", "replies")
+_RECOMMENDED_INCLUDE_KEYWORDS = (
+    "路",
+    "街",
+    "桥",
+    "道路",
+    "街道",
+    "广场",
+    "公园",
+    "市场",
+    "超市",
+    "车站",
+    "公交",
+    "门口",
+    "现场",
+    "对面",
+)
+_RECOMMENDED_EXCLUDE_KEYWORDS = (
+    "家中",
+    "小区",
+    "厂",
+    "学校",
+    "电动",
+    "旁边",
+    "村",
+    "宿舍",
+    "家门口",
+    "工地",
+)
+_REPLIES_ENTRY_HEADER_RE = re.compile(r"\[(?:19|20)\d{2}-\d{2}-\d{2}[^\]]*\]")
+_REPLIES_KEEP_MARKERS = (
+    "【结警反馈】",
+    "【过程反馈】",
+    "【到场反馈】",
+    "【反馈】",
+    "补充【处理结果说明】",
+    "补充【结警反馈】",
+    "处理结果说明",
+)
+_REPLIES_DROP_PREFIXES = (
+    "选择管辖单位",
+    "派警至管辖单位",
+    "警情送达",
+    "自动发在线移动终端",
+    "签收警情",
+    "保存警情",
+    "发起视频通话",
+    "与报警人的通话结束",
+    "视频通话",
+    "修改接警标签",
+    "将接警性质由",
+    "录入当事人信息",
+    "关联警情回复",
+    "手动转警综",
+    "修改结警标签",
+    "新建自接警情",
+)
 _STREET_FILTER_LABELS = {
     "none": "不限街面",
+    "recommended": "街面",
     "model": "街面(模型)",
     "content_road": "街面(报警内容-路面)",
     "content_public": "街面(报警内容-公共)",
@@ -82,8 +143,9 @@ _STREET_FILTER_LABELS = {
     "text_any": "街面(综合关键字)",
 }
 _STREET_FIELD_LABELS = {
+    "address": "警情地址",
     "case_contents": "报警内容",
-    "replies": "处警情况",
+    "replies": "处警情况(清洗后)",
 }
 _STREET_KEYWORD_RULES: Dict[str, Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
     "content_road": (("case_contents",), _ROAD_KEYWORDS),
@@ -156,7 +218,25 @@ def get_street_filter_description(mode: Any, *, street_only: bool = True) -> Dic
             "label": label,
             "fields": [],
             "keywords": [],
+            "exclude_keywords": [],
             "description": "当前未启用街面过滤，统计结果包含所选警情性质和口径下的全部数据。",
+        }
+
+    if effective_mode == "recommended":
+        field_labels = [_STREET_FIELD_LABELS.get(field, field) for field in _RECOMMENDED_FIELDS]
+        keyword_list = list(_RECOMMENDED_INCLUDE_KEYWORDS)
+        exclude_keyword_list = list(_RECOMMENDED_EXCLUDE_KEYWORDS)
+        return {
+            "mode": effective_mode,
+            "label": label,
+            "fields": field_labels,
+            "keywords": keyword_list,
+            "exclude_keywords": exclude_keyword_list,
+            "description": (
+                f"当前按{'、'.join(field_labels)}字段过滤；"
+                f"包含关键字：{'、'.join(keyword_list)}；"
+                f"排除关键字：{'、'.join(exclude_keyword_list)}。"
+            ),
         }
 
     if effective_mode == "model":
@@ -165,6 +245,7 @@ def get_street_filter_description(mode: Any, *, street_only: bool = True) -> Dic
             "label": label,
             "fields": ["警情地址"],
             "keywords": [STREET_LABEL],
+            "exclude_keywords": [],
             "description": f"当前按警情地址模型分类结果过滤，分类结果为“{STREET_LABEL}”。",
         }
 
@@ -176,6 +257,7 @@ def get_street_filter_description(mode: Any, *, street_only: bool = True) -> Dic
         "label": label,
         "fields": field_labels,
         "keywords": keyword_list,
+        "exclude_keywords": [],
         "description": f"当前按{'、'.join(field_labels)}字段过滤，关键字：{'、'.join(keyword_list)}。",
     }
 
@@ -706,15 +788,59 @@ def _filter_street_rows(rows: Sequence[Dict[str, Any]], mode: StreetFilterMode) 
     return [row for row in rows if _row_matches_street_filter(row, mode)]
 
 
+def clean_replies_text(value: Any) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if text.startswith("暂无"):
+        text = text[2:].strip()
+    if not text:
+        return ""
+
+    parts = [part.strip() for part in _REPLIES_ENTRY_HEADER_RE.split(text) if part and part.strip()]
+    kept: List[str] = []
+    for part in parts:
+        compact = " ".join(part.split()).strip()
+        if compact.startswith("暂无"):
+            compact = compact[2:].strip()
+        if not compact or any(compact.startswith(prefix) for prefix in _REPLIES_DROP_PREFIXES):
+            continue
+        if any(marker in compact for marker in _REPLIES_KEEP_MARKERS):
+            kept.append(_normalize_replies_feedback_text(compact))
+    return " ".join(kept)
+
+
+def _normalize_replies_feedback_text(text: str) -> str:
+    if text.startswith("补充【处理结果说明】"):
+        return "处理结果说明：" + text[len("补充【处理结果说明】") :].lstrip("：:")
+    if text.startswith("补充【结警反馈】"):
+        return "结警反馈：" + text[len("补充【结警反馈】") :].lstrip("：:")
+    if text.startswith("【"):
+        marker_end = text.find("】")
+        if 0 < marker_end <= 12:
+            return text[1:marker_end] + "：" + text[marker_end + 1 :].lstrip("：:")
+    return text
+
+
+def _street_filter_field_text(row: Dict[str, Any], field: str) -> str:
+    if field == "replies":
+        return clean_replies_text(row.get(field))
+    return str(row.get(field) or "")
+
+
 def _row_matches_street_filter(row: Dict[str, Any], mode: StreetFilterMode) -> bool:
     if mode == "none":
         return True
+    if mode == "recommended":
+        texts = [_street_filter_field_text(row, field) for field in _RECOMMENDED_FIELDS]
+        has_include_keyword = any(keyword in text for text in texts for keyword in _RECOMMENDED_INCLUDE_KEYWORDS)
+        if not has_include_keyword:
+            return False
+        return not any(keyword in text for text in texts for keyword in _RECOMMENDED_EXCLUDE_KEYWORDS)
     if mode == "model":
         return str(row.get("pred_label") or "").strip() == STREET_LABEL
 
     fields, keywords = _STREET_KEYWORD_RULES.get(mode, ((), ()))
     for field in fields:
-        text = str(row.get(field) or "")
+        text = _street_filter_field_text(row, field)
         if any(keyword in text for keyword in keywords):
             return True
     return False
