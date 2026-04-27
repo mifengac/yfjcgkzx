@@ -1,0 +1,140 @@
+<style>
+    .rising-incident-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 0 0 12px 0;
+    }
+    .rising-incident-toolbar-left,
+    .rising-incident-toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .rising-incident-toolbar input,
+    .rising-incident-toolbar select {
+        padding: 6px 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        font-size: 13px;
+        background: #fff;
+    }
+    .rising-incident-sortable {
+        cursor: pointer;
+        user-select: none;
+    }
+    .rising-incident-sortable::after {
+        content: " ↕";
+        color: #94a3b8;
+        font-size: 11px;
+    }
+    .rising-incident-sortable.sort-asc::after {
+        content: " ↑";
+        color: #1976d2;
+    }
+    .rising-incident-sortable.sort-desc::after {
+        content: " ↓";
+        color: #1976d2;
+    }
+    .rising-risk-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 48px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 12px;
+    }
+    .rising-risk-high {
+        color: #991b1b;
+        background: #fee2e2;
+        border: 1px solid #fecaca;
+    }
+    .rising-risk-medium {
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fde68a;
+    }
+    .rising-risk-low {
+        color: #166534;
+        background: #dcfce7;
+        border: 1px solid #bbf7d0;
+    }
+    .rising-risk-row-high td {
+        background: #fff7f7;
+    }
+    .rising-risk-row-medium td {
+        background: #fffbeb;
+    }
+</style>
+<div class="fenxi-container">
+    <div class="query-area">
+        <div class="query-item">
+            <label>开始时间:</label>
+            <input type="datetime-local" step="1" id="risingIncidentBeginDate">
+        </div>
+        <div class="query-item">
+            <label>结束时间:</label>
+            <input type="datetime-local" step="1" id="risingIncidentEndDate">
+        </div>
+        <div class="query-item">
+            <label>警情类型:</label>
+            <div class="multi-select" id="risingIncidentCaseTypeMs">
+                <div class="multi-select-display" id="risingIncidentCaseTypeDisplay">加载中...</div>
+                <div class="multi-select-dropdown" id="risingIncidentCaseTypeDropdown"></div>
+            </div>
+        </div>
+        <div class="query-item">
+            <label>周期类型:</label>
+            <select id="risingIncidentPeriodType">
+                <option value="business_week" selected>业务周</option>
+                <option value="month">自然月</option>
+            </select>
+        </div>
+        <div class="query-item">
+            <label>连续阈值:</label>
+            <input type="number" id="risingIncidentMinPeriods" min="2" max="24" step="1" value="3" style="width:80px;">
+        </div>
+        <div class="query-item">
+            <label style="display:inline-flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="risingIncidentCurrentOnly" checked>
+                仅当前仍上升
+            </label>
+        </div>
+        <div class="query-item">
+            <button class="btn" id="risingIncidentAnalyzeBtn">统计</button>
+            <button class="btn" id="risingIncidentExportBtn" style="background:#28a745">导出</button>
+            <span id="risingIncidentLoading" style="display:none;color:#ff9800;font-weight:bold;">正在处理中，请稍候...</span>
+        </div>
+    </div>
+
+    <div id="risingIncidentError" class="error-message special-case-hidden"></div>
+    <div id="risingIncidentStatus" class="muted" style="margin:0 0 12px 0;"></div>
+
+    <div class="rising-incident-toolbar">
+        <div class="rising-incident-toolbar-left">
+            <label>派出所名称搜索:
+                <input type="search" id="risingIncidentDeptSearch" placeholder="输入派出所名称">
+            </label>
+        </div>
+        <div class="rising-incident-toolbar-right">
+            <label>每页:
+                <select id="risingIncidentPageSize">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </label>
+        </div>
+    </div>
+
+    <div class="results-table-container">
+        <table class="special-case-table" id="risingIncidentTable"></table>
+    </div>
+    <div class="pagination" id="risingIncidentPagination"></div>
+</div>

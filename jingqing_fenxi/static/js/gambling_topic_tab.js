@@ -308,46 +308,6 @@
             "</div>";
     }
 
-    function renderGamblingWayTable(result) {
-        var box = document.getElementById("gambling-box-way");
-        var container = document.getElementById("gambling-table-way");
-        var columns = (result && result.columns) || [];
-        var rows = (result && result.rows) || [];
-        box.classList.add("active");
-        if (!rows.length) {
-            container.innerHTML = '<div class="monitor-empty-state">无符合条件数据</div>';
-            return;
-        }
-        var html = '<div class="results-table-container"><table class="special-case-table"><thead><tr><th>地区</th>';
-        columns.forEach(function(column) { html += "<th>" + escapeHtml(column) + "</th>"; });
-        html += "<th>合计</th></tr></thead><tbody>";
-        rows.forEach(function(row) {
-            var counts = row.counts || {};
-            html += "<tr><td>" + escapeHtml(row.cmdName || "") + "</td>";
-            columns.forEach(function(column) { html += "<td>" + escapeHtml(counts[column] || 0) + "</td>"; });
-            html += "<td>" + escapeHtml(row.total || 0) + "</td></tr>";
-        });
-        html += "</tbody></table></div>";
-        container.innerHTML = html;
-    }
-
-    function renderWildernessTable(result) {
-        var box = document.getElementById("gambling-box-wilderness");
-        var container = document.getElementById("gambling-table-wilderness");
-        var rows = (result && result.rows) || [];
-        box.classList.add("active");
-        if (!rows.length) {
-            container.innerHTML = '<div class="monitor-empty-state">无符合条件数据</div>';
-            return;
-        }
-        var html = '<div class="results-table-container"><table class="special-case-table"><thead><tr><th>地区</th><th>数量</th></tr></thead><tbody>';
-        rows.forEach(function(row) {
-            html += "<tr><td>" + escapeHtml(row.cmdName || "") + "</td><td>" + escapeHtml(row.total || 0) + "</td></tr>";
-        });
-        html += "</tbody></table></div>";
-        container.innerHTML = html;
-    }
-
     function toggleChartState(chartId, stateId, message, isError) {
         var canvas = document.getElementById(chartId);
         var state = document.getElementById(stateId);
@@ -440,8 +400,15 @@
             else if (data.srr && data.srr.length > 0) renderSrrTable(data.srr);
             else renderSrrState("无符合条件数据", false);
         }
-        if (dims.indexOf("gambling_way") >= 0) renderGamblingWayTable(data.gambling_way || {});
-        if (dims.indexOf("wilderness") >= 0) renderWildernessTable(data.wilderness || {});
+        if (dims.indexOf("gambling_way") >= 0 && window.GamblingTopicKeywordTables) {
+            window.GamblingTopicKeywordTables.renderGamblingWayTable(data.gambling_way || {});
+        }
+        if (dims.indexOf("wilderness") >= 0 && window.GamblingTopicKeywordTables) {
+            window.GamblingTopicKeywordTables.renderWildernessTable(data.wilderness || {});
+        }
+        if (dims.indexOf("venue") >= 0 && window.GamblingTopicKeywordTables) {
+            window.GamblingTopicKeywordTables.renderVenueTable(data.venue || {});
+        }
         if (dims.indexOf("time") >= 0) {
             var timeData = base.timeHourly ? buildTimeDataFromHourly(base.timeHourly, opts.timeBucketHours) : (data.time || []);
             renderChart("gambling-box-time", "gambling-chart-time", "gambling-state-time", "时段报警数（每" + opts.timeBucketHours + "小时）", timeData, false, "bar");

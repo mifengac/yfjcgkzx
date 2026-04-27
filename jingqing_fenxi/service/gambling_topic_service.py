@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
@@ -26,6 +25,15 @@ from jingqing_fenxi.service.fight_topic_service import (
     fetch_srr_list,
     summarize_address_labels,
 )
+from jingqing_fenxi.service.gambling_topic_keywords import (
+    GAMBLING_VENUE_SHEET_TITLE,
+    GAMBLING_VENUE_TITLE,
+    GAMBLING_WAY_TITLE,
+    GAMBLING_WILDERNESS_TITLE,
+    summarize_gambling_way_by_region,
+    summarize_venue_by_cmd_id,
+    summarize_wilderness_by_region,
+)
 from jingqing_fenxi.service.jingqing_api_client import api_client
 
 
@@ -40,50 +48,10 @@ GAMBLING_TOPIC_DIMENSIONS = [
     "addr",
     "gambling_way",
     "wilderness",
-]
-
-GAMBLING_WAY_RULES: List[Tuple[str, List[str]]] = [
-    ("麻将", ["麻将", "打麻将", "麻将档", "麻将台", "麻将机", "麻雀"]),
-    ("三公", ["三公", "赌三公", "三公牌", "三张牌"]),
-    ("番摊/翻摊", ["番摊", "翻摊", "番摊赌博", "翻摊赌博"]),
-    ("斗牛", ["斗牛", "牛牛", "玩牛牛", "斗牛赌博"]),
-    ("扑克", ["扑克", "扑克牌", "打扑克", "炸金花", "德州扑克", "斗地主", "梭哈", "十三水", "跑得快"]),
-    ("牌九", ["牌九", "推牌九", "骨牌"]),
-    ("纸牌", ["纸牌", "打纸牌", "纸牌赌博", "牌局"]),
-    ("六合彩", ["六合彩", "六和彩", "地下六合彩", "买码", "报码", "特码", "私彩"]),
-    ("网络赌博", ["网络赌博", "网上赌博", "手机赌博", "赌博网站", "赌博APP", "赌博平台", "线上赌博", "网赌", "百家乐", "赌球"]),
-    ("老虎机", ["老虎机", "赌博机", "电子游戏机", "电玩赌博", "捕鱼机", "打鱼机"]),
-]
-
-WILDERNESS_KEYWORDS = [
-    "山腰",
-    "山顶",
-    "山脚",
-    "山上",
-    "山林",
-    "树林",
-    "林地",
-    "林区",
-    "竹林",
-    "果林",
-    "荒山",
-    "山坡",
-    "山边",
-    "山坳",
-    "山沟",
-    "山谷",
-    "半山",
-    "山路",
-    "林间",
-    "林边",
-    "野外",
-    "郊外",
-    "荒地",
+    "venue",
 ]
 
 GAMBLING_TOPIC_SRR_TITLE = "各地同比环比"
-GAMBLING_WAY_TITLE = "赌博方式"
-GAMBLING_WILDERNESS_TITLE = "涉山林野外赌博"
 DETAIL_HEADERS = [
     ("caseNo", "接警号"),
     ("callTime", "报警时间"),
@@ -137,86 +105,6 @@ def resolve_gambling_topic_tags(tree_nodes: Sequence[Mapping[str, Any]] | None =
     return ",".join(tags), ",".join(names)
 
 
-def _region_name(row: Mapping[str, Any]) -> str:
-    return str(row.get("cmdName") or row.get("cmdId") or "未知地区").strip() or "未知地区"
-
-
-def _find_keywords(text: Any, keywords: Sequence[str]) -> List[str]:
-    content = str(text or "")
-    hits: List[str] = []
-    seen = set()
-    for keyword in keywords:
-        if keyword and keyword in content and keyword not in seen:
-            seen.add(keyword)
-            hits.append(keyword)
-    return hits
-
-
-def _match_gambling_way(text: Any) -> List[Tuple[str, List[str]]]:
-    matched: List[Tuple[str, List[str]]] = []
-    for label, keywords in GAMBLING_WAY_RULES:
-        hits = _find_keywords(text, keywords)
-        if hits:
-            matched.append((label, hits))
-    return matched
-
-
-def summarize_gambling_way_by_region(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
-    labels = [label for label, _keywords in GAMBLING_WAY_RULES]
-    region_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    details: List[Dict[str, Any]] = []
-
-    for row in rows:
-        matches = _match_gambling_way(row.get("caseContents"))
-        if not matches:
-            row["gamblingWayLabels"] = ""
-            row["gamblingWayKeywords"] = ""
-            continue
-        region = _region_name(row)
-        labels_hit: List[str] = []
-        keywords_hit: List[str] = []
-        for label, keywords in matches:
-            region_counts[region][label] += 1
-            labels_hit.append(label)
-            keywords_hit.extend(keywords)
-        row["gamblingWayLabels"] = "、".join(labels_hit)
-        row["gamblingWayKeywords"] = "、".join(dict.fromkeys(keywords_hit))
-        details.append(row)
-
-    table_rows = []
-    for region, counts in region_counts.items():
-        total = sum(counts.values())
-        table_rows.append(
-            {
-                "cmdName": region,
-                "counts": {label: counts.get(label, 0) for label in labels},
-                "total": total,
-            }
-        )
-    table_rows.sort(key=lambda item: (-item["total"], item["cmdName"]))
-    return {"columns": labels, "rows": table_rows, "details": details}
-
-
-def summarize_wilderness_by_region(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
-    region_counts: Dict[str, int] = defaultdict(int)
-    details: List[Dict[str, Any]] = []
-    for row in rows:
-        hits = _find_keywords(row.get("replies"), WILDERNESS_KEYWORDS)
-        if not hits:
-            row["gamblingWildernessKeywords"] = ""
-            continue
-        region = _region_name(row)
-        region_counts[region] += 1
-        row["gamblingWildernessKeywords"] = "、".join(hits)
-        details.append(row)
-
-    table_rows = [
-        {"cmdName": region, "total": count}
-        for region, count in sorted(region_counts.items(), key=lambda item: (-item[1], item[0]))
-    ]
-    return {"rows": table_rows, "details": details}
-
-
 def run_gambling_topic_analysis(
     params: Mapping[str, Any],
     dimensions_selected: Sequence[str],
@@ -236,7 +124,7 @@ def run_gambling_topic_analysis(
     analysis_base: Dict[str, Any] = {}
     all_data: List[Dict[str, Any]] = []
 
-    case_dimensions = {"time", "dept", "phone", "cluster", "addr", "gambling_way", "wilderness"}
+    case_dimensions = {"time", "dept", "phone", "cluster", "addr", "gambling_way", "wilderness", "venue"}
     requires_case_data = include_detail_rows or any(dim in case_dimensions for dim in dims)
     if requires_case_data:
         all_data = fetch_all_case_list(
@@ -263,6 +151,8 @@ def run_gambling_topic_analysis(
             results["gambling_way"] = summarize_gambling_way_by_region(all_data)
         if "wilderness" in dims:
             results["wilderness"] = summarize_wilderness_by_region(all_data)
+        if "venue" in dims:
+            results["venue"] = summarize_venue_by_cmd_id(all_data)
 
     if "srr" in dims:
         srr_payload = _build_srr_payload(
@@ -307,8 +197,12 @@ def _write_detail_rows(
     row_idx: int,
     rows: Sequence[Mapping[str, Any]],
     extra_headers: Sequence[Tuple[str, str]] = (),
+    dimensions_selected: Sequence[str] = (),
 ) -> int:
-    headers = DETAIL_HEADERS + list(extra_headers)
+    headers = list(DETAIL_HEADERS)
+    if "addr" in normalize_dimensions(dimensions_selected):
+        headers.append(("fightAddrLabel", "警情地址统计"))
+    headers.extend(extra_headers)
     ws.cell(row=row_idx, column=1, value="详细数据").font = openpyxl.styles.Font(bold=True)
     row_idx += 1
     for col_idx, (_field, header) in enumerate(headers, 1):
@@ -337,7 +231,7 @@ def _set_detail_widths(ws: openpyxl.worksheet.worksheet.Worksheet) -> None:
         ws.column_dimensions[column_name].width = width
 
 
-def _write_gambling_way_sheet(workbook: Workbook, result: Mapping[str, Any]) -> None:
+def _write_gambling_way_sheet(workbook: Workbook, result: Mapping[str, Any], dims: Sequence[str]) -> None:
     ws = workbook.create_sheet(GAMBLING_WAY_TITLE)
     columns = list(result.get("columns") or [])
     rows = list(result.get("rows") or [])
@@ -363,11 +257,12 @@ def _write_gambling_way_sheet(workbook: Workbook, result: Mapping[str, Any]) -> 
         row_idx,
         result.get("details") or [],
         [("gamblingWayLabels", "赌博方式"), ("gamblingWayKeywords", "命中关键词")],
+        dims,
     )
     _set_detail_widths(ws)
 
 
-def _write_wilderness_sheet(workbook: Workbook, result: Mapping[str, Any]) -> None:
+def _write_wilderness_sheet(workbook: Workbook, result: Mapping[str, Any], dims: Sequence[str]) -> None:
     ws = workbook.create_sheet(GAMBLING_WILDERNESS_TITLE)
     rows = list(result.get("rows") or [])
     row_idx = _write_title_row(ws, 1, GAMBLING_WILDERNESS_TITLE, len(DETAIL_HEADERS))
@@ -388,6 +283,35 @@ def _write_wilderness_sheet(workbook: Workbook, result: Mapping[str, Any]) -> No
         row_idx,
         result.get("details") or [],
         [("gamblingWildernessKeywords", "命中关键词")],
+        dims,
+    )
+    _set_detail_widths(ws)
+
+
+def _write_venue_sheet(workbook: Workbook, result: Mapping[str, Any], dims: Sequence[str]) -> None:
+    ws = workbook.create_sheet(GAMBLING_VENUE_SHEET_TITLE)
+    rows = list(result.get("rows") or [])
+    row_idx = _write_title_row(ws, 1, GAMBLING_VENUE_TITLE, len(DETAIL_HEADERS))
+    headers = ["地区编码", "地区", "数量"]
+    for col_idx, header in enumerate(headers, 1):
+        ws.cell(row=row_idx, column=col_idx, value=header).font = openpyxl.styles.Font(bold=True)
+    row_idx += 1
+    if not rows:
+        ws.cell(row=row_idx, column=1, value="无数据")
+        row_idx += 2
+    else:
+        for item in rows:
+            ws.cell(row=row_idx, column=1, value=item.get("cmdId", ""))
+            ws.cell(row=row_idx, column=2, value=item.get("cmdName", ""))
+            ws.cell(row=row_idx, column=3, value=item.get("total", 0))
+            row_idx += 1
+        row_idx += 1
+    _write_detail_rows(
+        ws,
+        row_idx,
+        result.get("details") or [],
+        [("gamblingVenueFields", "命中字段"), ("gamblingVenueKeywords", "命中关键词")],
+        dims,
     )
     _set_detail_widths(ws)
 
@@ -425,7 +349,7 @@ def generate_gambling_topic_excel(
         "cluster": f"重复报警地址（半径{opts.get('repeatAddrRadiusMeters', 50)}米）",
         "addr": "警情地址统计",
     }
-    main_dims = [dim for dim in dims if dim not in {"gambling_way", "wilderness"}]
+    main_dims = [dim for dim in dims if dim not in {"gambling_way", "wilderness", "venue"}]
     for dim in main_dims:
         if dim == "srr":
             if analysis_results.get("srr_error"):
@@ -449,13 +373,15 @@ def generate_gambling_topic_excel(
         row_idx = _write_pair_block(worksheet, row_idx, titles[dim], analysis_results.get(dim, []))
 
     row_idx += 1
-    _write_detail_rows(worksheet, row_idx, all_data)
+    _write_detail_rows(worksheet, row_idx, all_data, dimensions_selected=dims)
     _set_detail_widths(worksheet)
 
     if "gambling_way" in dims:
-        _write_gambling_way_sheet(workbook, analysis_results.get("gambling_way") or {})
+        _write_gambling_way_sheet(workbook, analysis_results.get("gambling_way") or {}, dims)
     if "wilderness" in dims:
-        _write_wilderness_sheet(workbook, analysis_results.get("wilderness") or {})
+        _write_wilderness_sheet(workbook, analysis_results.get("wilderness") or {}, dims)
+    if "venue" in dims:
+        _write_venue_sheet(workbook, analysis_results.get("venue") or {}, dims)
 
     out = io.BytesIO()
     workbook.save(out)

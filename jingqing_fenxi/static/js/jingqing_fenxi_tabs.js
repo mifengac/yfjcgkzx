@@ -19,6 +19,7 @@
         if (window.AnalysisTabPage) window.AnalysisTabPage.init();
         if (window.FightTopicTabPage) window.FightTopicTabPage.init();
         if (window.GamblingTopicTabPage) window.GamblingTopicTabPage.init();
+        if (window.RisingIncidentTabPage) window.RisingIncidentTabPage.init();
         if (window.CustomCaseMonitorTabPage) window.CustomCaseMonitorTabPage.init();
     });
 })();

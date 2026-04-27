@@ -759,6 +759,7 @@
             <button type="button" class="tab-btn active" data-tab-target="analysis">警情分析</button>
             <button type="button" class="tab-btn" data-tab-target="fight-topic">打架斗殴专题</button>
             <button type="button" class="tab-btn" data-tab-target="gambling-topic">赌博专题</button>
+            <button type="button" class="tab-btn" data-tab-target="rising-incident">警情升势预警</button>
             <button type="button" class="tab-btn" data-tab-target="custom-case-monitor">自定义警情监测</button>
         </div>
 
@@ -775,6 +776,10 @@
                 {% include "gambling_topic_tab.html" %}
             </div>
 
+            <div class="tab-panel" data-tab-panel="rising-incident">
+                {% include "rising_incident_tab.html" %}
+            </div>
+
             <div class="tab-panel" data-tab-panel="custom-case-monitor">
                 {% include "custom_case_monitor_tab.html" %}
             </div>
@@ -786,7 +791,10 @@
 <script src="/jingqing_fenxi/static/js/analysis_case_type_source.js"></script>
 <script src="/jingqing_fenxi/static/js/analysis_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/fight_topic_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/gambling_topic_keyword_tables.js"></script>
 <script src="/jingqing_fenxi/static/js/gambling_topic_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/rising_incident_grid.js"></script>
+<script src="/jingqing_fenxi/static/js/rising_incident_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/custom_case_monitor_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/jingqing_fenxi_tabs.js"></script>
 </body>

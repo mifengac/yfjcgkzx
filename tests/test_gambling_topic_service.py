@@ -55,6 +55,25 @@ class TestGamblingTopicService(unittest.TestCase):
         self.assertIn("山腰", rows[0]["gamblingWildernessKeywords"])
         self.assertEqual(rows[1]["gamblingWildernessKeywords"], "")
 
+    def test_summarize_venue_by_cmd_id_uses_content_reply_and_address(self) -> None:
+        rows = [
+            {"cmdId": "445302000000", "cmdName": "云城", "caseContents": "棋牌室有人赌博", "replies": "", "occurAddress": ""},
+            {"cmdId": "445302000000", "cmdName": "云城", "caseContents": "", "replies": "现场为麻将馆", "occurAddress": ""},
+            {"cmdId": "445381000000", "cmdName": "罗定", "caseContents": "", "replies": "", "occurAddress": "某小卖部"},
+            {"cmdId": "445381000000", "cmdName": "罗定", "caseContents": "住宅内赌博", "replies": "", "occurAddress": ""},
+        ]
+
+        result = service.summarize_venue_by_cmd_id(rows)
+
+        self.assertEqual(result["rows"][0]["cmdId"], "445302000000")
+        self.assertEqual(result["rows"][0]["total"], 2)
+        self.assertEqual(result["rows"][1]["cmdId"], "445381000000")
+        self.assertEqual(result["rows"][1]["total"], 1)
+        self.assertEqual(rows[0]["gamblingVenueFields"], "报警内容")
+        self.assertEqual(rows[1]["gamblingVenueFields"], "处警情况")
+        self.assertEqual(rows[2]["gamblingVenueFields"], "警情地址")
+        self.assertEqual(rows[3]["gamblingVenueKeywords"], "")
+
     def test_run_analysis_returns_selected_custom_dimensions(self) -> None:
         params = {
             "beginDate": "2026-04-01 00:00:00",
@@ -65,8 +84,10 @@ class TestGamblingTopicService(unittest.TestCase):
         rows = [
             {
                 "cmdName": "云城",
+                "cmdId": "445302000000",
                 "caseContents": "出租屋有人打麻将赌博",
                 "replies": "处警发现山脚树林有人聚赌",
+                "occurAddress": "某棋牌室",
                 "callTime": "2026-04-01 01:00:00",
             }
         ]
@@ -78,14 +99,18 @@ class TestGamblingTopicService(unittest.TestCase):
         ) as mock_fetch:
             results, _base, all_data, _options, _meta = service.run_gambling_topic_analysis(
                 params,
-                ["gambling_way", "wilderness"],
+                ["gambling_way", "wilderness", "venue"],
             )
 
         self.assertIn("gambling_way", results)
         self.assertIn("wilderness", results)
+        self.assertIn("venue", results)
         self.assertEqual(results["gambling_way"]["rows"][0]["counts"]["麻将"], 1)
         self.assertEqual(results["wilderness"]["rows"][0]["total"], 1)
+        self.assertEqual(results["venue"]["rows"][0]["cmdId"], "445302000000")
+        self.assertEqual(results["venue"]["rows"][0]["total"], 1)
         self.assertEqual(all_data[0]["gamblingWayLabels"], "麻将")
+        self.assertEqual(all_data[0]["gamblingVenueKeywords"], "棋牌室")
         self.assertEqual(mock_fetch.call_args.kwargs["max_page_size"], service.GAMBLING_TOPIC_UPSTREAM_PAGE_SIZE)
 
     def test_generate_excel_adds_custom_dimension_sheets(self) -> None:
@@ -98,12 +123,17 @@ class TestGamblingTopicService(unittest.TestCase):
                 "dutyDeptName": "测试所",
                 "caseContents": "有人打麻将赌博",
                 "replies": "处警发现山腰树林有人聚赌",
+                "occurAddress": "某棋牌室",
+                "fightAddrLabel": "商业场所",
                 "gamblingWayLabels": "麻将",
                 "gamblingWayKeywords": "麻将",
                 "gamblingWildernessKeywords": "山腰、树林",
+                "gamblingVenueFields": "警情地址",
+                "gamblingVenueKeywords": "棋牌室",
             }
         ]
         analysis_results = {
+            "addr": [("商业场所", 1)],
             "gambling_way": {
                 "columns": ["麻将"],
                 "rows": [{"cmdName": "云城", "counts": {"麻将": 1}, "total": 1}],
@@ -113,24 +143,34 @@ class TestGamblingTopicService(unittest.TestCase):
                 "rows": [{"cmdName": "云城", "total": 1}],
                 "details": all_data,
             },
+            "venue": {
+                "rows": [{"cmdId": "445302000000", "cmdName": "云城", "total": 1}],
+                "details": all_data,
+            },
         }
 
         buffer = service.generate_gambling_topic_excel(
             analysis_results,
             all_data,
-            ["gambling_way", "wilderness"],
+            ["addr", "gambling_way", "wilderness", "venue"],
             begin_date="2026-04-01 00:00:00",
             end_date="2026-04-02 00:00:00",
         )
         workbook = load_workbook(io.BytesIO(buffer.getvalue()))
 
-        self.assertEqual(workbook.sheetnames, ["赌博专题", "赌博方式", "涉山林野外赌博"])
+        self.assertEqual(workbook.sheetnames, ["赌博专题", "赌博方式", "涉山林野外赌博", "棋牌麻将小卖部"])
+        main_values = [cell.value for row in workbook["赌博专题"].iter_rows() for cell in row]
+        self.assertIn("警情地址统计", main_values)
+        self.assertIn("商业场所", main_values)
         way_sheet = workbook["赌博方式"]
         wild_sheet = workbook["涉山林野外赌博"]
+        venue_sheet = workbook["棋牌麻将小卖部"]
         self.assertEqual(way_sheet["A1"].value, "赌博方式")
         self.assertIn("命中关键词", [cell.value for row in way_sheet.iter_rows() for cell in row])
         self.assertEqual(wild_sheet["A1"].value, "涉山林野外赌博")
         self.assertIn("山腰、树林", [cell.value for row in wild_sheet.iter_rows() for cell in row])
+        self.assertEqual(venue_sheet["A1"].value, "棋牌室/麻将馆/小卖部")
+        self.assertIn("棋牌室", [cell.value for row in venue_sheet.iter_rows() for cell in row])
 
     def test_build_export_filename_matches_expected_format(self) -> None:
         filename = service.build_export_filename(
