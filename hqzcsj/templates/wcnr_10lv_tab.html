@@ -46,6 +46,7 @@
                     <a href="#" data-fmt="csv">导出 csv(zip)</a>
                 </div>
             </div>
+            <button class="btn" id="wcnr10lvCampusBullyingExportBtn" style="background:#607d8b;">校园欺凌警情及案件</button>
         </div>
     </div>
     <div class="muted" id="wcnr10lvStatus" style="margin-top:10px;"></div>
@@ -156,6 +157,7 @@
         detailPage: "{{ url_for('hqzcsj.zongcha_wcnr10lv_detail_page') }}",
         exportSummary: "{{ url_for('hqzcsj.zongcha_wcnr10lv_export_summary') }}",
         exportDetail: "{{ url_for('hqzcsj.zongcha_wcnr10lv_export_detail_all') }}",
+        exportCampusBullying: "{{ url_for('hqzcsj.zongcha_wcnr10lv_export_campus_bullying_cases') }}",
     };
 </script>
 <script src="{{ url_for('hqzcsj.static', filename='js/wcnr_10lv_tab.constants.js') }}"></script>

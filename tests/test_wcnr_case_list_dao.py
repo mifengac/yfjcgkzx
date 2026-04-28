@@ -4,6 +4,38 @@ from unittest.mock import patch
 from hqzcsj.dao import wcnr_case_list_dao
 
 
+class _FakeCursor:
+    def __init__(self, rows=None):
+        self.description = [
+            ("ajxx_jqbh",),
+            ("ajxx_ajbh",),
+            ("ajxx_ajmc",),
+            ("ajxx_lasj",),
+        ]
+        self.rows = rows or []
+        self.executed = []
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+
+    def fetchall(self):
+        return self.rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _FakeConnection:
+    def __init__(self, rows=None):
+        self.cursor_obj = _FakeCursor(rows=rows)
+
+    def cursor(self):
+        return self.cursor_obj
+
+
 class TestWcnrCaseListDao(unittest.TestCase):
     def test_build_payload_uses_required_filters_and_page_size(self) -> None:
         payload = wcnr_case_list_dao._build_minor_case_payload(
@@ -22,6 +54,22 @@ class TestWcnrCaseListDao(unittest.TestCase):
         self.assertEqual(payload["pageNum"], "3")
         self.assertEqual(payload["orderByColumn"], "callTime")
         self.assertEqual(payload["isAsc"], "desc")
+
+    def test_build_campus_bullying_payload_uses_required_filters(self) -> None:
+        payload = wcnr_case_list_dao._build_campus_bullying_case_payload(
+            start_time="2026-04-01 00:00:00",
+            end_time="2026-04-30 23:59:59",
+            page_num=2,
+        )
+
+        self.assertEqual(payload["beginDate"], "2026-04-01 00:00:00")
+        self.assertEqual(payload["endDate"], "2026-04-30 23:59:59")
+        self.assertEqual(payload["caseMarkNo"], "03010108,0604")
+        self.assertEqual(payload["caseMark"], "校园欺凌,校园欺凌")
+        self.assertEqual(payload["newOriCharaSubclassNo"], "")
+        self.assertEqual(payload["newCharaSubclassNo"], "")
+        self.assertEqual(payload["orderByColumn"], "callTime")
+        self.assertEqual(payload["pageNum"], "2")
 
     def test_fetch_minor_case_rows_paginates_until_total(self) -> None:
         responses = [
@@ -45,6 +93,41 @@ class TestWcnrCaseListDao(unittest.TestCase):
         self.assertEqual(first_payload["pageSize"], "2")
         self.assertEqual(first_payload["pageNum"], "1")
         self.assertEqual(second_payload["pageNum"], "2")
+
+    def test_fetch_campus_bullying_case_rows_uses_campus_payload(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_case_list_dao.api_client.get_case_list",
+            return_value={"code": 0, "total": 1, "rows": [{"caseNo": "JQ001"}]},
+        ) as mock_get_case_list:
+            rows = wcnr_case_list_dao.fetch_campus_bullying_case_rows(
+                start_time="2026-04-01 00:00:00",
+                end_time="2026-04-30 23:59:59",
+            )
+
+        self.assertEqual(rows, [{"caseNo": "JQ001"}])
+        payload = mock_get_case_list.call_args.args[0]
+        self.assertEqual(payload["caseMarkNo"], "03010108,0604")
+        self.assertEqual(payload["caseMark"], "校园欺凌,校园欺凌")
+
+    def test_fetch_cases_by_incident_numbers_groups_by_jqbh(self) -> None:
+        conn = _FakeConnection(
+            rows=[
+                ("JQ001", "AJ002", "案件2", "2026-04-03 00:00:00"),
+                ("JQ001", "AJ001", "案件1", "2026-04-02 00:00:00"),
+                ("JQ002", "AJ003", "案件3", "2026-04-04 00:00:00"),
+            ]
+        )
+
+        grouped = wcnr_case_list_dao.fetch_cases_by_incident_numbers(
+            conn,
+            ["JQ001", "JQ001", "", "JQ002"],
+        )
+
+        sql, params = conn.cursor_obj.executed[-1]
+        self.assertIn("ajxx_jqbh = ANY(%s)", sql)
+        self.assertEqual(params, (["JQ001", "JQ002"],))
+        self.assertEqual([row["ajxx_ajbh"] for row in grouped["JQ001"]], ["AJ002", "AJ001"])
+        self.assertEqual(grouped["JQ002"][0]["ajxx_ajmc"], "案件3")
 
     def test_fetch_minor_case_rows_raises_on_upstream_timeout(self) -> None:
         with patch(

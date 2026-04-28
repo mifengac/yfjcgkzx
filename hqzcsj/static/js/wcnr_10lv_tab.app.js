@@ -19,6 +19,7 @@
     const exportBtn = document.getElementById("wcnr10lvExportBtn");
     const exportDetailDd = document.getElementById("wcnr10lvExportDetailDd");
     const exportDetailBtn = document.getElementById("wcnr10lvExportDetailBtn");
+    const campusBullyingExportBtn = document.getElementById("wcnr10lvCampusBullyingExportBtn");
 
     const msDisplay = document.getElementById("wcnr10lvTypesDisplay");
     const msDropdown = document.getElementById("wcnr10lvTypesDropdown");
@@ -32,6 +33,7 @@
     const DETAIL_PAGE = endpoints.detailPage || "/hqzcsj/wcnr_10lv/detail";
     const EXPORT_SUMMARY = endpoints.exportSummary || "/hqzcsj/wcnr_10lv/export";
     const EXPORT_DETAIL = endpoints.exportDetail || "/hqzcsj/wcnr_10lv/export_detail";
+    const EXPORT_CAMPUS_BULLYING = endpoints.exportCampusBullying || "/hqzcsj/wcnr_10lv/campus_bullying_export";
 
     let lastMeta = null;
     let lastRows = [];
@@ -347,6 +349,17 @@
         window.location.href = `${EXPORT_DETAIL}?${usp.toString()}`;
     }
 
+    function doExportCampusBullying() {
+        const usp = new URLSearchParams();
+        const st = H.formatDateTime(startEl.value);
+        const et = H.formatDateTime(endEl.value);
+        if (st) usp.set("start_time", st);
+        if (et) usp.set("end_time", et);
+        setBusy(true, "正在导出校园欺凌警情及案件，请稍候...");
+        _busyTimer = setTimeout(() => setBusy(false), 4000);
+        window.location.href = `${EXPORT_CAMPUS_BULLYING}?${usp.toString()}`;
+    }
+
     if (exportBtn && exportDd) {
         exportBtn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -377,6 +390,13 @@
             });
         });
         document.addEventListener("click", (e) => { if (!exportDetailDd.contains(e.target)) exportDetailDd.classList.remove("open"); });
+    }
+
+    if (campusBullyingExportBtn) {
+        campusBullyingExportBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            doExportCampusBullying();
+        });
     }
 
     if (showHbEl) {

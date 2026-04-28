@@ -102,6 +102,11 @@ def zongcha_wcnr10lv_export_summary() -> Any:
     return wcnr_10lv_proxy.export_summary()
 
 
+@hqzcsj_bp.route("/zongcha/wcnr10lv/campus_bullying_export")
+def zongcha_wcnr10lv_export_campus_bullying_cases() -> Any:
+    return wcnr_10lv_proxy.export_campus_bullying_cases()
+
+
 @hqzcsj_bp.route("/zongcha/wcnr10lv/export_detail")
 def zongcha_wcnr10lv_export_detail_all() -> Any:
     return wcnr_10lv_proxy.export_detail_all()

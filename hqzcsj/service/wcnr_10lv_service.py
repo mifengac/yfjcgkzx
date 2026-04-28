@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Sequence, Tuple
 
 from gonggong.config.database import get_database_connection
-from hqzcsj.dao import wcnr_10lv_dao
+from hqzcsj.dao import wcnr_10lv_dao, wcnr_case_list_dao
 from hqzcsj.service.stats_common import (
     calc_percent_text,
     calc_ratio_text,
@@ -129,6 +129,18 @@ DETAIL_METRIC_LABEL: Dict[str, str] = {
 }
 COMPOSITE_METRIC_KEYS = set(COMPOSITE_METRIC_MAP)
 EXPORT_METRIC_ORDER: List[str] = [metric_key for _metric_kind, metric_key in SUMMARY_LAYOUT]
+CAMPUS_BULLYING_EXPORT_COLUMNS: List[str] = [
+    "警情编号",
+    "报警时间",
+    "管辖单位",
+    "分局",
+    "报警内容",
+    "处警情况",
+    "警情地址",
+    "案件编号",
+    "案件名称",
+    "立案时间",
+]
 
 
 def default_time_range_for_page() -> Tuple[str, str, str, str]:
@@ -147,6 +159,35 @@ def default_time_range_for_page() -> Tuple[str, str, str, str]:
 
 def _normalize_leixing_list(leixing_list: Sequence[str]) -> List[str]:
     return normalize_text_list(leixing_list)
+
+
+def _first_non_empty(row: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = row.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            if value.strip():
+                return value
+            continue
+        return value
+    return ""
+
+
+def _format_datetime_for_export(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return fmt_dt(value)
+    return value or ""
+
+
+def build_campus_bullying_export_title(*, start_time: str, end_time: str) -> str:
+    ranges = _build_ranges(
+        start_time=start_time,
+        end_time=end_time,
+        hb_start_time=None,
+        hb_end_time=None,
+    )
+    return f"{ranges['start_time']}至{ranges['end_time']}校园欺凌警情案件"
 
 
 def _count(period_data: Dict[str, Any], key: str, code: str) -> int:
@@ -569,3 +610,58 @@ def build_detail_export_sheets(
                 sheets.append({"name": sheet_name, "rows": rows})
 
     return sheets
+
+
+def build_campus_bullying_incident_case_export_rows(*, start_time: str, end_time: str) -> List[Dict[str, Any]]:
+    ranges = _build_ranges(
+        start_time=start_time,
+        end_time=end_time,
+        hb_start_time=None,
+        hb_end_time=None,
+    )
+    incident_rows = wcnr_case_list_dao.fetch_campus_bullying_case_rows(
+        start_time=ranges["start_time"],
+        end_time=ranges["end_time"],
+    )
+    incident_numbers = [
+        str(_first_non_empty(row, "caseNo", "caseno") or "").strip()
+        for row in incident_rows
+    ]
+
+    conn = get_database_connection()
+    try:
+        cases_by_incident = wcnr_case_list_dao.fetch_cases_by_incident_numbers(conn, incident_numbers)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    rows: List[Dict[str, Any]] = []
+    for incident in incident_rows:
+        case_no = str(_first_non_empty(incident, "caseNo", "caseno") or "").strip()
+        matched_cases = cases_by_incident.get(case_no) or []
+        if not matched_cases:
+            matched_cases = [{}]
+        for case in matched_cases:
+            rows.append(
+                {
+                    "警情编号": case_no,
+                    "报警时间": _first_non_empty(incident, "callTime", "calltime"),
+                    "管辖单位": _first_non_empty(incident, "dutyDeptName", "dutydeptname"),
+                    "分局": _first_non_empty(incident, "cmdName", "cmdname"),
+                    "报警内容": _first_non_empty(
+                        incident,
+                        "caseContent",
+                        "caseContents",
+                        "casecontents",
+                    ),
+                    "处警情况": _first_non_empty(incident, "replies"),
+                    "警情地址": _first_non_empty(incident, "occurAddress", "occuraddress"),
+                    "案件编号": case.get("ajxx_ajbh") or "",
+                    "案件名称": case.get("ajxx_ajmc") or "",
+                    "立案时间": _format_datetime_for_export(case.get("ajxx_lasj")),
+                }
+            )
+
+    return rows

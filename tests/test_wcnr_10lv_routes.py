@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from flask import Flask
+from flask import Flask, Response
 
 from hqzcsj.routes.wcnr_10lv_routes import wcnr_10lv_bp
 
@@ -132,6 +132,53 @@ class TestWcnr10lvRoutes(unittest.TestCase):
         self.assertEqual(payload["rows"][0]["案件编号"], "A1")
         self.assertEqual(mock_fetch_detail.call_args.kwargs["metric"], "aj_changsuo")
         self.assertEqual(mock_fetch_detail.call_args.kwargs["diqu"], "445303")
+
+    def test_campus_bullying_export_uses_only_start_and_end_time(self) -> None:
+        self._login()
+        with patch(
+            "hqzcsj.routes.wcnr_10lv_routes.get_database_connection",
+            return_value=_DummyConnection((1,)),
+        ), patch(
+            "hqzcsj.routes.wcnr_10lv_routes.wcnr_10lv_service.build_campus_bullying_incident_case_export_rows",
+            return_value=[{"警情编号": "JQ001", "案件编号": "AJ001"}],
+        ) as mock_build_rows, patch(
+            "hqzcsj.routes.wcnr_10lv_routes._download_excel",
+            return_value=Response(b"xlsx"),
+        ) as mock_download:
+            response = self.client.get(
+                "/wcnr_10lv/campus_bullying_export"
+                "?start_time=2026-04-01%2000:00:00"
+                "&end_time=2026-04-30%2023:59:59"
+                "&leixing=%E6%B2%BB%E5%AE%89"
+                "&show_hb=1"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b"xlsx")
+        self.assertEqual(mock_build_rows.call_args.kwargs["start_time"], "2026-04-01 00:00:00")
+        self.assertEqual(mock_build_rows.call_args.kwargs["end_time"], "2026-04-30 23:59:59")
+        filename = mock_download.call_args.args[1]
+        self.assertTrue(filename.startswith("校园欺凌警情案件"))
+        self.assertTrue(filename.endswith(".xlsx"))
+        self.assertEqual(
+            mock_download.call_args.kwargs["headers"],
+            [
+                "警情编号",
+                "报警时间",
+                "管辖单位",
+                "分局",
+                "报警内容",
+                "处警情况",
+                "警情地址",
+                "案件编号",
+                "案件名称",
+                "立案时间",
+            ],
+        )
+        self.assertEqual(
+            mock_download.call_args.kwargs["title"],
+            "2026-04-01 00:00:00至2026-04-30 23:59:59校园欺凌警情案件",
+        )
 
 
 if __name__ == "__main__":

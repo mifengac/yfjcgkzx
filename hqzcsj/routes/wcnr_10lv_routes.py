@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, send_file, session, url_for
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao.wcnr_10lv_dao import fetch_leixing_list
@@ -66,16 +67,36 @@ def _download_csv(rows: List[Dict[str, Any]], filename: str) -> Response:
     )
 
 
-def _download_excel(rows: List[Dict[str, Any]], filename: str, *, sheet_name: str = "数据") -> Response:
+def _download_excel(
+    rows: List[Dict[str, Any]],
+    filename: str,
+    *,
+    sheet_name: str = "数据",
+    headers: List[str] | None = None,
+    title: str | None = None,
+) -> Response:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = _safe_sheet_name(sheet_name)
 
-    if rows:
-        headers = list(rows[0].keys())
-        sheet.append(headers)
+    column_headers = list(headers or (list(rows[0].keys()) if rows else []))
+    if title:
+        sheet.append([title])
+        if column_headers:
+            sheet.merge_cells(
+                start_row=1,
+                start_column=1,
+                end_row=1,
+                end_column=len(column_headers),
+            )
+        cell = sheet.cell(row=1, column=1)
+        cell.font = Font(bold=True, size=14)
+        cell.alignment = Alignment(horizontal="center")
+
+    if column_headers:
+        sheet.append(column_headers)
         for row in rows:
-            sheet.append([(row.get(k) if row.get(k) is not None else "") for k in headers])
+            sheet.append([(row.get(k) if row.get(k) is not None else "") for k in column_headers])
     else:
         sheet.append(["无数据"])
 
@@ -299,6 +320,34 @@ def export_summary() -> Response:
     if fmt == "csv":
         return _download_csv(visible_rows, filename)
     return _download_excel(visible_rows, filename, sheet_name="未成年人10个率")
+
+
+@wcnr_10lv_bp.route("/wcnr_10lv/campus_bullying_export")
+@wcnr_10lv_bp.route("/wcnr10lv/campus_bullying_export")
+def export_campus_bullying_cases() -> Response:
+    start_time = (request.args.get("start_time") or "").strip()
+    end_time = (request.args.get("end_time") or "").strip()
+
+    if not start_time or not end_time:
+        start_time, end_time, _hb_start_default, _hb_end_default = wcnr_10lv_service.default_time_range_for_page()
+
+    rows = wcnr_10lv_service.build_campus_bullying_incident_case_export_rows(
+        start_time=start_time,
+        end_time=end_time,
+    )
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = f"校园欺凌警情案件{ts}.xlsx"
+    title = wcnr_10lv_service.build_campus_bullying_export_title(
+        start_time=start_time,
+        end_time=end_time,
+    )
+    return _download_excel(
+        rows,
+        filename,
+        sheet_name="校园欺凌警情案件",
+        headers=wcnr_10lv_service.CAMPUS_BULLYING_EXPORT_COLUMNS,
+        title=title,
+    )
 
 
 @wcnr_10lv_bp.route("/wcnr_10lv/export_detail")

@@ -8,6 +8,8 @@ from gonggong.service.upstream_jingqing_client import api_client
 CASE_LIST_PAGE_SIZE = 2000
 _MINOR_CASE_MARK_NO = "01020201,0102020101,0102020102,0102020103"
 _MINOR_CASE_MARK = "未成年人,未成年人（加害方）,未成年人（受害方）,未成年人（其他）"
+_CAMPUS_BULLYING_CASE_MARK_NO = "03010108,0604"
+_CAMPUS_BULLYING_CASE_MARK = "校园欺凌,校园欺凌"
 _LOGIN_TIMEOUT_MESSAGE = "111警情系统登录或取数超时，请检查网络连通性和上游系统状态"
 _DEFAULT_MINOR_SUBCLASS_PREFIXES = ("01", "02")
 
@@ -71,6 +73,46 @@ def _build_minor_case_payload(*, start_time: str, end_time: str, page_num: int) 
     }
 
 
+def _build_campus_bullying_case_payload(*, start_time: str, end_time: str, page_num: int) -> Dict[str, str]:
+    return {
+        "beginDate": start_time,
+        "endDate": end_time,
+        "newCaseSourceNo": "",
+        "newCaseSource": "全部",
+        "dutyDeptNo": "",
+        "dutyDeptName": "全部",
+        "newCharaSubclassNo": "",
+        "newCharaSubclass": "全部",
+        "newOriCharaSubclassNo": "",
+        "newOriCharaSubclass": "全部",
+        "caseNo": "",
+        "callerName": "",
+        "callerPhone": "",
+        "phoneAddress": "",
+        "callerIdentity": "",
+        "operatorNo": "",
+        "operatorName": "",
+        "params[isInvalidCase]": "",
+        "occurAddress": "",
+        "caseMarkNo": _CAMPUS_BULLYING_CASE_MARK_NO,
+        "caseMark": _CAMPUS_BULLYING_CASE_MARK,
+        "params[repetitionCase]": "",
+        "params[originalDuplicateCase]": "",
+        "params[startTimePeriod]": "",
+        "params[endTimePeriod]": "",
+        "caseContents": "",
+        "replies": "",
+        "params[sinceRecord]": "",
+        "dossierResult": "",
+        "params[isVideo]": "",
+        "params[isConversation]": "",
+        "pageSize": str(CASE_LIST_PAGE_SIZE),
+        "pageNum": str(page_num),
+        "orderByColumn": "callTime",
+        "isAsc": "desc",
+    }
+
+
 def _parse_total(value: Any) -> Optional[int]:
     try:
         if value is None or str(value).strip() == "":
@@ -80,13 +122,18 @@ def _parse_total(value: Any) -> Optional[int]:
         return None
 
 
-def fetch_minor_case_rows(*, start_time: str, end_time: str) -> List[Dict[str, Any]]:
+def _fetch_case_rows(
+    *,
+    start_time: str,
+    end_time: str,
+    payload_builder,
+) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     page_num = 1
     total: Optional[int] = None
 
     while True:
-        payload = _build_minor_case_payload(
+        payload = payload_builder(
             start_time=start_time,
             end_time=end_time,
             page_num=page_num,
@@ -124,6 +171,52 @@ def fetch_minor_case_rows(*, start_time: str, end_time: str) -> List[Dict[str, A
         page_num += 1
 
     return rows
+
+
+def fetch_minor_case_rows(*, start_time: str, end_time: str) -> List[Dict[str, Any]]:
+    return _fetch_case_rows(
+        start_time=start_time,
+        end_time=end_time,
+        payload_builder=_build_minor_case_payload,
+    )
+
+
+def fetch_campus_bullying_case_rows(*, start_time: str, end_time: str) -> List[Dict[str, Any]]:
+    return _fetch_case_rows(
+        start_time=start_time,
+        end_time=end_time,
+        payload_builder=_build_campus_bullying_case_payload,
+    )
+
+
+def fetch_cases_by_incident_numbers(conn, incident_numbers: Sequence[str]) -> Dict[str, List[Dict[str, Any]]]:
+    numbers = sorted({str(x or "").strip() for x in (incident_numbers or []) if str(x or "").strip()})
+    if not numbers:
+        return {}
+
+    q = """
+        SELECT
+            ajxx_jqbh,
+            ajxx_ajbh,
+            ajxx_ajmc,
+            ajxx_lasj
+        FROM "ywdata"."zq_zfba_ajxx"
+        WHERE ajxx_jqbh = ANY(%s)
+          AND NULLIF(BTRIM(COALESCE(ajxx_ajbh, '')), '') IS NOT NULL
+        ORDER BY ajxx_jqbh, ajxx_lasj DESC NULLS LAST, ajxx_ajbh DESC
+    """
+    with conn.cursor() as cur:
+        cur.execute(q, (numbers,))
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        jqbh = str(row.get("ajxx_jqbh") or "").strip()
+        if not jqbh:
+            continue
+        grouped.setdefault(jqbh, []).append(row)
+    return grouped
 
 
 def filter_minor_case_rows_by_subclasses(
