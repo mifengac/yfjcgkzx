@@ -1,4 +1,5 @@
 import io
+import re
 import unittest
 from datetime import datetime as real_datetime
 from unittest.mock import patch
@@ -94,11 +95,27 @@ class TestGamblingAnalysisExportService(unittest.TestCase):
                 "latOfCriterion": "22.1",
             }
         ]
+        db_sheets = [
+            (
+                "20_案件来源状态",
+                ["year_month", "pcs_code", "case_type", "case_source", "case_status", "case_count"],
+                [
+                    {
+                        "year_month": "2026-04",
+                        "pcs_code": "445302010000",
+                        "case_type": "行政",
+                        "case_source": "incident_transfer",
+                        "case_status": "已处罚",
+                        "case_count": 1,
+                    }
+                ],
+            )
+        ]
         with patch.object(export_service, "resolve_gambling_topic_tags", return_value=("0301", "赌博")), patch.object(
             export_service,
             "fetch_all_case_list",
             return_value=rows,
-        ), patch.object(export_service, "_build_database_sheets", return_value=[]):
+        ), patch.object(export_service, "_build_database_sheets", return_value=db_sheets):
             buffer = export_service.generate_gambling_analysis_export(params)
 
         workbook = load_workbook(io.BytesIO(buffer.getvalue()))
@@ -115,6 +132,18 @@ class TestGamblingAnalysisExportService(unittest.TestCase):
         self.assertIn("测试地址", values)
         self.assertIn("有人打麻将扰民", values)
         self.assertIn("未脱敏", [cell.value for row in workbook["00_导出说明"].iter_rows() for cell in row])
+        monthly_headers = [cell.value for cell in workbook["02_月度警情_代码"][1]]
+        self.assertEqual(monthly_headers, ["月份", "派出所编码", "派出所名称", "派出所代码", "警情数"])
+        source_headers = [cell.value for cell in workbook["20_案件来源状态"][1]]
+        self.assertEqual(source_headers, ["月份", "派出所代码", "案件类型", "案件来源", "案件状态", "案件数"])
+        yoy_headers = [cell.value for cell in workbook["25_警情同比汇总"][1]]
+        self.assertEqual(yoy_headers, ["指标", "本期时间", "同期时间", "本期数", "同期数", "增减数", "同比增幅(%)", "同比说明"])
+        for worksheet in workbook.worksheets:
+            if worksheet.title == "00_导出说明":
+                continue
+            header_values = [cell.value for cell in worksheet[1] if cell.value]
+            english_headers = [value for value in header_values if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(value))]
+            self.assertEqual(english_headers, [], f"{worksheet.title} 存在未转中文表头: {english_headers}")
 
     def test_generate_analysis_data_export_adds_yoy_sheets(self) -> None:
         params = {
