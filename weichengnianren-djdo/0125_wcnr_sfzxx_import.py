@@ -19,7 +19,7 @@ if str(_REPO_ROOT) not in sys.path:
 SHEET_NAME_DEFAULT = "累计招生"
 HEADER_ROW_INDEX = 3  # 第3行为列名
 DB_SCHEMA = "ywdata"
-DB_TABLE = "zq_wcnr_sfzxx"
+DB_TABLE = "zq_zfba_wcnr_sfzxx"
 
 
 EXPECTED_HEADERS = [
@@ -531,7 +531,7 @@ def import_sfzxx_file(
     header_row_index: int = HEADER_ROW_INDEX,
 ) -> dict:
     """
-    复用本脚本逻辑：读取 xls/xlsx 并导入到指定表（默认 ywdata.zq_wcnr_sfzxx）。
+    复用本脚本逻辑：读取 xls/xlsx 并导入到指定表（默认 ywdata.zq_zfba_wcnr_sfzxx）。
     - 会校验 sheet 与指定行表头（默认第3行）
     - bh(编号) 为主键：重复则更新，不重复则新增
     """
@@ -567,7 +567,7 @@ def import_sfzxx_file(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description='通过 xls/xlsx 导入人大金仓（PostgreSQL/Kingbase 兼容）表 "ywdata.zq_wcnr_sfzxx"'
+        description='通过 xls/xlsx 导入人大金仓（PostgreSQL/Kingbase 兼容）表 "ywdata.zq_zfba_wcnr_sfzxx"'
     )
     parser.add_argument("xlsx", type=str, help="xls/xlsx 文件路径")
     parser.add_argument("--sheet", type=str, default=SHEET_NAME_DEFAULT, help="sheet 名称")

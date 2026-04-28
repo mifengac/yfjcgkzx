@@ -9,6 +9,47 @@ from hqzcsj.dao import zfba_jq_aj_dao, zfba_wcnr_jqaj_dao
 
 
 GRADUATE_SOURCE_TABLE_SQL = '"ywdata"."zq_zfba_wcnr_sfzxx_lxxx"'
+WFZF_PEOPLE_CTE = """
+        wfzf_ranked AS MATERIALIZED (
+            SELECT
+                b.*,
+                row_number() OVER (
+                    PARTITION BY b."xyrxx_sfzh"
+                    ORDER BY b."ajxx_join_ajxx_lasj" DESC NULLS LAST,
+                             b."xyrxx_lrsj" DESC NULLS LAST,
+                             b."ajxx_join_ajxx_ajbh" DESC
+                ) AS rn_desc
+            FROM "ywdata"."v_wcnr_wfry_jbxx_base" b
+            WHERE NULLIF(BTRIM(COALESCE(b."xyrxx_sfzh", '')), '') IS NOT NULL
+        ),
+        wfzf_people AS MATERIALIZED (
+            SELECT
+                MIN(r."xyrxx_xm") FILTER (WHERE r.rn_desc = 1) AS "姓名",
+                r."xyrxx_sfzh" AS "身份证号",
+                MIN(r."xyrxx_xb") FILTER (WHERE r.rn_desc = 1) AS "性别",
+                MIN(r."fasj_age") FILTER (WHERE r.rn_desc = 1) AS "最近一次发案年龄",
+                MIN(r."current_age") FILTER (WHERE r.rn_desc = 1) AS "现在年龄",
+                MIN(r."xyrxx_lrsj") FILTER (WHERE r.rn_desc = 1) AS "录入时间",
+                COUNT(*) AS "违法次数",
+                STRING_AGG(r."ajxx_join_ajxx_ajlx", ' → ' ORDER BY r."ajxx_join_ajxx_lasj" DESC NULLS LAST) AS "案件类型",
+                STRING_AGG(TO_CHAR(r."ajxx_join_ajxx_lasj", 'YYYY-MM-DD'), ' → ' ORDER BY r."ajxx_join_ajxx_lasj" DESC NULLS LAST) AS "立案时间链",
+                STRING_AGG(r."ajxx_join_ajxx_ajbh", ' → ' ORDER BY r."ajxx_join_ajxx_lasj" DESC NULLS LAST) AS "案件编号",
+                STRING_AGG(r."ajxx_join_ajxx_ay", ' → ' ORDER BY r."ajxx_join_ajxx_lasj" DESC NULLS LAST) AS "案由",
+                STRING_AGG(DISTINCT r."xyrxx_hjdxzqh", '、') AS "户籍行政区",
+                STRING_AGG(DISTINCT r."xyrxx_hjdxzqh_dm", '、') AS "户籍地代码",
+                STRING_AGG(DISTINCT r."xyrxx_hjdxz", '、') AS "户籍地",
+                STRING_AGG(DISTINCT r."xyrxx_xzdxz", '、') AS "现住地",
+                STRING_AGG(DISTINCT r."ajxx_join_ajxx_cbdw_bh", ' → ') AS "办案部门",
+                STRING_AGG(DISTINCT r."ajxx_join_ajxx_cbdw_bh_dm", ' → ') AS "办案部门编码",
+                STRING_AGG(r."xyrxx_rybh", ' → ' ORDER BY r."ajxx_join_ajxx_lasj" DESC NULLS LAST) AS "人员编号",
+                NULL::text AS "学校名称",
+                NULL::text AS "年级名称",
+                NULL::text AS "班级名称",
+                NULL::text AS "就读状态"
+            FROM wfzf_ranked r
+            GROUP BY r."xyrxx_sfzh"
+        )
+"""
 
 
 REGION_CODE_NAME: Dict[str, str] = {
@@ -1210,7 +1251,7 @@ def _fetch_jzqk_compact_rows(
                 SELECT 1
                 FROM "ywdata"."case_type_config" ctc
                 WHERE ctc."leixing" = ANY(%s)
-                  AND vw.案由 SIMILAR TO ctc."ay_pattern"
+                  AND vw."案由" SIMILAR TO ctc."ay_pattern"
             )
         """
         type_params: List[Any] = [list(leixing)]
@@ -1229,10 +1270,24 @@ def _fetch_jzqk_compact_rows(
               AND COALESCE(NULLIF(w."ajxx_join_ajxx_isdel_dm", ''), '0')::integer = 0
             GROUP BY w.xyrxx_sfzh
         ),
+        wfry_source AS MATERIALIZED (
+            SELECT
+                w."ajxx_join_ajxx_ajbh" AS "案件编号",
+                w."xyrxx_rybh" AS "人员编号",
+                w."ajxx_join_ajxx_ajlx" AS "案件类型",
+                w."ajxx_join_ajxx_ay" AS "案由",
+                LEFT(COALESCE(w."ajxx_join_ajxx_cbdw_bh_dm", ''), 6) AS "地区",
+                w."ajxx_join_ajxx_lasj" AS "立案时间",
+                w."xyrxx_xm" AS "姓名",
+                w."xyrxx_sfzh" AS "身份证号",
+                w."fasj_age" AS "年龄",
+                w."xyrxx_lrsj" AS "录入时间"
+            FROM "ywdata"."v_wcnr_wfry_jbxx_base" w
+        ),
         first_case_xjs AS (
             SELECT DISTINCT
-                vw.身份证号,
-                vw.案件编号 AS 当前案件编号,
+                vw."身份证号",
+                vw."案件编号" AS 当前案件编号,
                 CASE
                     WHEN EXISTS (
                         SELECT 1
@@ -1240,33 +1295,33 @@ def _fetch_jzqk_compact_rows(
                         JOIN "ywdata"."zq_zfba_xjs2" x
                           ON w."ajxx_join_ajxx_ajbh" = x.ajbh
                          AND w.xyrxx_xm = TRIM(x.xgry_xm)
-                        WHERE w.xyrxx_sfzh = vw.身份证号
-                          AND w."ajxx_join_ajxx_ajbh" <> vw.案件编号
+                        WHERE w.xyrxx_sfzh = vw."身份证号"
+                          AND w."ajxx_join_ajxx_ajbh" <> vw."案件编号"
                           AND COALESCE(NULLIF(w."xyrxx_isdel_dm", ''), '0')::integer = 0
                           AND COALESCE(NULLIF(w."ajxx_join_ajxx_isdel_dm", ''), '0')::integer = 0
                     ) THEN 1
                     ELSE 0
                 END AS 有训诫书
-            FROM "ywdata"."v_wcnr_wfry_base" vw
+            FROM wfry_source vw
         ),
         base_data AS (
             SELECT DISTINCT
-                vw.案件编号,
-                vw.人员编号,
-                vw.案件类型,
-                vw.案由,
-                vw.地区,
-                vw.立案时间,
-                vw.姓名,
-                vw.身份证号,
-                CASE WHEN vw.年龄::text ~ '^\\d+$' THEN CAST(vw.年龄 AS INTEGER) END AS 年龄数值,
+                vw."案件编号",
+                vw."人员编号",
+                vw."案件类型",
+                vw."案由",
+                vw."地区",
+                vw."立案时间",
+                vw."姓名",
+                vw."身份证号",
+                CASE WHEN vw."年龄"::text ~ '^\\d+$' THEN CAST(vw."年龄" AS INTEGER) END AS 年龄数值,
                 COALESCE(vc.违法次数, 0) AS 违法次数,
                 COALESCE(vc.不同案由数, 0) AS 不同案由数,
                 COALESCE(fcx.有训诫书, 0) AS 有训诫书
-            FROM "ywdata"."v_wcnr_wfry_base" vw
-            LEFT JOIN violation_counts vc ON vw.身份证号 = vc.身份证号
-            LEFT JOIN first_case_xjs fcx ON vw.身份证号 = fcx.身份证号 AND vw.案件编号 = fcx.当前案件编号
-            WHERE vw.录入时间 BETWEEN %s AND %s
+            FROM wfry_source vw
+            LEFT JOIN violation_counts vc ON vw."身份证号" = vc.身份证号
+            LEFT JOIN first_case_xjs fcx ON vw."身份证号" = fcx.身份证号 AND vw."案件编号" = fcx.当前案件编号
+            WHERE vw."录入时间" BETWEEN %s AND %s
             {type_condition}
         )
         SELECT
@@ -1323,7 +1378,7 @@ def _fetch_jzqk_compact_rows(
             END AS is_zhuanmen_shenqingshu,
             CASE
                 WHEN EXISTS (
-                    SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
+                    SELECT 1 FROM "ywdata"."zq_zfba_wcnr_sfzxx" s
                     WHERE s.sfzhm = bd.身份证号
                       AND TO_CHAR(s.rx_time, 'YYYY-MM-DD') >= TO_CHAR(bd.立案时间, 'YYYY-MM-DD')
                 ) THEN 1 ELSE 0
@@ -1346,10 +1401,12 @@ def _fetch_wfzf_people_rows(
 ) -> List[Dict[str, Any]]:
     type_condition, type_params = _build_ay_similar_filter('v."案由"', leixing_list)
     q = f"""
+        WITH
+        {WFZF_PEOPLE_CTE}
         SELECT
             v.*,
             LEFT(COALESCE(v."办案部门编码", ''), 6) AS "地区代码"
-        FROM "ywdata"."v_wcnr_wfry_jbxx" v
+        FROM wfzf_people v
         WHERE v."录入时间" BETWEEN %s AND %s
         {type_condition}
         ORDER BY v."录入时间" DESC NULLS LAST, v."身份证号", v."姓名"
@@ -1369,19 +1426,28 @@ def _fetch_yzbl_ratio_rows(
     end_time: str,
     leixing_list: Sequence[str],
 ) -> List[Dict[str, Any]]:
-    use_base_view = _relation_exists(
+    yzbl_view_name = ""
+    if _relation_exists(
+        conn,
+        schema="ywdata",
+        name="v_wcnr_yzbl_ratio_base2",
+        relkinds=("v", "m"),
+    ):
+        yzbl_view_name = "v_wcnr_yzbl_ratio_base2"
+    elif _relation_exists(
         conn,
         schema="ywdata",
         name="v_wcnr_yzbl_ratio_base",
         relkinds=("v", "m"),
-    )
+    ):
+        yzbl_view_name = "v_wcnr_yzbl_ratio_base"
 
-    if use_base_view:
+    if yzbl_view_name:
         type_condition, type_params = _build_ay_similar_filter('src."案由"', leixing_list)
         q = f"""
             SELECT
                 src.*
-            FROM "ywdata"."v_wcnr_yzbl_ratio_base" src
+            FROM "ywdata"."{yzbl_view_name}" src
             WHERE src."录入时间" BETWEEN %s AND %s
               {type_condition}
             ORDER BY src."是否应采取矫治教育措施" DESC, src."是否开具矫治文书" DESC, src."身份证号"
@@ -1395,7 +1461,9 @@ def _fetch_yzbl_ratio_rows(
 
     type_condition, type_params = _build_ay_similar_filter('v."案由"', leixing_list)
     q = f"""
-        WITH wenshu_pre AS MATERIALIZED (
+        WITH
+        {WFZF_PEOPLE_CTE},
+        wenshu_pre AS MATERIALIZED (
             SELECT ajbh, xgry_xm, wsmc
             FROM "ywdata"."zq_zfba_wenshu"
             WHERE wsmc ~ '训诫书|责令未成年'
@@ -1456,7 +1524,7 @@ def _fetch_yzbl_ratio_rows(
                 WHEN jz.xyrxx_sfzh IS NOT NULL THEN '是' ELSE '否'
             END AS "是否开具矫治文书",
             COALESCE(jz.wsmc_list, '') AS "开具文书名称"
-        FROM "ywdata"."v_wcnr_wfry_jbxx" v
+        FROM wfzf_people v
         LEFT JOIN jzws_agg jz ON v."身份证号" = jz.xyrxx_sfzh
         WHERE v."录入时间" BETWEEN %s AND %s
         {type_condition}
@@ -2686,7 +2754,7 @@ def fetch_metric_detail_rows(
         cs_rows = _filter_changsuo_bqh_rows(bqh_rows)
         return normalize_rows_for_output(cs_rows)
 
-    # ── 6. 违法犯罪人员（v_wcnr_wfry_jbxx，按录入时间/案由筛选）──────────
+    # ── 6. 违法犯罪人员（v_wcnr_wfry_jbxx_base，按录入时间/案由筛选）─────
     if metric == "wfzf_people":
         rows = _fetch_wfzf_people_rows(
             conn,

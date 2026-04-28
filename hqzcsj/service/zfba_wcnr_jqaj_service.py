@@ -218,7 +218,7 @@ def build_summary(
                 []
                 if typed_patterns_empty
                 else _call(
-                    f"{stage_prefix}-v_wcnr_wfry_base",
+                    f"{stage_prefix}-v_wcnr_wfry_jbxx_base",
                     lambda: zfba_wcnr_jqaj_dao.fetch_wcnr_jzqk_rows(
                         conn, start_time=period_start, end_time=period_end, leixing_list=leixing_list
                     ),

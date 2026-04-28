@@ -4,6 +4,7 @@ from unittest.mock import patch
 from hqzcsj.dao.wcnr_10lv_dao import (
     _count_graduate_reoffend_by_region,
     _fetch_graduate_reoffend,
+    _fetch_yzbl_ratio_rows,
     _fetch_zmjz_ratio_rows,
     _is_zmjz_ratio_den_row,
     _is_zmjz_ratio_num_row,
@@ -307,6 +308,66 @@ class TestWcnr10lvDao(unittest.TestCase):
             sql,
         )
         self.assertEqual(params[:2], ["2026-01-01 00:00:00", "2026-01-02 00:00:00"])
+
+    def test_fetch_yzbl_ratio_rows_prefers_base2_view(self) -> None:
+        conn = _FakeConnection()
+
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._relation_exists",
+            return_value=True,
+        ) as mock_relation_exists:
+            rows = _fetch_yzbl_ratio_rows(
+                conn,
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=[],
+            )
+
+        self.assertEqual(rows, [])
+        sql, params = conn.cursors[-1].executed[-1]
+        self.assertIn('FROM "ywdata"."v_wcnr_yzbl_ratio_base2" src', sql)
+        self.assertEqual(mock_relation_exists.call_args.kwargs["name"], "v_wcnr_yzbl_ratio_base2")
+        self.assertEqual(params[:2], ["2026-01-01 00:00:00", "2026-01-02 00:00:00"])
+
+    def test_fetch_yzbl_ratio_rows_falls_back_to_legacy_view(self) -> None:
+        conn = _FakeConnection()
+
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._relation_exists",
+            side_effect=[False, True],
+        ) as mock_relation_exists:
+            _fetch_yzbl_ratio_rows(
+                conn,
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=[],
+            )
+
+        sql, _params = conn.cursors[-1].executed[-1]
+        self.assertIn('FROM "ywdata"."v_wcnr_yzbl_ratio_base" src', sql)
+        self.assertEqual(
+            [call.kwargs["name"] for call in mock_relation_exists.call_args_list],
+            ["v_wcnr_yzbl_ratio_base2", "v_wcnr_yzbl_ratio_base"],
+        )
+
+    def test_fetch_yzbl_ratio_rows_live_fallback_uses_jbxx_base(self) -> None:
+        conn = _FakeConnection()
+
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._relation_exists",
+            return_value=False,
+        ):
+            _fetch_yzbl_ratio_rows(
+                conn,
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=[],
+            )
+
+        sql, _params = conn.cursors[-1].executed[-1]
+        self.assertIn('FROM "ywdata"."v_wcnr_wfry_jbxx_base" b', sql)
+        self.assertIn("FROM wfzf_people v", sql)
+        self.assertNotIn('FROM "ywdata"."v_wcnr_wfry_jbxx" v', sql)
 
     def test_fetch_graduate_reoffend_uses_latest_wfry_base_record(self) -> None:
         conn = _FakeConnection()

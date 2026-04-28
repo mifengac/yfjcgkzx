@@ -10,7 +10,7 @@ from openpyxl import load_workbook
 
 from gonggong.config.database import get_database_connection
 from hqzcsj.dao import jzqk_tongji_dao
-from hqzcsj.service import wcnr_1393zhibiao_service
+from hqzcsj.dao import zfba_wcnr_report_dao
 from hqzcsj.service import zfba_jq_aj_service
 from hqzcsj.service import zfba_wcnr_jqaj_service
 
@@ -161,6 +161,9 @@ def _build_jzqk_stats_by_code(detail_rows: Sequence[Dict[str, Any]]) -> Dict[str
 def _build_report_rows(*, start_time: str, end_time: str, leixing_list: Sequence[str]) -> List[Dict[str, Any]]:
     conn = get_database_connection()
     try:
+        start_date = str(start_time or "").strip()[:10]
+        end_date = str(end_time or "").strip()[:10]
+
         _meta_wcnr, wcnr_rows_raw = zfba_wcnr_jqaj_service.build_summary(
             start_time=start_time,
             end_time=end_time,
@@ -180,10 +183,19 @@ def _build_report_rows(*, start_time: str, end_time: str, leixing_list: Sequence
             za_types=[],
         )
 
-        _meta_1393, zhibiao_rows = wcnr_1393zhibiao_service.build_summary(
-            start_time=start_time,
-            end_time=end_time,
+        jyh_cf_by, jyh_cf_total = zfba_wcnr_report_dao.count_graduate_reoffense_by_region(
+            conn,
+            start_date=start_date,
+            end_date=end_date,
             leixing_list=leixing_list,
+            only_xingshi=True,
+        )
+        jyh_wfzf_by, jyh_wfzf_total = zfba_wcnr_report_dao.count_graduate_reoffense_by_region(
+            conn,
+            start_date=start_date,
+            end_date=end_date,
+            leixing_list=leixing_list,
+            only_xingshi=False,
         )
 
         jzqk_detail_rows = jzqk_tongji_dao.fetch_jzqk_data(
@@ -197,14 +209,14 @@ def _build_report_rows(*, start_time: str, end_time: str, leixing_list: Sequence
 
     wcnr_by_code = _rows_by_code(wcnr_rows, code_keys=["地区代码"], total_code="__ALL__")
     jq_by_code = _rows_by_code(jq_rows, code_keys=["地区代码"], total_code="__ALL__")
-    zhibiao_by_code = _rows_by_code(zhibiao_rows, code_keys=["__diqu_code"], total_code="ALL")
+    jyh_cf_by_code = {**jyh_cf_by, "__ALL__": jyh_cf_total}
+    jyh_wfzf_by_code = {**jyh_wfzf_by, "__ALL__": jyh_wfzf_total}
     jzqk_by_code = _build_jzqk_stats_by_code(jzqk_detail_rows)
 
     out: List[Dict[str, Any]] = []
     for code, region_name, row_idx in REPORT_ROWS:
         row_wcnr = wcnr_by_code.get(code) or {}
         row_jq = jq_by_code.get(code) or {}
-        row_1393 = zhibiao_by_code.get("ALL" if code == "__ALL__" else code) or {}
         row_jzqk = jzqk_by_code.get(code) or _empty_jzqk_stats()
 
         value_f = _as_int(row_wcnr.get("刑事"))
@@ -234,8 +246,8 @@ def _build_report_rows(*, start_time: str, end_time: str, leixing_list: Sequence
                 "L": _fmt_percent(value_l_num, value_j),
                 "M": _fmt_percent(value_m_num, value_m_den),
                 "N": f"{value_n_num}/{value_n_den}",
-                "O": _as_int(row_1393.get(wcnr_1393zhibiao_service.LABEL_JYH_WFZF)),
-                "P": _as_int(row_1393.get(wcnr_1393zhibiao_service.LABEL_JYH_CF)),
+                "O": _as_int(jyh_wfzf_by_code.get(code)),
+                "P": _as_int(jyh_cf_by_code.get(code)),
             }
         )
     return out

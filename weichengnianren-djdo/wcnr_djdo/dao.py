@@ -146,6 +146,23 @@ def _query_jzjy_base_details(
                   AND COALESCE(NULLIF(w."ajxx_join_ajxx_isdel_dm", ''), '0')::integer = 0
                 GROUP BY w."xyrxx_sfzh"
             ),
+            wfry_source AS MATERIALIZED (
+                SELECT
+                    w."ajxx_join_ajxx_ajbh" AS "案件编号",
+                    w."xyrxx_rybh" AS "人员编号",
+                    w."ajxx_join_ajxx_ajlx" AS "案件类型",
+                    w."ajxx_join_ajxx_ay" AS "案由",
+                    LEFT(COALESCE(w."ajxx_join_ajxx_cbdw_bh_dm", ''), 6) AS "地区",
+                    w."ajxx_join_ajxx_cbdw_bh" AS "办案单位",
+                    w."ajxx_join_ajxx_lasj" AS "立案时间",
+                    w."xyrxx_xm" AS "姓名",
+                    w."xyrxx_sfzh" AS "身份证号",
+                    w."xyrxx_hjdxz" AS "户籍地",
+                    w."fasj_age" AS "年龄",
+                    w."xyrxx_xzdxz" AS "居住地",
+                    w."xyrxx_lrsj" AS "录入时间"
+                FROM "ywdata"."v_wcnr_wfry_jbxx_base" w
+            ),
             first_case_xjs AS (
                 SELECT DISTINCT
                     vw."身份证号" AS 身份证号,
@@ -164,7 +181,7 @@ def _query_jzjy_base_details(
                         ) THEN 1
                         ELSE 0
                     END AS 有训诫书
-                FROM "ywdata"."v_wcnr_wfry_base" vw
+                FROM wfry_source vw
             ),
             base_data AS (
                 SELECT DISTINCT
@@ -281,13 +298,13 @@ def _query_jzjy_base_details(
                     END AS "是否符合送生",
                     CASE
                         WHEN EXISTS (
-                            SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
+                            SELECT 1 FROM "ywdata"."zq_zfba_wcnr_sfzxx" s
                             WHERE s."sfzhm" = vw."身份证号"
                               AND TO_CHAR(s."rx_time", 'YYYY-MM-DD') >= TO_CHAR(vw."立案时间", 'YYYY-MM-DD')
                         ) THEN '是'
                         ELSE '否'
                     END AS "是否送校"
-                FROM "ywdata"."v_wcnr_wfry_base" vw
+                FROM wfry_source vw
                 LEFT JOIN violation_counts vc ON vw."身份证号" = vc.身份证号
                 LEFT JOIN first_case_xjs fcx ON vw."身份证号" = fcx.身份证号 AND vw."案件编号" = fcx.当前案件编号
                 WHERE vw."录入时间" BETWEEN %s AND %s

@@ -71,7 +71,7 @@ def fetch_jzqk_data(
     """
     获取矫治教育统计明细数据
 
-    - 数据源：v_wcnr_wfry_base 视图
+    - 数据源：v_wcnr_wfry_jbxx_base 视图
     - 时间条件：使用 vw.录入时间（与页面开始/结束时间联动）
     - 类型条件：支持多选；通过 case_type_config.ay_pattern 匹配 vw.案由；
       若未选择任何“类型”，则不添加类型过滤条件（即查全量）。
@@ -108,6 +108,23 @@ def fetch_jzqk_data(
               AND COALESCE(NULLIF(w."ajxx_join_ajxx_isdel_dm", ''), '0')::integer = 0
             GROUP BY w.xyrxx_sfzh
         ),
+        wfry_source AS (
+            SELECT
+                w."ajxx_join_ajxx_ajbh" AS 案件编号,
+                w."xyrxx_rybh" AS 人员编号,
+                w."ajxx_join_ajxx_ajlx" AS 案件类型,
+                w."ajxx_join_ajxx_ay" AS 案由,
+                LEFT(COALESCE(w."ajxx_join_ajxx_cbdw_bh_dm", ''), 6) AS 地区,
+                w."ajxx_join_ajxx_cbdw_bh" AS 办案单位,
+                w."ajxx_join_ajxx_lasj" AS 立案时间,
+                w."xyrxx_xm" AS 姓名,
+                w."xyrxx_sfzh" AS 身份证号,
+                w."xyrxx_hjdxz" AS 户籍地,
+                w."fasj_age" AS 年龄,
+                w."xyrxx_xzdxz" AS 居住地,
+                w."xyrxx_lrsj" AS 录入时间
+            FROM "ywdata"."v_wcnr_wfry_jbxx_base" w
+        ),
         first_case_xjs AS (
             -- 查找第一次违法是否开具了训诫书
             SELECT DISTINCT
@@ -127,7 +144,7 @@ def fetch_jzqk_data(
                     ) THEN 1
                     ELSE 0
                 END AS 有训诫书
-            FROM "ywdata"."v_wcnr_wfry_base" vw
+            FROM wfry_source vw
         ),
         base_data AS (
             SELECT DISTINCT
@@ -147,7 +164,7 @@ def fetch_jzqk_data(
                 COALESCE(vc.违法次数, 0) AS 违法次数,
                 COALESCE(vc.不同案由数, 0) AS 不同案由数,
                 COALESCE(fcx.有训诫书, 0) AS 有训诫书
-            FROM "ywdata"."v_wcnr_wfry_base" vw
+            FROM wfry_source vw
             LEFT JOIN violation_counts vc ON vw.身份证号 = vc.身份证号
             LEFT JOIN first_case_xjs fcx ON vw.身份证号 = fcx.身份证号 AND vw.案件编号 = fcx.当前案件编号
             WHERE vw.录入时间 BETWEEN %s AND %s
@@ -243,7 +260,7 @@ def fetch_jzqk_data(
                 END AS is_zhuanmen_shenqingshu,
                 CASE
                     WHEN EXISTS (
-                        SELECT 1 FROM "ywdata"."zq_wcnr_sfzxx" s
+                        SELECT 1 FROM "ywdata"."zq_zfba_wcnr_sfzxx" s
                         WHERE s.sfzhm = bd.身份证号
                           AND TO_CHAR(s.rx_time, 'YYYY-MM-DD') >= TO_CHAR(bd.立案时间, 'YYYY-MM-DD')
                     ) THEN 1

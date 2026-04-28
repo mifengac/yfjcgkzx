@@ -665,7 +665,7 @@ def count_changsuo_shr_ajxx_by_diqu(
 
 def count_songxiao_by_diqu(conn, *, start_time: str, end_time: str, patterns: Sequence[str]) -> Dict[str, int]:
     pat_sql, pat_params = _exists_similar_to_patterns(patterns, field_expr=sql.SQL("sfz.jzyy"))
-    sfz_table = sql.SQL(".").join([sql.Identifier(SCHEMA), sql.Identifier("zq_wcnr_sfzxx")])
+    sfz_table = sql.SQL(".").join([sql.Identifier(SCHEMA), sql.Identifier("zq_zfba_wcnr_sfzxx")])
     q = (
         sql.SQL(
             """
@@ -1173,7 +1173,7 @@ def fetch_detail_rows(
                     """
                 )
                 params9 += [diqu, diqu, diqu, diqu, diqu, diqu]
-            sfz_table = sql.SQL(".").join([sql.Identifier(SCHEMA), sql.Identifier("zq_wcnr_sfzxx")])
+            sfz_table = sql.SQL(".").join([sql.Identifier(SCHEMA), sql.Identifier("zq_zfba_wcnr_sfzxx")])
             q = (
                 sql.SQL(
                     """
