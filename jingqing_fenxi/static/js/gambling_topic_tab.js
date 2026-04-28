@@ -521,12 +521,76 @@
         window.location.href = "/jingqing_fenxi/download/gambling-topic?" + params.toString();
     }
 
+    function normalizeDateParam(value) {
+        return value ? String(value).replace("T", " ") : "";
+    }
+
+    function openAnalysisDataExportModal() {
+        var modal = document.getElementById("gamblingAnalysisDataExportModal");
+        var beginInput = document.getElementById("gamblingAnalysisDataExportBeginDate");
+        var endInput = document.getElementById("gamblingAnalysisDataExportEndDate");
+        var desensitizedInput = document.getElementById("gamblingAnalysisDataExportDesensitized");
+        var currentBegin = document.getElementById("gamblingBeginDate");
+        var currentEnd = document.getElementById("gamblingEndDate");
+        if (!modal || !beginInput || !endInput) return;
+        beginInput.value = currentBegin ? currentBegin.value : "";
+        endInput.value = currentEnd ? currentEnd.value : "";
+        if (desensitizedInput) desensitizedInput.checked = true;
+        modal.classList.remove("special-case-hidden");
+    }
+
+    function closeAnalysisDataExportModal() {
+        var modal = document.getElementById("gamblingAnalysisDataExportModal");
+        if (modal) modal.classList.add("special-case-hidden");
+    }
+
+    function doAnalysisDataExport() {
+        var beginInput = document.getElementById("gamblingAnalysisDataExportBeginDate");
+        var endInput = document.getElementById("gamblingAnalysisDataExportEndDate");
+        var desensitizedInput = document.getElementById("gamblingAnalysisDataExportDesensitized");
+        var beginDate = beginInput ? normalizeDateParam(beginInput.value) : "";
+        var endDate = endInput ? normalizeDateParam(endInput.value) : "";
+        if (!beginDate || !endDate) {
+            alert("请选择开始时间和结束时间");
+            return;
+        }
+        if (new Date(beginInput.value).getTime() > new Date(endInput.value).getTime()) {
+            alert("结束时间不能早于开始时间");
+            return;
+        }
+
+        var params = new URLSearchParams();
+        params.append("beginDate", beginDate);
+        params.append("endDate", endDate);
+        params.append("desensitized", desensitizedInput && !desensitizedInput.checked ? "0" : "1");
+        closeAnalysisDataExportModal();
+        window.location.href = "/jingqing_fenxi/download/gambling-topic/analysis-data?" + params.toString();
+    }
+
+    function initAnalysisDataExportModal() {
+        var openBtn = document.getElementById("gamblingAnalysisDataExportBtn");
+        var confirmBtn = document.getElementById("gamblingAnalysisDataExportConfirmBtn");
+        var cancelBtn = document.getElementById("gamblingAnalysisDataExportCancelBtn");
+        var closeBtn = document.getElementById("gamblingAnalysisDataExportCloseBtn");
+        var modal = document.getElementById("gamblingAnalysisDataExportModal");
+        if (openBtn) openBtn.addEventListener("click", openAnalysisDataExportModal);
+        if (confirmBtn) confirmBtn.addEventListener("click", doAnalysisDataExport);
+        if (cancelBtn) cancelBtn.addEventListener("click", closeAnalysisDataExportModal);
+        if (closeBtn) closeBtn.addEventListener("click", closeAnalysisDataExportModal);
+        if (modal) {
+            modal.addEventListener("click", function(event) {
+                if (event.target === modal) closeAnalysisDataExportModal();
+            });
+        }
+    }
+
     function init() {
         if (initialized || !document.getElementById("gamblingTopicAnalyzeBtn")) return;
         initialized = true;
         initDimensionMultiSelect();
         initDates();
         initAnalysisOptions();
+        initAnalysisDataExportModal();
         document.getElementById("gamblingTopicAnalyzeBtn").addEventListener("click", doAnalyze);
         document.getElementById("gamblingTopicExportBtn").addEventListener("click", doExport);
     }

@@ -24,6 +24,21 @@ class TestGamblingTopicService(unittest.TestCase):
         self.assertEqual(tag_csv, "0301,0302")
         self.assertEqual(name_csv, "赌博,开设赌场")
 
+    def test_build_gambling_case_payload_uses_original_chara(self) -> None:
+        payload = service._build_gambling_case_payload(
+            "2026-01-01 00:00:00",
+            "2026-04-28 00:00:00",
+            "09010200,02052001",
+            "举报聚众赌博,赌博",
+        )
+
+        self.assertEqual(payload["newCharaSubclassNo"], "")
+        self.assertEqual(payload["newCharaSubclass"], "全部")
+        self.assertEqual(payload["newOriCharaSubclassNo"], "09010200,02052001")
+        self.assertEqual(payload["newOriCharaSubclass"], "举报聚众赌博,赌博")
+        self.assertEqual(payload["beginDate"], "2026-01-01 00:00:00")
+        self.assertEqual(payload["endDate"], "2026-04-28 00:00:00")
+
     def test_summarize_gambling_way_by_region_counts_keyword_categories(self) -> None:
         rows = [
             {"cmdName": "云城", "caseContents": "有人聚众打麻将赌博", "replies": ""},
@@ -111,6 +126,9 @@ class TestGamblingTopicService(unittest.TestCase):
         self.assertEqual(results["venue"]["rows"][0]["total"], 1)
         self.assertEqual(all_data[0]["gamblingWayLabels"], "麻将")
         self.assertEqual(all_data[0]["gamblingVenueKeywords"], "棋牌室")
+        payload = mock_fetch.call_args.args[0]
+        self.assertEqual(payload["newCharaSubclassNo"], "")
+        self.assertEqual(payload["newOriCharaSubclassNo"], "0301")
         self.assertEqual(mock_fetch.call_args.kwargs["max_page_size"], service.GAMBLING_TOPIC_UPSTREAM_PAGE_SIZE)
 
     def test_generate_excel_adds_custom_dimension_sheets(self) -> None:
@@ -180,7 +198,6 @@ class TestGamblingTopicService(unittest.TestCase):
         )
         self.assertEqual(filename, "2026-04-01-2026-04-02赌博专题警情分析20260420080910.xlsx")
 
-
 class TestGamblingTopicRoutes(unittest.TestCase):
     def setUp(self) -> None:
         app = Flask(__name__)
@@ -218,7 +235,6 @@ class TestGamblingTopicRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, b"test-export")
         self.assertIn("gambling.xlsx", response.headers["Content-Disposition"])
-
 
 if __name__ == "__main__":
     unittest.main()

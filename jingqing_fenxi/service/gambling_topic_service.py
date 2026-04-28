@@ -9,7 +9,7 @@ from openpyxl import Workbook
 
 from jingqing_fenxi.service.fight_topic_service import (
     _build_analysis_options,
-    _build_case_payload,
+    _build_case_payload as _build_confirm_case_payload,
     _build_srr_payload,
     _resolve_main_time_range,
     _resolve_m2m_time_range,
@@ -105,6 +105,15 @@ def resolve_gambling_topic_tags(tree_nodes: Sequence[Mapping[str, Any]] | None =
     return ",".join(tags), ",".join(names)
 
 
+def _build_gambling_case_payload(begin_date: str, end_date: str, tag_csv: str, tag_names: str = "") -> Dict[str, Any]:
+    payload = _build_confirm_case_payload(begin_date, end_date, "")
+    payload["newCharaSubclassNo"] = ""
+    payload["newCharaSubclass"] = "全部"
+    payload["newOriCharaSubclassNo"] = tag_csv
+    payload["newOriCharaSubclass"] = tag_names or "全部"
+    return payload
+
+
 def run_gambling_topic_analysis(
     params: Mapping[str, Any],
     dimensions_selected: Sequence[str],
@@ -128,7 +137,7 @@ def run_gambling_topic_analysis(
     requires_case_data = include_detail_rows or any(dim in case_dimensions for dim in dims)
     if requires_case_data:
         all_data = fetch_all_case_list(
-            _build_case_payload(begin_date, end_date, tag_csv),
+            _build_gambling_case_payload(begin_date, end_date, tag_csv, chara_name_csv),
             max_page_size=GAMBLING_TOPIC_UPSTREAM_PAGE_SIZE,
         )
         if "time" in dims:

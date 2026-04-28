@@ -209,6 +209,122 @@
             cursor: pointer;
         }
         .btn:hover { background: #0056b3; }
+        .gambling-export-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 1200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(15, 23, 42, 0.42);
+        }
+        .gambling-export-dialog {
+            width: min(560px, 100%);
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+            overflow: hidden;
+        }
+        .gambling-export-head,
+        .gambling-export-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .gambling-export-head h3 {
+            margin: 0;
+            font-size: 17px;
+            color: #0f172a;
+        }
+        .gambling-export-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            background: #f1f5f9;
+            color: #334155;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .gambling-export-body {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            padding: 16px;
+        }
+        .gambling-export-check {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px;
+            border: 1px solid #dbeafe;
+            border-radius: 8px;
+            background: #eff6ff;
+            color: #1e3a8a;
+            cursor: pointer;
+        }
+        .gambling-export-check input {
+            margin-top: 3px;
+        }
+        .gambling-export-check strong {
+            display: block;
+            margin-bottom: 3px;
+            color: #0f172a;
+        }
+        .gambling-export-check small {
+            display: block;
+            color: #475569;
+            line-height: 1.5;
+        }
+        .gambling-code-convert-body {
+            grid-template-columns: 1fr;
+        }
+        .gambling-code-upload {
+            display: grid;
+            gap: 8px;
+            padding: 16px;
+            border: 1px dashed #94a3b8;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #0f172a;
+        }
+        .gambling-code-upload span {
+            font-weight: 700;
+        }
+        .gambling-code-upload input {
+            width: 100%;
+        }
+        .gambling-code-convert-tip {
+            margin: 0;
+            color: #64748b;
+            font-size: 13px;
+            line-height: 1.7;
+        }
+        .gambling-code-convert-status {
+            margin-right: auto;
+            color: #0f766e;
+            font-size: 13px;
+        }
+        .gambling-code-convert-status.error {
+            color: #b91c1c;
+        }
+        .gambling-export-foot {
+            justify-content: flex-end;
+            border-top: 1px solid #e5e7eb;
+            border-bottom: none;
+        }
+        .gambling-export-secondary {
+            background: #64748b;
+        }
+        .gambling-export-secondary:hover {
+            background: #475569;
+        }
         #loading,
         #fightTopicLoading,
         #gamblingTopicLoading {
@@ -739,6 +855,9 @@
             .custom-monitor-rule-meta {
                 grid-template-columns: 1fr;
             }
+            .gambling-export-body {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -793,6 +912,7 @@
 <script src="/jingqing_fenxi/static/js/fight_topic_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/gambling_topic_keyword_tables.js"></script>
 <script src="/jingqing_fenxi/static/js/gambling_topic_tab.js"></script>
+<script src="/jingqing_fenxi/static/js/gambling_report_code_convert.js"></script>
 <script src="/jingqing_fenxi/static/js/rising_incident_grid.js"></script>
 <script src="/jingqing_fenxi/static/js/rising_incident_tab.js"></script>
 <script src="/jingqing_fenxi/static/js/custom_case_monitor_tab.js"></script>

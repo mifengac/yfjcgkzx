@@ -39,11 +39,68 @@
         <div class="query-item">
             <button class="btn" id="gamblingTopicAnalyzeBtn">统计</button>
             <button class="btn" id="gamblingTopicExportBtn" style="background:#28a745">导出</button>
+            <button class="btn" id="gamblingAnalysisDataExportBtn" style="background:#6f42c1">导出分析数据</button>
+            <button class="btn" id="gamblingCodeConvertBtn" style="background:#0f766e">代码转换</button>
             <span id="gamblingTopicLoading">正在处理中，请稍候...</span>
         </div>
     </div>
 
     <div id="gamblingTopicError" class="error-message special-case-hidden"></div>
+
+    <div id="gamblingAnalysisDataExportModal" class="gambling-export-modal special-case-hidden">
+        <div class="gambling-export-dialog">
+            <div class="gambling-export-head">
+                <h3>导出赌博分析数据</h3>
+                <button type="button" class="gambling-export-close" id="gamblingAnalysisDataExportCloseBtn" aria-label="关闭">×</button>
+            </div>
+            <div class="gambling-export-body">
+                <div class="query-item">
+                    <label>开始时间</label>
+                    <input type="datetime-local" step="1" id="gamblingAnalysisDataExportBeginDate">
+                </div>
+                <div class="query-item">
+                    <label>结束时间</label>
+                    <input type="datetime-local" step="1" id="gamblingAnalysisDataExportEndDate">
+                </div>
+                <label class="gambling-export-check">
+                    <input type="checkbox" id="gamblingAnalysisDataExportDesensitized" checked>
+                    <span>
+                        <strong>脱敏</strong>
+                        <small>默认导出脱敏数据；取消勾选后导出明文附件。</small>
+                    </span>
+                </label>
+            </div>
+            <div class="gambling-export-foot">
+                <button type="button" class="btn gambling-export-secondary" id="gamblingAnalysisDataExportCancelBtn">取消</button>
+                <button type="button" class="btn" id="gamblingAnalysisDataExportConfirmBtn">导出xlsx</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gamblingCodeConvertModal" class="gambling-export-modal special-case-hidden">
+        <div class="gambling-export-dialog">
+            <div class="gambling-export-head">
+                <h3>代码转换</h3>
+                <button type="button" class="gambling-export-close" id="gamblingCodeConvertCloseBtn" aria-label="关闭">×</button>
+            </div>
+            <form id="gamblingCodeConvertForm" enctype="multipart/form-data">
+                <div class="gambling-export-body gambling-code-convert-body">
+                    <label class="gambling-code-upload">
+                        <span>上传 markdown 分析报告</span>
+                        <input type="file" id="gamblingCodeConvertFile" name="file" accept=".md,text/markdown,text/plain">
+                    </label>
+                    <p class="gambling-code-convert-tip">
+                        系统会提取报告中的派出所代码，通过映射表 sspcsdm → sspcs 替换为派出所名称，并导出 docx。
+                    </p>
+                </div>
+                <div class="gambling-export-foot">
+                    <span class="gambling-code-convert-status" id="gamblingCodeConvertStatus"></span>
+                    <button type="button" class="btn gambling-export-secondary" id="gamblingCodeConvertCancelBtn">取消</button>
+                    <button type="submit" class="btn" id="gamblingCodeConvertConfirmBtn">转换并下载</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div class="charts-container">
         <div class="chart-box" id="gambling-box-srr" style="grid-column: 1 / -1;">
