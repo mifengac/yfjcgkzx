@@ -86,11 +86,11 @@
             <form id="gamblingCodeConvertForm" enctype="multipart/form-data">
                 <div class="gambling-export-body gambling-code-convert-body">
                     <label class="gambling-code-upload">
-                        <span>上传 markdown 分析报告</span>
-                        <input type="file" id="gamblingCodeConvertFile" name="file" accept=".md,text/markdown,text/plain">
+                        <span>上传 markdown 分析报告或 xlsx 附件</span>
+                        <input type="file" id="gamblingCodeConvertFile" name="file" accept=".md,.xlsx,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
                     </label>
                     <p class="gambling-code-convert-tip">
-                        系统会提取报告中的派出所代码，通过映射表 sspcsdm → sspcs 替换为派出所名称，并导出 docx。
+                        md 文件会替换派出所代码后导出 docx；xlsx 文件会在原工作簿内替换派出所代码，仍导出 xlsx。
                     </p>
                 </div>
                 <div class="gambling-export-foot">

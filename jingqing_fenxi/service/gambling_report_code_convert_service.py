@@ -2,29 +2,47 @@ from __future__ import annotations
 
 import io
 import re
+from zipfile import BadZipFile
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
 from docx import Document
 from docx.oxml.ns import qn
 from docx.shared import Pt
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from psycopg2.extras import RealDictCursor
 
 from gonggong.config.database import get_database_connection
 
 
 MAX_MARKDOWN_BYTES = 2 * 1024 * 1024
+MAX_XLSX_BYTES = 20 * 1024 * 1024
 STATION_CODE_PATTERN = re.compile(r"(?<!\d)(\d{12})(?!\d)")
+SUPPORTED_CODE_CONVERT_EXTENSIONS = {".md", ".xlsx"}
 
 
-def build_code_convert_filename(original_filename: str | None = None, now: datetime | None = None) -> str:
+def get_code_convert_extension(original_filename: str | None) -> str:
+    if not original_filename or "." not in original_filename:
+        return ""
+    return f".{original_filename.rsplit('.', 1)[1].lower()}"
+
+
+def build_code_convert_filename(
+    original_filename: str | None = None,
+    now: datetime | None = None,
+    output_extension: str | None = None,
+) -> str:
     timestamp = (now or datetime.now()).strftime("%Y%m%d%H%M%S")
     stem = "赌博分析报告"
     if original_filename:
         cleaned = re.sub(r"[\\/:*?\"<>|]+", "", original_filename.rsplit(".", 1)[0]).strip()
         if cleaned:
             stem = cleaned[:80]
-    return f"{stem}_派出所名称转换{timestamp}.docx"
+    extension = output_extension or (".xlsx" if get_code_convert_extension(original_filename) == ".xlsx" else ".docx")
+    if not extension.startswith("."):
+        extension = f".{extension}"
+    return f"{stem}_派出所名称转换{timestamp}{extension}"
 
 
 def convert_markdown_station_codes_to_docx(file_bytes: bytes, original_filename: str | None = None) -> io.BytesIO:
@@ -34,6 +52,28 @@ def convert_markdown_station_codes_to_docx(file_bytes: bytes, original_filename:
     converted_markdown = replace_station_codes(markdown, station_map)
     missing_codes = sorted(code for code in codes if code not in station_map)
     return markdown_to_docx(converted_markdown, missing_codes=missing_codes, original_filename=original_filename)
+
+
+def convert_xlsx_station_codes(file_bytes: bytes, original_filename: str | None = None) -> io.BytesIO:
+    if not file_bytes:
+        raise ValueError("请上传 xlsx 文件")
+    if len(file_bytes) > MAX_XLSX_BYTES:
+        raise ValueError("xlsx 文件不能超过 20MB")
+
+    try:
+        workbook = load_workbook(io.BytesIO(file_bytes))
+    except (InvalidFileException, BadZipFile, OSError, ValueError) as exc:
+        raise ValueError("xlsx 文件无法解析，请确认文件格式正确") from exc
+
+    codes = _extract_workbook_station_codes(workbook)
+    station_map = fetch_station_name_map(codes)
+    if station_map:
+        _replace_workbook_station_codes(workbook, station_map)
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
 
 
 def extract_station_codes(text: str) -> list[str]:
@@ -49,7 +89,8 @@ def fetch_station_name_map(codes: Sequence[str]) -> dict[str, str]:
     sql = f"""
         SELECT
             BTRIM(sspcsdm) AS code,
-            COALESCE(MAX(NULLIF(BTRIM(sspcs), '')), BTRIM(sspcsdm)) AS name
+            COALESCE(MAX(NULLIF(BTRIM(ssfj), '')), '') AS branch_name,
+            COALESCE(MAX(NULLIF(BTRIM(sspcs), '')), BTRIM(sspcsdm)) AS station_name
         FROM stdata.b_dic_zzjgdm
         WHERE BTRIM(sspcsdm) IN ({placeholders})
         GROUP BY BTRIM(sspcsdm)
@@ -60,12 +101,23 @@ def fetch_station_name_map(codes: Sequence[str]) -> dict[str, str]:
             cursor.execute(sql, clean_codes)
             rows = cursor.fetchall()
         return {
-            str(row.get("code") or "").strip(): str(row.get("name") or "").strip()
+            str(row.get("code") or "").strip(): compose_station_full_name(
+                row.get("branch_name"),
+                row.get("station_name"),
+                row.get("code"),
+            )
             for row in rows
             if str(row.get("code") or "").strip()
         }
     finally:
         connection.close()
+
+
+def compose_station_full_name(branch_name: Any, station_name: Any, fallback_code: Any = "") -> str:
+    branch = str(branch_name or "").strip()
+    station = str(station_name or "").strip()
+    fallback = str(fallback_code or "").strip()
+    return f"{branch}{station}" if station else fallback
 
 
 def replace_station_codes(text: str, station_map: Mapping[str, str]) -> str:
@@ -77,6 +129,56 @@ def replace_station_codes(text: str, station_map: Mapping[str, str]) -> str:
         return str(station_map.get(code) or code)
 
     return STATION_CODE_PATTERN.sub(_replace, text)
+
+
+def _extract_workbook_station_codes(workbook: Any) -> list[str]:
+    codes: set[str] = set()
+    for worksheet in workbook.worksheets:
+        for row in worksheet.iter_rows():
+            for cell in row:
+                codes.update(_extract_cell_station_codes(cell.value))
+    return sorted(codes)
+
+
+def _extract_cell_station_codes(value: Any) -> list[str]:
+    if value is None or isinstance(value, bool):
+        return []
+    if isinstance(value, str):
+        if value.startswith("="):
+            return []
+        return STATION_CODE_PATTERN.findall(value)
+    if isinstance(value, int):
+        text = str(value)
+    elif isinstance(value, float) and value.is_integer():
+        text = str(int(value))
+    else:
+        return []
+    return [text] if STATION_CODE_PATTERN.fullmatch(text) else []
+
+
+def _replace_workbook_station_codes(workbook: Any, station_map: Mapping[str, str]) -> None:
+    for worksheet in workbook.worksheets:
+        for row in worksheet.iter_rows():
+            for cell in row:
+                replaced = _replace_cell_station_code(cell.value, station_map)
+                if replaced != cell.value:
+                    cell.value = replaced
+
+
+def _replace_cell_station_code(value: Any, station_map: Mapping[str, str]) -> Any:
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        if value.startswith("="):
+            return value
+        return replace_station_codes(value, station_map)
+    if isinstance(value, int):
+        code = str(value)
+    elif isinstance(value, float) and value.is_integer():
+        code = str(int(value))
+    else:
+        return value
+    return station_map.get(code, value)
 
 
 def markdown_to_docx(markdown: str, *, missing_codes: Sequence[str] | None = None, original_filename: str | None = None) -> io.BytesIO:
@@ -103,7 +205,7 @@ def markdown_to_docx(markdown: str, *, missing_codes: Sequence[str] | None = Non
     if missing_codes:
         document.add_page_break()
         document.add_heading("未转换派出所代码", level=1)
-        document.add_paragraph("以下代码未在 stdata.b_dic_zzjgdm(sspcsdm, sspcs) 中找到映射，已在正文中保留原代码：")
+        document.add_paragraph("以下代码未在 stdata.b_dic_zzjgdm(sspcsdm, ssfj, sspcs) 中找到映射，已在正文中保留原代码：")
         for code in missing_codes:
             document.add_paragraph(str(code), style="List Bullet")
 

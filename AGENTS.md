@@ -33,7 +33,7 @@ Primary stack:
 - `SQL/`: SQL scripts for views, materialized views, and schema updates
 - `scripts/`: one-off maintenance or generation scripts
 - `weichengnianren-djdo/wcnr_djdo/`: special submodule loaded via `sys.path` because the parent directory name contains a hyphen
-- `dsjjqfx.md`: interface guide for the `68.253.2.111/dsjfx` upstream APIs
+- `docs/agent-guides/`: domain reference guides that extend these AGENTS instructions by topic
 
 ## Functional Modules
 
@@ -45,6 +45,12 @@ Key modules in active use include:
 - School scoring and ranking: `xxffmk`
 - Data extraction and AI-assisted field extraction: `shuju_tiqu`
 - Backend administration: `houtai` user import, permission import, and SMS management
+
+## Domain Reference Guides
+
+- `docs/agent-guides/business/business_database.md`: read before queries or analysis involving police incidents, case records, administrative penalties, criminal detention, arrests, prosecution records, suspect information, or case-involved person information.
+- `docs/agent-guides/integrations/dsjjqfx.md`: read before changes involving `http://68.253.2.111/dsjfx`, `/plan/treeViewData`, `/nature/treeNewViewData`, `/case/list`, or `/srr/list`.
+- `docs/agent-guides/region/region_grouping.md`: read before coding or SQL tasks involving region grouping, county/district grouping, police-station grouping, organization codes, or area-code/name mapping.
 
 ## Local Development
 
@@ -122,4 +128,4 @@ Before making non-trivial changes, read these files first:
 - `gonggong/service/session_manager.py` if the code path involves upstream login or authenticated requests
 - the relevant module under `routes/`, `service/`, and `dao/`
 - the closest existing test under `tests/`
-- `dsjjqfx.md` first if the code path involves `http://68.253.2.111` or `/dsjfx/`
+- `docs/agent-guides/integrations/dsjjqfx.md` first if the code path involves `http://68.253.2.111` or `/dsjfx/`

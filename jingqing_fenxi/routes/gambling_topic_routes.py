@@ -8,8 +8,11 @@ from jingqing_fenxi.service.gambling_analysis_export_service import (
     generate_gambling_analysis_export,
 )
 from jingqing_fenxi.service.gambling_report_code_convert_service import (
+    SUPPORTED_CODE_CONVERT_EXTENSIONS,
     build_code_convert_filename,
     convert_markdown_station_codes_to_docx,
+    convert_xlsx_station_codes,
+    get_code_convert_extension,
 )
 from jingqing_fenxi.service.gambling_topic_service import (
     build_export_filename,
@@ -116,18 +119,27 @@ def download_gambling_analysis_data() -> Response:
 def download_gambling_code_convert() -> Response:
     upload = request.files.get("file")
     if not upload or not upload.filename:
-        return jsonify({"success": False, "message": "请上传 markdown 文件"}), 400
-    if not upload.filename.lower().endswith(".md"):
-        return jsonify({"success": False, "message": "只支持上传 .md 格式文件"}), 400
+        return jsonify({"success": False, "message": "请上传 .md 或 .xlsx 文件"}), 400
+
+    extension = get_code_convert_extension(upload.filename)
+    if extension not in SUPPORTED_CODE_CONVERT_EXTENSIONS:
+        return jsonify({"success": False, "message": "只支持上传 .md 或 .xlsx 格式文件"}), 400
 
     try:
         content = upload.read()
-        export_file = convert_markdown_station_codes_to_docx(content, upload.filename)
+        if extension == ".xlsx":
+            export_file = convert_xlsx_station_codes(content, upload.filename)
+            mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            output_extension = ".xlsx"
+        else:
+            export_file = convert_markdown_station_codes_to_docx(content, upload.filename)
+            mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            output_extension = ".docx"
         return send_file(
             export_file,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            mimetype=mimetype,
             as_attachment=True,
-            download_name=build_code_convert_filename(upload.filename),
+            download_name=build_code_convert_filename(upload.filename, output_extension=output_extension),
         )
     except ValueError as exc:
         return jsonify({"success": False, "message": str(exc)}), 400

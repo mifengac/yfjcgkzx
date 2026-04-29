@@ -25,8 +25,9 @@
         if (modal) modal.classList.add("special-case-hidden");
     }
 
-    function filenameFromDisposition(disposition) {
-        var fallback = "赌博分析报告_派出所名称转换.docx";
+    function filenameFromDisposition(disposition, originalName) {
+        var outputExt = /\.md$/i.test(originalName || "") ? ".docx" : ".xlsx";
+        var fallback = "赌博分析报告_派出所名称转换" + outputExt;
         if (!disposition) return fallback;
         var utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
         if (utfMatch) {
@@ -56,12 +57,12 @@
         var fileInput = getEl("gamblingCodeConvertFile");
         var confirmBtn = getEl("gamblingCodeConvertConfirmBtn");
         if (!fileInput || !fileInput.files || !fileInput.files.length) {
-            setStatus("请先选择 markdown 文件", true);
+            setStatus("请先选择 .md 或 .xlsx 文件", true);
             return;
         }
         var file = fileInput.files[0];
-        if (!/\.md$/i.test(file.name)) {
-            setStatus("只支持上传 .md 格式文件", true);
+        if (!/\.(md|xlsx)$/i.test(file.name)) {
+            setStatus("只支持上传 .md 或 .xlsx 格式文件", true);
             return;
         }
 
@@ -82,7 +83,7 @@
                         throw new Error(payload.message || "转换失败");
                     });
                 }
-                var filename = filenameFromDisposition(response.headers.get("Content-Disposition"));
+                var filename = filenameFromDisposition(response.headers.get("Content-Disposition"), file.name);
                 return response.blob().then(function(blob) {
                     return { blob: blob, filename: filename };
                 });
