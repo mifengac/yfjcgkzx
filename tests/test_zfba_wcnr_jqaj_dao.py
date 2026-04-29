@@ -4,6 +4,32 @@ from unittest.mock import patch
 from hqzcsj.dao import zfba_wcnr_jqaj_dao
 
 
+class _SqlCaptureCursor:
+    def __init__(self):
+        self.description = [("警情编号",)]
+        self.executed = []
+
+    def execute(self, query, params=None):
+        self.executed.append((str(query), params))
+
+    def fetchall(self):
+        return []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _SqlCaptureConnection:
+    def __init__(self):
+        self.cursor_obj = _SqlCaptureCursor()
+
+    def cursor(self):
+        return self.cursor_obj
+
+
 class TestZfbaWcnrJqajDao(unittest.TestCase):
     def test_count_jq_by_diqu_defaults_to_01_02_filter_when_type_not_selected(self) -> None:
         with patch(
@@ -176,6 +202,30 @@ class TestZfbaWcnrJqajDao(unittest.TestCase):
         self.assertEqual(rows, [])
         self.assertFalse(truncated)
         mock_fetch_rows.assert_not_called()
+
+    def test_fetch_detail_rows_for_zhuanan_includes_case_name_and_cause_name(self) -> None:
+        conn = _SqlCaptureConnection()
+
+        with patch(
+            "hqzcsj.dao.zfba_wcnr_jqaj_dao.fetch_ay_patterns",
+            return_value=[],
+        ):
+            rows, truncated = zfba_wcnr_jqaj_dao.fetch_detail_rows(
+                conn,
+                metric="转案数",
+                diqu="__ALL__",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=[],
+                za_types=[],
+                limit=0,
+            )
+
+        sql_text = conn.cursor_obj.executed[-1][0]
+        self.assertEqual(rows, [])
+        self.assertFalse(truncated)
+        self.assertIn('zza."ajxx_ajmc" AS "案件名称"', sql_text)
+        self.assertIn('zza."ajxx_aymc" AS "案由名称"', sql_text)
 
 
 if __name__ == "__main__":

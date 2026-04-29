@@ -843,6 +843,8 @@ def fetch_detail_rows(
                       jq."latofcriterion" AS "纬度",
                       LEFT(jq."cmdid", 6) AS "地区",
                       zza."ajxx_ajbh" AS "案件编号",
+                      zza."ajxx_ajmc" AS "案件名称",
+                      zza."ajxx_aymc" AS "案由名称",
                       zza."ajxx_lasj" AS "立案时间",
                       zza."ajxx_cbdw_mc" AS "办案单位"
                     FROM ywdata."zq_kshddpt_dsjfx_jq" jq
