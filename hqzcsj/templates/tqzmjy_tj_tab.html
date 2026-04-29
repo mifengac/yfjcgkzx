@@ -1,0 +1,107 @@
+<section class="card" style="margin-top: 12px;">
+    <div class="row" style="justify-content:space-between; align-items:center; gap:12px;">
+        <div class="row" style="gap:10px;">
+            <label>审批开始时间
+                <input type="datetime-local" id="tqzmjyStart" step="1">
+            </label>
+            <label>审批结束时间
+                <input type="datetime-local" id="tqzmjyEnd" step="1">
+            </label>
+            <label>分局
+                <div class="multi-select" id="tqzmjyFenjuMs">
+                    <div class="multi-select-display" id="tqzmjyFenjuDisplay">加载中...</div>
+                    <div class="multi-select-dropdown" id="tqzmjyFenjuDropdown"></div>
+                </div>
+            </label>
+            <label>类型
+                <div class="multi-select" id="tqzmjyTypesMs">
+                    <div class="multi-select-display" id="tqzmjyTypesDisplay">加载中...</div>
+                    <div class="multi-select-dropdown" id="tqzmjyTypesDropdown"></div>
+                </div>
+            </label>
+            <button class="btn" id="tqzmjyQueryBtn">查询</button>
+        </div>
+        <div class="dropdown" id="tqzmjyExportDd">
+            <button class="btn" id="tqzmjyExportBtn">导出</button>
+            <div class="dropdown-menu">
+                <a href="#" data-fmt="xlsx">导出 xlsx</a>
+                <a href="#" data-fmt="csv">导出 csv</a>
+            </div>
+        </div>
+    </div>
+    <div class="muted" id="tqzmjyStatus" style="margin-top:10px;">默认显示当前条件下的详细数据。</div>
+    <div class="err" id="tqzmjyErr" style="margin-top:10px;"></div>
+</section>
+
+<section class="card">
+    <div class="table-wrap">
+        <table id="tqzmjyTbl"></table>
+    </div>
+</section>
+
+<style>
+    #tqzmjyTbl th,
+    #tqzmjyTbl td {
+        text-align: left;
+        vertical-align: top;
+    }
+    #tqzmjyTbl td.num-cell {
+        font-variant-numeric: tabular-nums;
+    }
+    .tqzmjy-busy-mask {
+        position: fixed;
+        inset: 0;
+        display: none;
+        z-index: 2000;
+        background: rgba(15, 23, 42, 0.45);
+        align-items: center;
+        justify-content: center;
+        pointer-events: all;
+    }
+    .tqzmjy-busy-mask.active {
+        display: flex;
+    }
+    .tqzmjy-busy-card {
+        min-width: 280px;
+        padding: 18px 20px;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 700;
+        color: #1f2937;
+    }
+    .tqzmjy-busy-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #1976d2;
+        animation: tqzmjy-pulse 1s ease-in-out infinite;
+    }
+    @keyframes tqzmjy-pulse {
+        0%, 100% { transform: scale(0.75); opacity: 0.55; }
+        50% { transform: scale(1); opacity: 1; }
+    }
+</style>
+
+<div id="tqzmjyBusyMask" class="tqzmjy-busy-mask" aria-live="polite" aria-busy="true">
+    <div class="tqzmjy-busy-card">
+        <span class="tqzmjy-busy-dot"></span>
+        <span id="tqzmjyBusyText">处理中，请稍候...</span>
+    </div>
+</div>
+
+<script>
+    window.TQZMJY_TJ_ENDPOINTS = {
+        apiLeixing: "{{ url_for('tqzmjy_tj.api_leixing') }}",
+        apiFenju: "{{ url_for('tqzmjy_tj.api_fenju') }}",
+        apiQuery: "{{ url_for('tqzmjy_tj.api_query') }}",
+        exportData: "{{ url_for('tqzmjy_tj.export_rows') }}",
+    };
+</script>
+<script src="{{ url_for('hqzcsj.static', filename='js/tqzmjy_tj_tab.constants.js') }}"></script>
+<script src="{{ url_for('hqzcsj.static', filename='js/tqzmjy_tj_tab.helpers.js') }}"></script>
+<script src="{{ url_for('hqzcsj.static', filename='js/tqzmjy_tj_tab.app.js') }}"></script>
