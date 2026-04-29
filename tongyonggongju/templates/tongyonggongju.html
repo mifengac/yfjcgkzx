@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通用工具</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/water.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('tongyonggongju.static', filename='tongyonggongju.css') }}" />
+  </head>
+  <body class="tygj-body">
+    <main class="tygj-shell">
+      <header class="tygj-page-head">
+        <h1>通用工具</h1>
+        <a class="tygj-back" href="{{ url_for('main') }}">返回主页</a>
+      </header>
+
+      <nav class="tygj-tabs" aria-label="通用工具分类">
+        <button class="tygj-tab active" type="button" data-tab="background">背景审查</button>
+      </nav>
+
+      <section class="tygj-tab-panel active" id="tab-background">
+        <section class="tygj-card">
+          <div class="tygj-head">
+            <div>
+              <h2>背景审查</h2>
+              <p class="tygj-muted">核查前科、矛盾纠纷、精神障碍三类背景信息。</p>
+            </div>
+          </div>
+
+          <div class="tygj-toolbar">
+            <label class="tygj-field">
+              xlsx 文件
+              <input id="bgFile" type="file" accept=".xlsx" />
+            </label>
+            <button class="tygj-btn secondary" type="button" id="loadColumnsBtn">加载列</button>
+            <label class="tygj-field">
+              身份证列
+              <select id="idColumnSelect" disabled>
+                <option value="">请先加载列</option>
+              </select>
+            </label>
+            <button class="tygj-btn" type="button" id="checkBtn" disabled>审查</button>
+          </div>
+          <div class="tygj-status" id="bgStatus"></div>
+        </section>
+
+        <section class="tygj-card" id="statsCard" hidden>
+          <div class="tygj-section-head">
+            <h3>审查概览</h3>
+            <span class="tygj-muted" id="statsNote"></span>
+          </div>
+          <div class="tygj-stats" id="statsGrid"></div>
+        </section>
+
+        <section class="tygj-card" id="overviewCard" hidden>
+          <div class="tygj-section-head">
+            <h3>人员命中情况</h3>
+          </div>
+          <div id="overviewTable" class="tygj-table-slot"></div>
+        </section>
+
+        <section class="tygj-card" id="invalidCard" hidden>
+          <div class="tygj-section-head">
+            <h3>无效身份证样例</h3>
+          </div>
+          <div id="invalidTable" class="tygj-table-slot"></div>
+        </section>
+
+        <section class="tygj-card" id="detailCard" hidden>
+          <div class="tygj-section-head">
+            <h3>命中明细</h3>
+          </div>
+          <div class="tygj-detail-grid">
+            <section class="tygj-detail-block">
+              <h4>前科</h4>
+              <div id="priorCaseTable" class="tygj-table-slot"></div>
+            </section>
+            <section class="tygj-detail-block">
+              <h4>矛盾纠纷</h4>
+              <div id="disputeTable" class="tygj-table-slot"></div>
+            </section>
+            <section class="tygj-detail-block">
+              <h4>精神障碍</h4>
+              <div id="mentalHealthTable" class="tygj-table-slot"></div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      window.__TYGJ_BACKGROUND_ENDPOINTS__ = {
+        upload: "{{ url_for('tongyonggongju.api_background_upload') }}",
+        check: "{{ url_for('tongyonggongju.api_background_check') }}"
+      };
+    </script>
+    <script src="{{ url_for('tongyonggongju.static', filename='tongyonggongju_background.js') }}"></script>
+  </body>
+</html>
