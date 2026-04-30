@@ -30,10 +30,10 @@ from http.cookiejar import CookieJar
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
-DEFAULT_ORIGIN = "http://68.253.2.111"
-DEFAULT_LOGIN_URL = f"{DEFAULT_ORIGIN}/dsjfx/login"
-DEFAULT_SRR_URL = f"{DEFAULT_ORIGIN}/dsjfx/srr/list"
-DEFAULT_CASE_URL = f"{DEFAULT_ORIGIN}/dsjfx/case/list"
+DEFAULT_ORIGIN = "http://68.29.179.170"
+DEFAULT_LOGIN_URL = f"{DEFAULT_ORIGIN}/dsjfxxb/login"
+DEFAULT_SRR_URL = f"{DEFAULT_ORIGIN}/dsjfxxb/srr/list"
+DEFAULT_CASE_URL = f"{DEFAULT_ORIGIN}/dsjfxxb/case/list"
 
 DEFAULT_USERNAME = "270378"
 # 登录页显示的 password 参数是加密后的字符串（不是明文密码）
@@ -273,7 +273,7 @@ def fetch_srr_rows(
         "orderByColumn": "",
         "isAsc": "asc",
     }
-    data = fetch_json_post(opener, srr_url, payload, referer=f"{DEFAULT_ORIGIN}/dsjfx/srr", timeout=timeout)
+    data = fetch_json_post(opener, srr_url, payload, referer=f"{DEFAULT_ORIGIN}/dsjfxxb/srr", timeout=timeout)
     if _looks_not_logged_in(data):
         raise RuntimeError("srr/list 返回未登录或超时，请检查登录脚本/账号状态。")
     if not isinstance(data, dict):
@@ -338,7 +338,7 @@ def fetch_case_pages(
             "orderByColumn": "callTime",
             "isAsc": "desc",
         }
-        data = fetch_json_post(opener, case_url, payload, referer=f"{DEFAULT_ORIGIN}/dsjfx/case", timeout=timeout)
+        data = fetch_json_post(opener, case_url, payload, referer=f"{DEFAULT_ORIGIN}/dsjfxxb/case", timeout=timeout)
         if _looks_not_logged_in(data):
             raise RuntimeError("case/list 返回未登录或超时，请检查登录脚本/账号状态。")
         if not isinstance(data, dict):

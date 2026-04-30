@@ -18,3 +18,8 @@ jingqing_anjian/templates/biaochezhajieribao_fujian.xlsx
 
 # 五类地址分类模型（不上传大模型文件）
 gonggong/5lei_dizhi_model/
+
+venv/
+*.pyc
+__pycache__/
+.env
