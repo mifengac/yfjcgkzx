@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户管理</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    
+    /* 顶部导航 */
+    .page-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 24px; padding: 16px 24px; background: #fff;
+      border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .page-header h2 { margin: 0; color: #1a1a1a; font-size: 20px; }
+    .header-actions { display: flex; gap: 12px; }
+    
+    /* 统计卡片 */
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+    .stat-card {
+      background: #fff; padding: 20px; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 16px;
+    }
+    .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+    .stat-icon.users { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+    .stat-icon.perms { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: #fff; }
+    .stat-icon.active { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: #fff; }
+    .stat-info h3 { margin: 0; font-size: 28px; color: #1a1a1a; }
+    .stat-info p { margin: 4px 0 0; color: #666; font-size: 14px; }
+    
+    /* 搜索和操作栏 */
+    .toolbar {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 16px; padding: 16px 20px; background: #fff;
+      border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .search-box { display: flex; gap: 8px; }
+    .search-box input {
+      padding: 8px 16px; border: 1px solid #d9d9d9; border-radius: 6px;
+      font-size: 14px; width: 280px; transition: all 0.3s;
+    }
+    .search-box input:focus { border-color: #1890ff; outline: none; box-shadow: 0 0 0 2px rgba(24,144,255,0.2); }
+    
+    /* 按钮样式 */
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
+      font-size: 14px; font-weight: 500; transition: all 0.3s; display: inline-flex;
+      align-items: center; gap: 6px;
+    }
+    .btn-primary { background: #1890ff; color: #fff; }
+    .btn-primary:hover { background: #40a9ff; }
+    .btn-success { background: #52c41a; color: #fff; }
+    .btn-success:hover { background: #73d13d; }
+    .btn-danger { background: #ff4d4f; color: #fff; }
+    .btn-danger:hover { background: #ff7875; }
+    .btn-default { background: #fff; color: #666; border: 1px solid #d9d9d9; }
+    .btn-default:hover { color: #1890ff; border-color: #1890ff; }
+    .btn-sm { padding: 4px 12px; font-size: 13px; }
+    
+    /* 表格样式 */
+    .table-card {
+      background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden;
+    }
+    .table-header { padding: 16px 20px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+    .table-header h3 { margin: 0; font-size: 16px; color: #1a1a1a; }
+    
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #f0f0f0; }
+    th { background: #fafafa; font-weight: 600; color: #1a1a1a; font-size: 13px; }
+    td { font-size: 14px; color: #333; }
+    tr:hover td { background: #fafafa; }
+    
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 12px; font-weight: 500; margin: 2px;
+    }
+    .badge-blue { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
+    .badge-green { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+    .badge-orange { background: #fff7e6; color: #fa8c16; border: 1px solid #ffd591; }
+    
+    .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+    .empty-state svg { width: 64px; height: 64px; margin-bottom: 16px; opacity: 0.4; }
+    
+    /* 模态框 */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.45); display: none; align-items: center;
+      justify-content: center; z-index: 1000;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: #fff; border-radius: 8px; width: 520px; max-height: 90vh;
+      overflow-y: auto; box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+    }
+    .modal-header {
+      padding: 16px 24px; border-bottom: 1px solid #f0f0f0;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-header h3 { margin: 0; font-size: 16px; }
+    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #999; }
+    .modal-close:hover { color: #333; }
+    .modal-body { padding: 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 8px; }
+    
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; color: #333; font-size: 14px; }
+    .form-group input, .form-group select {
+      width: 100%; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px;
+      font-size: 14px; transition: all 0.3s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: #1890ff; outline: none; box-shadow: 0 0 0 2px rgba(24,144,255,0.2);
+    }
+    .form-hint { font-size: 12px; color: #999; margin-top: 4px; }
+    
+    .perm-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .perm-tag {
+      display: flex; align-items: center; gap: 4px; padding: 4px 12px;
+      background: #f5f5f5; border-radius: 4px; font-size: 13px;
+    }
+    .perm-tag .remove { cursor: pointer; color: #999; }
+    .perm-tag .remove:hover { color: #ff4d4f; }
+    
+    .action-btns { display: flex; gap: 4px; }
+    .action-btns .btn { padding: 4px 8px; }
+    
+    /* 提示消息 */
+    .toast {
+      position: fixed; top: 20px; right: 20px; padding: 12px 20px;
+      border-radius: 6px; color: #fff; font-size: 14px; z-index: 2000;
+      animation: slideIn 0.3s ease;
+    }
+    .toast.success { background: #52c41a; }
+    .toast.error { background: #ff4d4f; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 顶部导航 -->
+    <div class="page-header">
+      <h2>👥 用户管理</h2>
+      <div class="header-actions">
+        <a class="btn btn-default" href="{{ url_for('main')">← 返回主菜单</a>
+        <button class="btn btn-default" onclick="window.location.reload()">🔄 刷新</button>
+      </div>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon users">👤</div>
+        <div class="stat-info">
+          <h3 id="stat-total">0</h3>
+          <p>用户总数</p>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon perms">🔐</div>
+        <div class="stat-info">
+          <h3 id="stat-perms">0</h3>
+          <p>权限记录</p>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon active">✅</div>
+        <div class="stat-info">
+          <h3 id="stat-modules">0</h3>
+          <p>模块数量</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 搜索和操作栏 -->
+    <div class="toolbar">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="🔍 搜索用户名..." oninput="filterUsers()">
+      </div>
+      <div>
+        <button class="btn btn-success" onclick="openAddModal()">➕ 新增用户</button>
+        <button class="btn btn-default" onclick="loadUsers()">🔄 刷新</button>
+      </div>
+    </div>
+
+    <!-- 用户列表 -->
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:50px">ID</th>
+            <th>用户名</th>
+            <th>权限模块</th>
+            <th style="width:200px">操作</th>
+          </tr>
+        </thead>
+        <tbody id="userTableBody">
+          <tr><td colspan="4" class="empty-state">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 新增/编辑用户模态框 -->
+  <div class="modal-overlay" id="userModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">新增用户</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editUsername">
+        <div class="form-group">
+          <label>用户名 *</label>
+          <input type="text" id="inputUsername" placeholder="请输入用户名">
+        </div>
+        <div class="form-group">
+          <label>密码 *</label>
+          <input type="password" id="inputPassword" placeholder="请输入密码">
+          <div class="form-hint">编辑时留空则不修改密码</div>
+        </div>
+        <div class="form-group">
+          <label>权限模块</label>
+          <div style="display:flex;gap:8px">
+            <select id="permSelect" style="flex:1">
+              <option value="">选择模块...</option>
+              <option value="获取综查数据">获取综查数据</option>
+              <option value="后台">后台</option>
+              <option value="巡防">巡防</option>
+              <option value="治综">治综</option>
+              <option value="警情">警情</option>
+              <option value="矛盾纠纷">矛盾纠纷</option>
+              <option value="精神障碍">精神障碍</option>
+              <option value="通用工具">通用工具</option>
+            </select>
+            <button class="btn btn-primary" onclick="addPerm()">添加</button>
+          </div>
+          <div class="perm-tags" id="permTags"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-default" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveUser()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let users = [];
+    let currentPerms = [];
+
+    // 加载用户列表
+    async function loadUsers() {
+      try {
+        const resp = await fetch('/houtai/api/users');
+        const data = await resp.json();
+        if (data.success) {
+          users = data.data;
+          renderTable(users);
+          updateStats(data.data);
+        }
+      } catch (e) {
+        showToast('加载失败: ' + e.message, 'error');
+      }
+    }
+
+    // 渲染表格
+    function renderTable(list) {
+      const tbody = document.getElementById('userTableBody');
+      if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">暂无用户数据</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map(u => `
+        <tr>
+          <td>${u.id}</td>
+          <td><strong>${escHtml(u.username)}</strong></td>
+          <td>${(u.perms || []).map(p => `<span class="badge badge-blue">${escHtml(p)}</span>`).join('')}</td>
+          <td class="action-btns">
+            <button class="btn btn-primary btn-sm" onclick="editUser('${escAttr(u.username)}')">✏️ 编辑</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteUser('${escAttr(u.username)}')">🗑️ 删除</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // 更新统计
+    function updateStats(data) {
+      document.getElementById('stat-total').textContent = data.length;
+      let permCount = 0;
+      const modules = new Set();
+      data.forEach(u => {
+        (u.perms || []).forEach(p => { permCount++; modules.add(p); });
+      });
+      document.getElementById('stat-perms').textContent = permCount;
+      document.getElementById('stat-modules').textContent = modules.size;
+    }
+
+    // 搜索过滤
+    function filterUsers() {
+      const keyword = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = users.filter(u => u.username.toLowerCase().includes(keyword));
+      renderTable(filtered);
+    }
+
+    // 打开新增模态框
+    function openAddModal() {
+      document.getElementById('modalTitle').textContent = '新增用户';
+      document.getElementById('editUsername').value = '';
+      document.getElementById('inputUsername').value = '';
+      document.getElementById('inputPassword').value = '';
+      document.getElementById('inputUsername').disabled = false;
+      currentPerms = [];
+      renderPermTags();
+      document.getElementById('userModal').classList.add('active');
+    }
+
+    // 编辑用户
+    function editUser(username) {
+      const user = users.find(u => u.username === username);
+      if (!user) return;
+      document.getElementById('modalTitle').textContent = '编辑用户';
+      document.getElementById('editUsername').value = username;
+      document.getElementById('inputUsername').value = username;
+      document.getElementById('inputUsername').disabled = true;
+      document.getElementById('inputPassword').value = '';
+      currentPerms = [...(user.perms || [])];
+      renderPermTags();
+      document.getElementById('userModal').classList.add('active');
+    }
+
+    // 关闭模态框
+    function closeModal() {
+      document.getElementById('userModal').classList.remove('active');
+    }
+
+    // 添加权限
+    function addPerm() {
+      const select = document.getElementById('permSelect');
+      const perm = select.value;
+      if (!perm) return;
+      if (!currentPerms.includes(perm)) {
+        currentPerms.push(perm);
+        renderPermTags();
+      }
+      select.value = '';
+    }
+
+    // 渲染权限标签
+    function renderPermTags() {
+      const container = document.getElementById('permTags');
+      container.innerHTML = currentPerms.map(p => `
+        <span class="perm-tag">${escHtml(p)} <span class="remove" onclick="removePerm('${escAttr(p)}')">&times;</span></span>
+      `).join('');
+    }
+
+    // 移除权限
+    function removePerm(perm) {
+      currentPerms = currentPerms.filter(p => p !== perm);
+      renderPermTags();
+    }
+
+    // 保存用户
+    async function saveUser() {
+      const editUser = document.getElementById('editUsername').value;
+      const username = document.getElementById('inputUsername').value.trim();
+      const password = document.getElementById('inputPassword').value;
+
+      if (!username) { showToast('请输入用户名', 'error'); return; }
+      if (!editUser && !password) { showToast('请输入密码', 'error'); return; }
+
+      try {
+        const resp = await fetch('/houtai/api/users/save', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            original_username: editUser,
+            username: username,
+            password: password,
+            permissions: currentPerms
+          })
+        });
+        const data = await resp.json();
+        if (data.success) {
+          showToast('保存成功', 'success');
+          closeModal();
+          loadUsers();
+        } else {
+          showToast(data.message || '保存失败', 'error');
+        }
+      } catch (e) {
+        showToast('请求失败: ' + e.message, 'error');
+      }
+    }
+
+    // 删除用户
+    async function deleteUser(username) {
+      if (!confirm(`确定要删除用户 "${username}" 吗？`)) return;
+      try {
+        const resp = await fetch('/houtai/api/users/delete', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username })
+        });
+        const data = await resp.json();
+        if (data.success) {
+          showToast('删除成功', 'success');
+          loadUsers();
+        } else {
+          showToast(data.message || '删除失败', 'error');
+        }
+      } catch (e) {
+        showToast('请求失败: ' + e.message, 'error');
+      }
+    }
+
+    // 提示消息
+    function showToast(msg, type) {
+      const toast = document.createElement('div');
+      toast.className = 'toast ' + type;
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // HTML转义
+    function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function escAttr(s) { return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+    // 初始化
+    loadUsers();
+  </script>
+</body>
+</html>
