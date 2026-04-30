@@ -50,6 +50,7 @@ Key modules in active use include:
 
 - `docs/agent-guides/business/business_database.md`: read before queries or analysis involving police incidents, case records, administrative penalties, criminal detention, arrests, prosecution records, suspect information, or case-involved person information.
 - `docs/agent-guides/integrations/dsjjqfx.md`: read before changes involving `http://68.253.2.111/dsjfx`, `/plan/treeViewData`, `/nature/treeNewViewData`, `/case/list`, or `/srr/list`.
+- `docs/agent-guides/integrations/province_incident_system.md`: read before changes involving the provincial incident system, `省厅警情系统`, `http://68.29.179.170/dsjfxxb`, `/dsjfxxb/case/list`, `/nature/treeViewData`, `/mark/treeViewData`, or `/cmd/selectFirstCmdList`.
 - `docs/agent-guides/region/region_grouping.md`: read before coding or SQL tasks involving region grouping, county/district grouping, police-station grouping, organization codes, or area-code/name mapping.
 
 ## Local Development
@@ -73,7 +74,7 @@ Use Python 3.12 locally when possible to match the Dockerfile. Some optional dep
 - The app generates a new Flask `SECRET_KEY` on startup. Be careful when changing session handling or login flow because restart behavior affects active sessions.
 - Many modules rely on `session["username"]` plus rows in `ywdata.jcgkzx_permission` for access control. Preserve the current login and permission pattern when editing route code.
 - Shared upstream session handling lives in `gonggong.service.session_manager`. It is designed to log in lazily and includes retry and cooldown behavior. Avoid turning that into eager import-time network traffic.
-- Several modules depend on internal upstream systems such as `68.253.2.111`, `68.253.2.107`, and `68.29.177.247`, plus a local OpenAI-compatible llama endpoint. Do not assume public internet access or replace internal calls with internet services.
+- Several modules depend on internal upstream systems such as `68.253.2.111`, `68.253.2.107`, `68.29.177.247`, and `68.29.179.170`, plus a local OpenAI-compatible llama endpoint. Do not assume public internet access or replace internal calls with internet services.
 - User-facing UI copy and many business fields are Chinese. Some files or outputs may look garbled in a non-UTF-8 terminal. Verify actual file contents carefully before mass editing Chinese strings.
 
 ## Testing Guidance
@@ -129,3 +130,4 @@ Before making non-trivial changes, read these files first:
 - the relevant module under `routes/`, `service/`, and `dao/`
 - the closest existing test under `tests/`
 - `docs/agent-guides/integrations/dsjjqfx.md` first if the code path involves `http://68.253.2.111` or `/dsjfx/`
+- `docs/agent-guides/integrations/province_incident_system.md` first if the code path involves the provincial incident system, `省厅警情系统`, `http://68.29.179.170`, or `/dsjfxxb/`

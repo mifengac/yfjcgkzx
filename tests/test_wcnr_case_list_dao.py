@@ -55,6 +55,28 @@ class TestWcnrCaseListDao(unittest.TestCase):
         self.assertEqual(payload["orderByColumn"], "callTime")
         self.assertEqual(payload["isAsc"], "desc")
 
+    def test_build_province_minor_payload_uses_requested_filters(self) -> None:
+        payload = wcnr_case_list_dao._build_province_minor_case_payload(
+            start_time="2026-01-01 00:00:00",
+            end_time="2026-01-02 00:00:00",
+            page_num=3,
+        )
+
+        self.assertEqual(payload["params[startTime]"], "2026-01-01 00:00:00")
+        self.assertEqual(payload["params[endTime]"], "2026-01-02 00:00:00")
+        self.assertEqual(payload["charaNo"], "01,02")
+        self.assertEqual(payload["chara"], "刑事类警情,行政（治安）类警情")
+        self.assertEqual(payload["caseMarkNo"], "01020201,0102020101,0102020102,0102020103")
+        self.assertEqual(payload["caseMark"], "未成年人,未成年人（加害方）,未成年人（受害方）,未成年人（其他）")
+        self.assertIn("110报警", payload["caseSourceName"])
+        self.assertEqual(payload["dutyDeptName"], "全部")
+        self.assertEqual(payload["oriChara"], "全部")
+        self.assertEqual(payload["fixCaseSourceName"], "全部")
+        self.assertEqual(payload["pageSize"], "2000")
+        self.assertEqual(payload["pageNum"], "3")
+        self.assertEqual(payload["orderByColumn"], "alarmTime")
+        self.assertEqual(payload["isAsc"], "desc")
+
     def test_build_campus_bullying_payload_uses_required_filters(self) -> None:
         payload = wcnr_case_list_dao._build_campus_bullying_case_payload(
             start_time="2026-04-01 00:00:00",
@@ -93,6 +115,23 @@ class TestWcnrCaseListDao(unittest.TestCase):
         self.assertEqual(first_payload["pageSize"], "2")
         self.assertEqual(first_payload["pageNum"], "1")
         self.assertEqual(second_payload["pageNum"], "2")
+
+    def test_fetch_province_minor_case_rows_uses_province_client(self) -> None:
+        with patch.object(wcnr_case_list_dao, "CASE_LIST_PAGE_SIZE", 2), patch(
+            "hqzcsj.dao.wcnr_case_list_dao.province_api_client.get_case_list",
+            return_value={"code": 0, "total": 1, "rows": [{"caseNo": "P1"}]},
+        ) as mock_get_case_list:
+            rows = wcnr_case_list_dao.fetch_province_minor_case_rows(
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+            )
+
+        self.assertEqual(rows, [{"caseNo": "P1"}])
+        payload = mock_get_case_list.call_args.args[0]
+        self.assertEqual(payload["params[startTime]"], "2026-01-01 00:00:00")
+        self.assertEqual(payload["params[endTime]"], "2026-01-02 00:00:00")
+        self.assertEqual(payload["charaNo"], "01,02")
+        self.assertEqual(payload["caseMarkNo"], "01020201,0102020101,0102020102,0102020103")
 
     def test_fetch_campus_bullying_case_rows_uses_campus_payload(self) -> None:
         with patch(
@@ -166,6 +205,7 @@ class TestWcnrCaseListDao(unittest.TestCase):
             {"caseNo": "A1", "newCharaSubclass": "02020201"},
             {"caseNo": "A2", "newcharasubclass": "01020301"},
             {"caseNo": "A3", "newCharaSubclass": "12010000"},
+            {"caseNo": "A4", "charaNo": "01010101"},
         ]
 
         all_rows = wcnr_case_list_dao.filter_minor_case_rows_by_subclasses(rows, subclass_codes=None)
@@ -173,13 +213,13 @@ class TestWcnrCaseListDao(unittest.TestCase):
             rows, subclass_codes=["02020201"]
         )
         multi_rows = wcnr_case_list_dao.filter_minor_case_rows_by_subclasses(
-            rows, subclass_codes=["02020201", "01020301"]
+            rows, subclass_codes=["02020201", "01020301", "01010101"]
         )
         empty_rows = wcnr_case_list_dao.filter_minor_case_rows_by_subclasses(rows, subclass_codes=[])
 
-        self.assertEqual([row["caseNo"] for row in all_rows], ["A1", "A2"])
+        self.assertEqual([row["caseNo"] for row in all_rows], ["A1", "A2", "A4"])
         self.assertEqual([row["caseNo"] for row in single_rows], ["A1"])
-        self.assertEqual([row["caseNo"] for row in multi_rows], ["A1", "A2"])
+        self.assertEqual([row["caseNo"] for row in multi_rows], ["A1", "A2", "A4"])
         self.assertEqual(empty_rows, [])
 
     def test_detail_rows_use_region_fallback_sorting_and_limit(self) -> None:
@@ -199,16 +239,16 @@ class TestWcnrCaseListDao(unittest.TestCase):
             },
             {
                 "caseNo": "A2",
-                "callTime": "2026-01-01 08:00:00",
+                "alarmTime": "2026-01-01 08:00:00",
                 "dutydeptname": "单位2",
-                "cmdname": "分局2",
+                "uploadAreaName": "分局2",
                 "occuraddress": "地址2",
                 "casecontents": "内容2",
-                "replies": "处警2",
+                "supplementCaseContents": "处警2",
                 "casemark": "未成年人（受害方）",
-                "lngofcriterion": "112",
-                "latofcriterion": "23",
-                "dutyDeptNo": "445303888888",
+                "lngOfCall": "112",
+                "latOfCall": "23",
+                "areaNo": "445303",
             },
         ]
 

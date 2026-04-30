@@ -5,7 +5,7 @@ import time
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
-from hqzcsj.dao import zfba_jq_aj_dao, zfba_wcnr_jqaj_dao
+from hqzcsj.dao import wcnr_case_list_dao, zfba_jq_aj_dao, zfba_wcnr_jqaj_dao
 
 
 GRADUATE_SOURCE_TABLE_SQL = '"ywdata"."zq_zfba_wcnr_sfzxx_lxxx"'
@@ -538,6 +538,73 @@ def _fetch_merged_case_rows_by_type(
     )
     victim_rows = _attach_region_fields(victim_base_rows)
     return _merge_case_rows_by_type(suspect_base_rows, victim_rows), victim_rows
+
+
+def _fetch_wcnr_suspect_case_rows_by_type(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    patterns: Sequence[str],
+) -> Dict[str, List[Dict[str, Any]]]:
+    suspect_base_rows = zfba_wcnr_jqaj_dao.fetch_wcnr_ajxx_changsuo_base_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+        diqu=None,
+    )
+    suspect_rows = _with_case_source(_attach_region_fields(suspect_base_rows), SUSPECT_CASE_SOURCE)
+    return {
+        case_type: _filter_rows_by_case_type(suspect_rows, case_type)
+        for case_type in MERGED_CASE_TYPES
+    }
+
+
+def _fetch_province_minor_jq_raw_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+) -> List[Dict[str, Any]]:
+    subclass_codes = (
+        zfba_wcnr_jqaj_dao.fetch_newcharasubclass_list(conn, leixing_list=leixing_list)
+        if leixing_list
+        else None
+    )
+    if leixing_list and not subclass_codes:
+        return []
+    rows = wcnr_case_list_dao.fetch_province_minor_case_rows(
+        start_time=start_time,
+        end_time=end_time,
+    )
+    return wcnr_case_list_dao.filter_minor_case_rows_by_subclasses(
+        rows,
+        subclass_codes=subclass_codes,
+    )
+
+
+def _fetch_province_minor_jq_detail_rows(
+    conn,
+    *,
+    start_time: str,
+    end_time: str,
+    leixing_list: Sequence[str],
+    limit: int = 0,
+) -> Tuple[List[Dict[str, Any]], bool]:
+    raw_rows = _fetch_province_minor_jq_raw_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+    )
+    rows, truncated = wcnr_case_list_dao.build_minor_case_detail_rows(
+        raw_rows,
+        diqu="__ALL__",
+        limit=limit,
+    )
+    return _attach_region_fields(rows), truncated
 
 
 def _classify_bqh_rows(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
@@ -2127,7 +2194,17 @@ def _fetch_zmjz_ratio_rows(
 
 
 def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Sequence[str], metric: str) -> List[Dict[str, Any]]:
-    if metric in ("警情", "转案数"):
+    if metric == "警情":
+        rows, _ = _fetch_province_minor_jq_detail_rows(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            leixing_list=leixing_list,
+            limit=0,
+        )
+        return rows
+
+    if metric == "转案数":
         rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
             conn,
             metric=metric,
@@ -2154,17 +2231,13 @@ def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Seq
         return merged_rows_by_type.get(metric, [])
 
     if metric == "警情(场所)":
-        rows, _ = zfba_wcnr_jqaj_dao.fetch_detail_rows(
+        rows, _ = _fetch_province_minor_jq_detail_rows(
             conn,
-            metric="警情",
-            diqu="__ALL__",
             start_time=start_time,
             end_time=end_time,
             leixing_list=leixing_list,
-            za_types=[],
             limit=0,
         )
-        rows = _attach_region_fields(rows)
         return _filter_rows_by_place_keywords(rows, field_names=("处警情况",))
 
     if metric == "案件(场所)":
@@ -2214,8 +2287,17 @@ def _populate_base_counts_and_place_rows(
     mark_perf,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     t = time.perf_counter()
-    jq_counts = zfba_wcnr_jqaj_dao.count_jq_by_diqu(
-        conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
+    jq_raw_rows = _fetch_province_minor_jq_raw_rows(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        leixing_list=leixing_list,
+    )
+    jq_counts = wcnr_case_list_dao.count_minor_case_rows_by_region(jq_raw_rows)
+    jq_detail_rows, _ = wcnr_case_list_dao.build_minor_case_detail_rows(
+        jq_raw_rows,
+        diqu="__ALL__",
+        limit=0,
     )
     za_counts = zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu(
         conn, start_time=start_time, end_time=end_time, leixing_list=leixing_list
@@ -2225,12 +2307,9 @@ def _populate_base_counts_and_place_rows(
     counts["zhuanan"] = _normalize_count_map(za_counts)
 
     t = time.perf_counter()
-    jq_changsuo_rows = _load_detail_rows(
-        conn,
-        start_time=start_time,
-        end_time=end_time,
-        leixing_list=leixing_list,
-        metric="警情(场所)",
+    jq_changsuo_rows = _filter_rows_by_place_keywords(
+        _attach_region_fields(jq_detail_rows),
+        field_names=("处警情况",),
     )
     aj_changsuo_rows = _load_detail_rows(
         conn,
@@ -2274,9 +2353,15 @@ def _populate_case_counts(
         end_time=end_time,
         patterns=patterns,
     )
+    suspect_rows_by_type = _fetch_wcnr_suspect_case_rows_by_type(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=patterns,
+    )
     counts["xingzheng"] = _count_rows_by_region(merged_rows_by_type.get("行政", []))
     counts["xingshi"] = _count_rows_by_region(merged_rows_by_type.get("刑事", []))
-    counts["wcnr_xingshi"] = _count_rows_by_region(merged_rows_by_type.get("刑事", []))
+    counts["wcnr_xingshi"] = _count_rows_by_region(suspect_rows_by_type.get("刑事", []))
     jqaj_ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(
         conn,
         start_time=start_time,
@@ -2616,7 +2701,13 @@ def _build_period_details(
     details["zmjz_reoff:numerator"] = list(zmjz_num_rows)
     details["zmjz_reoff:denominator"] = list(zmjz_den_rows)
 
-    details["xingshi_ratio:numerator"] = xingshi_rows
+    suspect_rows_by_type = _fetch_wcnr_suspect_case_rows_by_type(
+        conn,
+        start_time=start_time,
+        end_time=end_time,
+        patterns=zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=_normalize_leixing_for_query(conn, leixing_list)),
+    )
+    details["xingshi_ratio:numerator"] = suspect_rows_by_type.get("刑事", [])
     jqaj_xingshi_rows, _ = zfba_jq_aj_dao.fetch_detail_rows(
         conn,
         metric="刑事",
@@ -2736,8 +2827,15 @@ def fetch_metric_detail_rows(
                 limit=0,
             )
             return normalize_rows_for_output(_attach_region_fields(_rows))
-        rows = _load_detail_rows(conn, start_time=start_time, end_time=end_time,
-                                 leixing_list=leixing, metric="刑事")
+        patterns, empty = _patterns_and_empty()
+        if empty:
+            return []
+        rows = _fetch_wcnr_suspect_case_rows_by_type(
+            conn,
+            start_time=start_time,
+            end_time=end_time,
+            patterns=patterns,
+        ).get("刑事", [])
         return normalize_rows_for_output(rows)
 
     # ── 5. 被侵害案件 / 场所被侵害案件 ─────────────────────────────────────
