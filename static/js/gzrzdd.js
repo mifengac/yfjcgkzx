@@ -2,6 +2,8 @@
 
 let lastResultId = "";
 let lastCount = 5;
+let lastStartTime = "";
+let lastEndTime = "";
 
 function $(id) {
   return document.getElementById(id);
@@ -13,6 +15,25 @@ function setErr(t) {
 
 function setStatus(t) {
   $("status").textContent = t || "";
+}
+
+function normalizeDateTimeValue(value) {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  const text = raw.replace("T", " ");
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text)) {
+    return `${text}:00`;
+  }
+  return text;
+}
+
+function validateTimeRange(startTime, endTime) {
+  if (!startTime || !endTime) return;
+  const startMs = Date.parse(startTime.replace(" ", "T"));
+  const endMs = Date.parse(endTime.replace(" ", "T"));
+  if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && startMs > endMs) {
+    throw new Error("工作日志开始时间不能晚于结束时间");
+  }
 }
 
 function renderTable(payload) {
@@ -73,13 +94,19 @@ async function run() {
   $("exportBtn").disabled = true;
   setStatus("统计中...");
 
-  lastCount = parseInt($("count").value || "5", 10) || 5;
-  const body = {
-    count: lastCount,
-    chongfudu: parseFloat($("chongfudu").value || "80"),
-  };
-
   try {
+    lastCount = parseInt($("count").value || "5", 10) || 5;
+    lastStartTime = normalizeDateTimeValue(($("workStartTime") || {}).value || "");
+    lastEndTime = normalizeDateTimeValue(($("workEndTime") || {}).value || "");
+    validateTimeRange(lastStartTime, lastEndTime);
+
+    const body = {
+      count: lastCount,
+      chongfudu: parseFloat($("chongfudu").value || "80"),
+      start_time: lastStartTime,
+      end_time: lastEndTime,
+    };
+
     const resp = await fetch("/gzrzdd/api/stats", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -91,6 +118,10 @@ async function run() {
     }
     lastResultId = js.result_id;
     renderTable(js.pivot || {});
+    const timeText =
+      lastStartTime || lastEndTime
+        ? "，工作日志时间=" + (lastStartTime || "不限") + " 至 " + (lastEndTime || "不限")
+        : "";
     setStatus(
       "完成：result_id=" +
         js.result_id +
@@ -98,7 +129,8 @@ async function run() {
         js.count +
         "，阈值=" +
         js.threshold_percent +
-        "%"
+        "%" +
+        timeText
     );
     $("exportBtn").disabled = false;
   } catch (e) {

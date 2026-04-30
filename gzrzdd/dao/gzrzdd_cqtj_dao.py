@@ -45,13 +45,26 @@ FROM
 			AND gkzt = '01'
 	) a
 LEFT JOIN stdata.b_dic_zzjgdm b ON
-	a.lgdw = b.sspcsdm LEFT JOIN (SELECT * FROM stdata.b_zdry_ryxx_gzrz WHERE deleteflag='0') c ON a.systemid=c.zdryid LEFT JOIN (SELECT code,detail  FROM stdata.s_sg_dict WHERE kind_code='ZAZDRY_GZRZ_GZLX') d ON c.gzlx=d.code  LEFT JOIN (SELECT code,detail FROM stdata.s_sg_dict WHERE kind_code='ZDRY_YYBF_FXPG' ) e ON a.fxdj=e.code WHERE c.kzgzsj >='2025-1-1'
+	a.lgdw = b.sspcsdm LEFT JOIN (SELECT * FROM stdata.b_zdry_ryxx_gzrz WHERE deleteflag='0') c ON a.systemid=c.zdryid LEFT JOIN (SELECT code,detail  FROM stdata.s_sg_dict WHERE kind_code='ZAZDRY_GZRZ_GZLX') d ON c.gzlx=d.code  LEFT JOIN (SELECT code,detail FROM stdata.s_sg_dict WHERE kind_code='ZDRY_YYBF_FXPG' ) e ON a.fxdj=e.code WHERE 1=1
 """
 
 
-def load_zdrygzrzs(sql: Optional[str] = None) -> pd.DataFrame:
+def load_zdrygzrzs(
+    sql: Optional[str] = None,
+    *,
+    start_time: object = None,
+    end_time: object = None,
+) -> pd.DataFrame:
     sql = (sql if sql is not None else DEFAULT_ZDRYGZRZS_SQL) or ""
     if not sql.strip():
         raise ValueError("未配置 SQL：请在 gzrzdd/dao/gzrzdd_cqtj_dao.py 设置 DEFAULT_ZDRYGZRZS_SQL")
-    return query_to_dataframe(sql)
+    params = []
+    if sql == DEFAULT_ZDRYGZRZS_SQL:
+        if start_time:
+            sql += "\nAND c.kzgzsj >= %s"
+            params.append(start_time)
+        if end_time:
+            sql += "\nAND c.kzgzsj <= %s"
+            params.append(end_time)
+    return query_to_dataframe(sql, params)
 

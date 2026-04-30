@@ -16,7 +16,7 @@ from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
 
 from gonggong.utils.error_handler import log_info
-from gzrzdd.dao.gzrzdd_dao import DEFAULT_GZRZ_SQL, find_col, query_to_dataframe
+from gzrzdd.dao.gzrzdd_dao import find_col, query_gzrz_by_work_time
 
 
 COL_ID = "证件号码"
@@ -34,6 +34,29 @@ def _now_ts() -> str:
 
 def _norm(s: Any) -> str:
     return ("" if s is None else str(s)).strip()
+
+
+def _parse_datetime_filter(value: Any, field_name: str, *, end_of_day: bool = False) -> Optional[datetime]:
+    text = _norm(value).replace("T", " ")
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(text, fmt)
+            if fmt == "%Y-%m-%d" and end_of_day:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt
+        except ValueError:
+            pass
+    raise ValueError(f"{field_name}格式错误，应为 YYYY-MM-DD HH:MM:SS")
+
+
+def _parse_work_time_range(start_time: Any = None, end_time: Any = None) -> Tuple[Optional[datetime], Optional[datetime]]:
+    start_dt = _parse_datetime_filter(start_time, "工作日志开始时间")
+    end_dt = _parse_datetime_filter(end_time, "工作日志结束时间", end_of_day=True)
+    if start_dt and end_dt and start_dt > end_dt:
+        raise ValueError("工作日志开始时间不能大于结束时间")
+    return start_dt, end_dt
 
 
 def parse_threshold_percent(v: Any) -> float:
@@ -301,9 +324,16 @@ def _join_texts(values: Iterable[Any]) -> str:
     return "\n".join(lines)
 
 
-def compute_stats(*, count: int, threshold_percent: float) -> Tuple[str, Dict[str, Any]]:
+def compute_stats(
+    *,
+    count: int,
+    threshold_percent: float,
+    start_time: Any = None,
+    end_time: Any = None,
+) -> Tuple[str, Dict[str, Any]]:
     cache_gc()
-    df = query_to_dataframe(DEFAULT_GZRZ_SQL)
+    start_dt, end_dt = _parse_work_time_range(start_time, end_time)
+    df = query_gzrz_by_work_time(start_dt, end_dt)
     if df.empty:
         rid = uuid.uuid4().hex
         CACHE[rid] = CachedResult(time.time(), count, parse_threshold_percent(threshold_percent), pd.DataFrame(), df.copy())
@@ -322,8 +352,20 @@ def compute_stats(*, count: int, threshold_percent: float) -> Tuple[str, Dict[st
 
     work = df.copy()
     work[c_sort] = pd.to_datetime(work[c_sort], errors="coerce")
+    work["__work_dt_filter"] = pd.to_datetime(work[c_work_time], errors="coerce")
+    if start_dt:
+        work = work[work["__work_dt_filter"] >= start_dt].copy()
+    if end_dt:
+        work = work[work["__work_dt_filter"] <= end_dt].copy()
+    if work.empty:
+        rid = uuid.uuid4().hex
+        empty_df = work.drop(columns=["__work_dt_filter"], errors="ignore")
+        CACHE[rid] = CachedResult(time.time(), count, thr, pd.DataFrame(), empty_df.copy())
+        log_info(f"gzrzdd stats computed: result_id={rid}, person_rows=0")
+        return rid, {"rows": [], "cols": [], "data": []}
+
     # 取“最近N条”时，按“开展工作时间”倒序优先（同一人内）
-    work["__work_dt_sel"] = pd.to_datetime(work[c_work_time], errors="coerce")
+    work["__work_dt_sel"] = work["__work_dt_filter"]
     work["__work_dt_sel_filled"] = work["__work_dt_sel"].fillna(pd.Timestamp.min)
     work = work.sort_values(
         by=[c_id, "__work_dt_sel_filled", c_sort],
@@ -332,7 +374,7 @@ def compute_stats(*, count: int, threshold_percent: float) -> Tuple[str, Dict[st
     )
     latest = work.groupby(c_id, sort=False).head(int(count)).copy()
     latest = latest.reset_index(drop=True)
-    latest = latest.drop(columns=["__work_dt_sel", "__work_dt_sel_filled"], errors="ignore")
+    latest = latest.drop(columns=["__work_dt_filter", "__work_dt_sel", "__work_dt_sel_filled"], errors="ignore")
 
     station_vals = latest[c_station].astype(str).fillna("")
     name_vals = latest[c_name].astype(str).fillna("") if c_name else [""] * len(latest)

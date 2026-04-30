@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Sequence
 
 import pandas as pd
 
@@ -29,7 +29,7 @@ FROM (SELECT * FROM stdata.b_per_mdjffxrygl WHERE "deleteflag"='0' AND gkzt='01'
 LEFT JOIN stdata.b_dic_zzjgdm b ON a.lgdw = b.sspcsdm
 LEFT JOIN (SELECT * FROM stdata.b_zdry_ryxx_gzrz WHERE deleteflag='0') c ON a.systemid = c.zdryid
 LEFT JOIN (SELECT * FROM stdata.s_sg_dict WHERE kind_code='ZAZDRY_GZRZ_GZLX') d ON c.gzlx = d.code
-WHERE c.kzgzsj >= '2025-1-1'
+WHERE 1=1
 """.strip()
 
 
@@ -45,7 +45,7 @@ def ensure_select_only(sql: str) -> None:
         raise ValueError("SQL 中包含禁止关键字")
 
 
-def query_to_dataframe(sql: str) -> pd.DataFrame:
+def query_to_dataframe(sql: str, params: Sequence[object] | None = None) -> pd.DataFrame:
     ensure_select_only(sql)
     conn = get_database_connection()
     try:
@@ -53,12 +53,27 @@ def query_to_dataframe(sql: str) -> pd.DataFrame:
             schema = (DB_CONFIG.get("schema") or "").strip()
             if schema:
                 cur.execute(f"SET search_path TO {schema};")
-            cur.execute(sql)
+            if params:
+                cur.execute(sql, tuple(params))
+            else:
+                cur.execute(sql)
             rows = cur.fetchall()
             cols = [d[0] for d in cur.description]
         return pd.DataFrame(rows, columns=cols)
     finally:
         conn.close()
+
+
+def query_gzrz_by_work_time(start_time: object = None, end_time: object = None) -> pd.DataFrame:
+    sql = DEFAULT_GZRZ_SQL
+    params = []
+    if start_time:
+        sql += "\nAND c.kzgzsj >= %s"
+        params.append(start_time)
+    if end_time:
+        sql += "\nAND c.kzgzsj <= %s"
+        params.append(end_time)
+    return query_to_dataframe(sql, params)
 
 
 def find_col(df: pd.DataFrame, want: str) -> Optional[str]:
