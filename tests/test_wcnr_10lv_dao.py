@@ -301,6 +301,37 @@ class TestWcnr10lvDao(unittest.TestCase):
         self.assertEqual(rows[0]["地区"], "云城")
         self.assertEqual(rows[1]["地区"], "新兴")
 
+    def test_xingshi_detail_uses_only_suspect_minor_cases(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_jq_aj_dao.fetch_ay_patterns",
+            return_value=[".*"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_ajxx_changsuo_base_rows",
+            return_value=[
+                {"地区": "445303", "案件编号": "B1", "案件类型": "刑事"},
+                {"地区": "445321", "案件编号": "B2", "案件类型": "刑事"},
+                {"地区": "445302", "案件编号": "A1", "案件类型": "行政"},
+            ],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows",
+        ) as mock_fetch_victim_rows:
+            rows = fetch_metric_detail_rows(
+                object(),
+                metric="xingshi",
+                part="value",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+            )
+
+        self.assertEqual([row["案件编号"] for row in rows], ["B1", "B2"])
+        self.assertEqual([row["来源字段"] for row in rows], ["嫌疑人", "嫌疑人"])
+        self.assertEqual([row["地区"] for row in rows], ["云安", "新兴"])
+        mock_fetch_victim_rows.assert_not_called()
+
     def test_xingshi_ratio_numerator_uses_only_suspect_minor_cases(self) -> None:
         with patch(
             "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
@@ -332,7 +363,7 @@ class TestWcnr10lvDao(unittest.TestCase):
         self.assertEqual([row["地区"] for row in rows], ["云安", "新兴"])
         mock_fetch_victim_rows.assert_not_called()
 
-    def test_populate_case_counts_uses_suspect_only_counts_for_xingshi_ratio_numerator(self) -> None:
+    def test_populate_case_counts_uses_suspect_only_counts_for_xingshi_metrics(self) -> None:
         counts = {}
 
         with patch(
@@ -368,7 +399,8 @@ class TestWcnr10lvDao(unittest.TestCase):
                 mark_perf=lambda *_args, **_kwargs: None,
             )
 
-        self.assertEqual(counts["xingshi"]["__ALL__"], 2)
+        self.assertEqual(counts["xingshi"]["__ALL__"], 1)
+        self.assertEqual(counts["xingshi"]["445302"], 1)
         self.assertEqual(counts["wcnr_xingshi"]["__ALL__"], 1)
         self.assertEqual(counts["wcnr_xingshi"]["445302"], 1)
         self.assertEqual(counts["jqaj_xingshi"]["445302"], 7)

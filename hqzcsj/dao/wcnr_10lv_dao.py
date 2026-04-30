@@ -2222,6 +2222,14 @@ def _load_detail_rows(conn, *, start_time: str, end_time: str, leixing_list: Seq
         patterns = zfba_jq_aj_dao.fetch_ay_patterns(conn, leixing_list=leixing)
         if leixing and not patterns:
             return []
+        if metric == "刑事":
+            suspect_rows_by_type = _fetch_wcnr_suspect_case_rows_by_type(
+                conn,
+                start_time=start_time,
+                end_time=end_time,
+                patterns=patterns,
+            )
+            return suspect_rows_by_type.get(metric, [])
         merged_rows_by_type, _victim_rows = _fetch_merged_case_rows_by_type(
             conn,
             start_time=start_time,
@@ -2360,7 +2368,7 @@ def _populate_case_counts(
         patterns=patterns,
     )
     counts["xingzheng"] = _count_rows_by_region(merged_rows_by_type.get("行政", []))
-    counts["xingshi"] = _count_rows_by_region(merged_rows_by_type.get("刑事", []))
+    counts["xingshi"] = _count_rows_by_region(suspect_rows_by_type.get("刑事", []))
     counts["wcnr_xingshi"] = _count_rows_by_region(suspect_rows_by_type.get("刑事", []))
     jqaj_ajxx = zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx(
         conn,
