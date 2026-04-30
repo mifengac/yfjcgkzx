@@ -21,10 +21,11 @@ function normalizeDateTimeValue(value) {
   const raw = (value || "").trim();
   if (!raw) return "";
   const text = raw.replace("T", " ");
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text)) {
-    return `${text}:00`;
+  const m = text.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})(?::(\d{2}))?$/);
+  if (!m) {
+    throw new Error("工作日志时间格式应为 YYYY-MM-DD HH:MM:SS");
   }
-  return text;
+  return `${m[1]} ${m[2]}:${m[3] || "00"}`;
 }
 
 function validateTimeRange(startTime, endTime) {

@@ -46,10 +46,11 @@ function cqtjNormalizeDateTimeValue(value) {
   const raw = (value || "").trim();
   if (!raw) return "";
   const text = raw.replace("T", " ");
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text)) {
-    return `${text}:00`;
+  const m = text.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})(?::(\d{2}))?$/);
+  if (!m) {
+    throw new Error("工作日志时间格式应为 YYYY-MM-DD HH:MM:SS");
   }
-  return text;
+  return `${m[1]} ${m[2]}:${m[3] || "00"}`;
 }
 
 function cqtjGetTimeRange() {
@@ -66,6 +67,29 @@ function cqtjValidateTimeRange(startTime, endTime) {
   if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && startMs > endMs) {
     throw new Error("工作日志开始时间不能晚于结束时间");
   }
+}
+
+function cqtjFormatDateTimeForInput(dt) {
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const hh = String(dt.getHours()).padStart(2, "0");
+  const mi = String(dt.getMinutes()).padStart(2, "0");
+  const ss = String(dt.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}`;
+}
+
+function cqtjInitDefaultTimes() {
+  const startEl = cqtj$("cqtjStartTime");
+  const endEl = cqtj$("cqtjEndTime");
+  if (!startEl || !endEl) return;
+  if (startEl.value || endEl.value) return;
+
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const start = new Date(end.getTime() - 7 * 24 * 3600 * 1000);
+  startEl.value = cqtjFormatDateTimeForInput(start);
+  endEl.value = cqtjFormatDateTimeForInput(end);
 }
 
 function cqtjRender(records, mode) {
@@ -213,6 +237,7 @@ function gzrzddInitTabs() {
 
 function cqtjInit() {
   gzrzddInitTabs();
+  cqtjInitDefaultTimes();
 
   // 风险类型：下拉多选框
   const riskWrap = cqtj$("cqtjRiskTypes");

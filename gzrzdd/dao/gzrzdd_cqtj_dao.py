@@ -61,10 +61,10 @@ def load_zdrygzrzs(
     params = []
     if sql == DEFAULT_ZDRYGZRZS_SQL:
         if start_time:
-            sql += "\nAND c.kzgzsj >= %s"
+            sql += "\nAND c.kzgzsj::timestamp >= %s::timestamp"
             params.append(start_time)
         if end_time:
-            sql += "\nAND c.kzgzsj <= %s"
+            sql += "\nAND c.kzgzsj::timestamp <= %s::timestamp"
             params.append(end_time)
     return query_to_dataframe(sql, params)
 

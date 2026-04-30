@@ -21,7 +21,6 @@ def _sample_cqtj_logs() -> pd.DataFrame:
     rows = []
     for work_time in (
         "2026-01-05 10:00:00",
-        "2026-02-01 10:00:00",
     ):
         item = dict(base)
         item["工作日志开展工作时间"] = work_time
@@ -29,8 +28,27 @@ def _sample_cqtj_logs() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _sample_cqtj_missing_work_time() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "姓名": "王五",
+                "证件号码": "ID-C",
+                "风险等级": "高风险",
+                "分局名称": "云城分局",
+                "所属派出所": "城西派出所",
+                "列管时间": "2026-01-01 00:00:00",
+                "工作日志开展工作时间": None,
+                "工作日志工作类型": "",
+                "工作日志工作情况说明": "",
+                "工作日志系统登记时间": "",
+            }
+        ]
+    )
+
+
 class TestGzrzddCqtjTimeService(unittest.TestCase):
-    def test_query_cqtj_filters_work_log_time_before_latest_row(self) -> None:
+    def test_query_cqtj_passes_work_log_time_range_to_query(self) -> None:
         with patch.object(service, "load_zdrygzrzs", return_value=_sample_cqtj_logs()) as load_mock:
             _, records = service.query_cqtj(
                 mode="detail",
@@ -56,6 +74,14 @@ class TestGzrzddCqtjTimeService(unittest.TestCase):
                     end_time="2026-01-01 00:00:00",
                 )
         load_mock.assert_not_called()
+
+    def test_query_cqtj_keeps_missing_work_time_as_warn_without_nan_int_error(self) -> None:
+        with patch.object(service, "load_zdrygzrzs", return_value=_sample_cqtj_missing_work_time()):
+            _, records = service.query_cqtj(mode="detail", level="warn")
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["状态"], "警告")
+        self.assertEqual(records[0]["间隔天数"], "")
 
 
 if __name__ == "__main__":

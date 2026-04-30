@@ -21,7 +21,6 @@ def _sample_logs() -> pd.DataFrame:
     for work_time in (
         "2026-01-01 10:00:00",
         "2026-01-05 10:00:00",
-        "2026-02-01 10:00:00",
     ):
         item = dict(base)
         item["工作日志开展工作时间"] = work_time
@@ -36,7 +35,7 @@ class TestGzrzddService(unittest.TestCase):
     def tearDown(self) -> None:
         service.CACHE.clear()
 
-    def test_compute_stats_filters_by_work_log_time_before_duplicate_stats(self) -> None:
+    def test_compute_stats_passes_work_log_time_range_to_query(self) -> None:
         with patch.object(service, "query_gzrz_by_work_time", return_value=_sample_logs()) as query_mock:
             result_id, pivot = service.compute_stats(
                 count=5,
@@ -57,7 +56,6 @@ class TestGzrzddService(unittest.TestCase):
         work_times = records[0]["工作日志开展工作时间"]
         self.assertIn("2026-01-01", work_times)
         self.assertIn("2026-01-05", work_times)
-        self.assertNotIn("2026-02-01", work_times)
 
     def test_compute_stats_rejects_invalid_work_log_time_range_before_querying(self) -> None:
         with patch.object(service, "query_gzrz_by_work_time") as query_mock:

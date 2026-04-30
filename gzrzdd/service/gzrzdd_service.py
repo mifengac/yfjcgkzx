@@ -353,10 +353,6 @@ def compute_stats(
     work = df.copy()
     work[c_sort] = pd.to_datetime(work[c_sort], errors="coerce")
     work["__work_dt_filter"] = pd.to_datetime(work[c_work_time], errors="coerce")
-    if start_dt:
-        work = work[work["__work_dt_filter"] >= start_dt].copy()
-    if end_dt:
-        work = work[work["__work_dt_filter"] <= end_dt].copy()
     if work.empty:
         rid = uuid.uuid4().hex
         empty_df = work.drop(columns=["__work_dt_filter"], errors="ignore")

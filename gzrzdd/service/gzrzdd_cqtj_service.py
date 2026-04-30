@@ -137,11 +137,11 @@ def _status_by_risk(risk: str, days: Optional[int]) -> Tuple[str, str]:
     level: warn | remind | ok
     color: red | yellow | normal
     """
-    rules = RISK_RULES.get(risk)
-    if days is None:
+    if days is None or pd.isna(days):
         return "warn", "red"
+    rules = RISK_RULES.get(risk)
     if not rules:
-        return "remind", "yellow" if days >= 1 else "ok", "normal"
+        return ("remind", "yellow") if days >= 1 else ("ok", "normal")
     if days > int(rules["warn"]):
         return "warn", "red"
     if days > int(rules["remind"]):
@@ -153,10 +153,6 @@ def _filter_by_query(df: pd.DataFrame, cols: Dict[str, str], q: CqtjQuery, now: 
     work = df.copy()
     c_work = cols["work"]
     work["__work_dt"] = pd.to_datetime(work[c_work], errors="coerce")
-    if q.start_time:
-        work = work[work["__work_dt"] >= q.start_time].copy()
-    if q.end_time:
-        work = work[work["__work_dt"] <= q.end_time].copy()
 
     # 分组取最近一条（按开展工作时间倒序）
     group_keys = [cols["name"], cols["id"], cols["risk"], cols["branch"], cols["station"], cols["sort"]]
@@ -272,7 +268,7 @@ def query_cqtj(
         days = r.pop("__days", None)
         level_v = r.pop("__level", "")
         color = r.pop("__color", "normal")
-        r["间隔天数"] = "" if days is None else int(days)
+        r["间隔天数"] = "" if days is None or pd.isna(days) else int(days)
         r["状态"] = "警告" if level_v == "warn" else ("提醒" if level_v == "remind" else "正常")
         r["__row_color"] = color
         out.append(_format_record(r))

@@ -68,10 +68,10 @@ def query_gzrz_by_work_time(start_time: object = None, end_time: object = None) 
     sql = DEFAULT_GZRZ_SQL
     params = []
     if start_time:
-        sql += "\nAND c.kzgzsj >= %s"
+        sql += "\nAND c.kzgzsj::timestamp >= %s::timestamp"
         params.append(start_time)
     if end_time:
-        sql += "\nAND c.kzgzsj <= %s"
+        sql += "\nAND c.kzgzsj::timestamp <= %s::timestamp"
         params.append(end_time)
     return query_to_dataframe(sql, params)
 

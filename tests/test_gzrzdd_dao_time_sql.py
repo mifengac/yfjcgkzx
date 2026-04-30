@@ -15,8 +15,8 @@ class TestGzrzddDaoTimeSql(unittest.TestCase):
             gzrzdd_dao.query_gzrz_by_work_time("2024-01-01 00:00:00", "2024-02-01 00:00:00")
 
         sql, params = query_mock.call_args.args
-        self.assertIn("AND c.kzgzsj >= %s", sql)
-        self.assertIn("AND c.kzgzsj <= %s", sql)
+        self.assertIn("AND c.kzgzsj::timestamp >= %s::timestamp", sql)
+        self.assertIn("AND c.kzgzsj::timestamp <= %s::timestamp", sql)
         self.assertEqual(params, ["2024-01-01 00:00:00", "2024-02-01 00:00:00"])
 
     def test_cqtj_sql_does_not_hardcode_start_date(self) -> None:
@@ -32,8 +32,8 @@ class TestGzrzddDaoTimeSql(unittest.TestCase):
             )
 
         sql, params = query_mock.call_args.args
-        self.assertIn("AND c.kzgzsj >= %s", sql)
-        self.assertIn("AND c.kzgzsj <= %s", sql)
+        self.assertIn("AND c.kzgzsj::timestamp >= %s::timestamp", sql)
+        self.assertIn("AND c.kzgzsj::timestamp <= %s::timestamp", sql)
         self.assertEqual(params, ["2024-01-01 00:00:00", "2024-02-01 00:00:00"])
 
 
