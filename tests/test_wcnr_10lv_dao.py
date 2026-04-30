@@ -10,6 +10,7 @@ from hqzcsj.dao.wcnr_10lv_dao import (
     _is_zmjz_ratio_num_row,
     _merge_case_rows_by_type,
     _normalize_person_name_sql,
+    _populate_case_counts,
     fetch_metric_detail_rows,
     fetch_period_data,
 )
@@ -83,17 +84,24 @@ class TestWcnr10lvDao(unittest.TestCase):
     def test_zmjz_ratio_num_accepts_legacy_apply_field_name(self) -> None:
         self.assertTrue(_is_zmjz_ratio_num_row({QUALIFIED: "\u662f", LEGACY_APPLY: "\u662f"}))
 
-    def test_jq_detail_still_uses_shared_jingqing_detail_loader(self) -> None:
+    def test_jq_detail_uses_province_jingqing_loader(self) -> None:
         with patch(
             "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
             return_value=["\u6253\u67b6\u6597\u6bb4"],
         ), patch(
-            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_detail_rows",
-            return_value=(
-                [{"\u5730\u533a": "445302", "\u62a5\u8b66\u65f6\u95f4": "2026-01-01 00:00:00"}],
-                False,
-            ),
-        ) as mock_fetch_detail_rows:
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_newcharasubclass_list",
+            return_value=["01010101"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.wcnr_case_list_dao.fetch_province_minor_case_rows",
+            return_value=[
+                {
+                    "areaNo": "445302",
+                    "alarmTime": "2026-01-01 00:00:00",
+                    "caseNo": "P1",
+                    "charaNo": "01010101",
+                }
+            ],
+        ) as mock_fetch_rows:
             rows = fetch_metric_detail_rows(
                 object(),
                 metric="jq",
@@ -105,21 +113,29 @@ class TestWcnr10lvDao(unittest.TestCase):
 
         self.assertEqual(rows[0]["\u5730\u533a"], "\u4e91\u57ce")
         self.assertEqual(rows[0]["\u5730\u533a\u4ee3\u7801"], "445302")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["metric"], "\u8b66\u60c5")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["diqu"], "__ALL__")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["limit"], 0)
+        mock_fetch_rows.assert_called_once_with(
+            start_time="2026-01-01 00:00:00",
+            end_time="2026-01-02 00:00:00",
+        )
 
-    def test_za_rate_denominator_uses_shared_jingqing_detail_loader(self) -> None:
+    def test_za_rate_denominator_uses_province_jingqing_loader(self) -> None:
         with patch(
             "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
             return_value=["\u6253\u67b6\u6597\u6bb4"],
         ), patch(
-            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_detail_rows",
-            return_value=(
-                [{"\u5730\u533a": "445302", "\u62a5\u8b66\u65f6\u95f4": "2026-01-01 00:00:00"}],
-                False,
-            ),
-        ) as mock_fetch_detail_rows:
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_newcharasubclass_list",
+            return_value=["01010101"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.wcnr_case_list_dao.fetch_province_minor_case_rows",
+            return_value=[
+                {
+                    "areaNo": "445302",
+                    "alarmTime": "2026-01-01 00:00:00",
+                    "caseNo": "P1",
+                    "charaNo": "01010101",
+                }
+            ],
+        ) as mock_fetch_rows:
             rows = fetch_metric_detail_rows(
                 object(),
                 metric="za_rate",
@@ -131,32 +147,37 @@ class TestWcnr10lvDao(unittest.TestCase):
 
         self.assertEqual(rows[0]["\u5730\u533a"], "\u4e91\u57ce")
         self.assertEqual(rows[0]["\u5730\u533a\u4ee3\u7801"], "445302")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["metric"], "\u8b66\u60c5")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["diqu"], "__ALL__")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["limit"], 0)
+        mock_fetch_rows.assert_called_once_with(
+            start_time="2026-01-01 00:00:00",
+            end_time="2026-01-02 00:00:00",
+        )
 
     def test_jq_changsuo_detail_filters_replies_keywords(self) -> None:
         with patch(
             "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
             return_value=["\u6253\u67b6\u6597\u6bb4"],
         ), patch(
-            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_detail_rows",
-            return_value=(
-                [
-                    {
-                        "\u5730\u533a": "445302",
-                        "\u62a5\u8b66\u65f6\u95f4": "2026-01-01 00:00:00",
-                        "\u5904\u8b66\u60c5\u51b5": "\u591c\u603b\u4f1a\u805a\u96c6",
-                    },
-                    {
-                        "\u5730\u533a": "445303",
-                        "\u62a5\u8b66\u65f6\u95f4": "2026-01-02 00:00:00",
-                        "\u5904\u8b66\u60c5\u51b5": "\u666e\u901a\u5904\u8b66",
-                    },
-                ],
-                False,
-            ),
-        ) as mock_fetch_detail_rows:
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_newcharasubclass_list",
+            return_value=["01010101", "01010102"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.wcnr_case_list_dao.fetch_province_minor_case_rows",
+            return_value=[
+                {
+                    "areaNo": "445302",
+                    "alarmTime": "2026-01-01 00:00:00",
+                    "supplementCaseContents": "\u591c\u603b\u4f1a\u805a\u96c6",
+                    "caseNo": "P1",
+                    "charaNo": "01010101",
+                },
+                {
+                    "areaNo": "445303",
+                    "alarmTime": "2026-01-02 00:00:00",
+                    "supplementCaseContents": "\u666e\u901a\u5904\u8b66",
+                    "caseNo": "P2",
+                    "charaNo": "01010102",
+                },
+            ],
+        ) as mock_fetch_rows:
             rows = fetch_metric_detail_rows(
                 object(),
                 metric="jq_changsuo",
@@ -170,9 +191,7 @@ class TestWcnr10lvDao(unittest.TestCase):
         self.assertEqual(rows[0]["\u5730\u533a"], "\u4e91\u57ce")
         self.assertEqual(rows[0]["\u5730\u533a\u4ee3\u7801"], "445302")
         self.assertEqual(rows[0]["\u5904\u8b66\u60c5\u51b5"], "\u591c\u603b\u4f1a\u805a\u96c6")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["metric"], "\u8b66\u60c5")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["diqu"], "__ALL__")
-        self.assertEqual(mock_fetch_detail_rows.call_args.kwargs["limit"], 0)
+        mock_fetch_rows.assert_called_once()
 
     def test_aj_changsuo_detail_merges_cs_bqh_rows_by_case_no(self) -> None:
         with patch(
@@ -281,6 +300,110 @@ class TestWcnr10lvDao(unittest.TestCase):
         self.assertEqual(rows[1]["来源字段"], "被侵害")
         self.assertEqual(rows[0]["地区"], "云城")
         self.assertEqual(rows[1]["地区"], "新兴")
+
+    def test_xingshi_detail_uses_only_suspect_minor_cases(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_jq_aj_dao.fetch_ay_patterns",
+            return_value=[".*"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_ajxx_changsuo_base_rows",
+            return_value=[
+                {"地区": "445303", "案件编号": "B1", "案件类型": "刑事"},
+                {"地区": "445321", "案件编号": "B2", "案件类型": "刑事"},
+                {"地区": "445302", "案件编号": "A1", "案件类型": "行政"},
+            ],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows",
+        ) as mock_fetch_victim_rows:
+            rows = fetch_metric_detail_rows(
+                object(),
+                metric="xingshi",
+                part="value",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+            )
+
+        self.assertEqual([row["案件编号"] for row in rows], ["B1", "B2"])
+        self.assertEqual([row["来源字段"] for row in rows], ["嫌疑人", "嫌疑人"])
+        self.assertEqual([row["地区"] for row in rows], ["云安", "新兴"])
+        mock_fetch_victim_rows.assert_not_called()
+
+    def test_xingshi_ratio_numerator_uses_only_suspect_minor_cases(self) -> None:
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._normalize_leixing_for_query",
+            return_value=["打架斗殴"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_jq_aj_dao.fetch_ay_patterns",
+            return_value=[".*"],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_ajxx_changsuo_base_rows",
+            return_value=[
+                {"地区": "445303", "案件编号": "B1", "案件类型": "刑事"},
+                {"地区": "445321", "案件编号": "B2", "案件类型": "刑事"},
+                {"地区": "445302", "案件编号": "A1", "案件类型": "行政"},
+            ],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.fetch_wcnr_shr_ajxx_base_rows",
+        ) as mock_fetch_victim_rows:
+            rows = fetch_metric_detail_rows(
+                object(),
+                metric="xingshi_ratio",
+                part="numerator",
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                leixing_list=["打架斗殴"],
+            )
+
+        self.assertEqual([row["案件编号"] for row in rows], ["B1", "B2"])
+        self.assertEqual([row["来源字段"] for row in rows], ["嫌疑人", "嫌疑人"])
+        self.assertEqual([row["地区"] for row in rows], ["云安", "新兴"])
+        mock_fetch_victim_rows.assert_not_called()
+
+    def test_populate_case_counts_uses_suspect_only_counts_for_xingshi_metrics(self) -> None:
+        counts = {}
+
+        with patch(
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_merged_case_rows_by_type",
+            return_value=(
+                {
+                    "行政": [],
+                    "刑事": [
+                        {"地区": "445302", "案件编号": "B1", "来源字段": "嫌疑人"},
+                        {"地区": "445303", "案件编号": "B2", "来源字段": "被侵害"},
+                    ],
+                },
+                [{"地区": "445303", "案件编号": "B2", "案件类型": "刑事"}],
+            ),
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_wcnr_suspect_case_rows_by_type",
+            return_value={
+                "行政": [],
+                "刑事": [{"地区": "445302", "案件编号": "B1", "来源字段": "嫌疑人"}],
+            },
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.zfba_jq_aj_dao.count_ajxx_by_diqu_and_ajlx",
+            return_value={"行政": {}, "刑事": {"445302": 7}},
+        ):
+            _populate_case_counts(
+                object(),
+                start_time="2026-01-01 00:00:00",
+                end_time="2026-01-02 00:00:00",
+                patterns=[".*"],
+                typed_patterns_empty=False,
+                include_details=False,
+                counts=counts,
+                mark_perf=lambda *_args, **_kwargs: None,
+            )
+
+        self.assertEqual(counts["xingshi"]["__ALL__"], 1)
+        self.assertEqual(counts["xingshi"]["445302"], 1)
+        self.assertEqual(counts["wcnr_xingshi"]["__ALL__"], 1)
+        self.assertEqual(counts["wcnr_xingshi"]["445302"], 1)
+        self.assertEqual(counts["jqaj_xingshi"]["445302"], 7)
 
     def test_fetch_zmjz_ratio_rows_falls_back_when_view_lacks_name_normalization(self) -> None:
         conn = _FakeConnection()
@@ -442,14 +565,23 @@ class TestWcnr10lvDao(unittest.TestCase):
             "hqzcsj.dao.wcnr_10lv_dao.zfba_jq_aj_dao.fetch_ay_patterns",
             return_value=[],
         ), patch(
-            "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.count_jq_by_diqu",
-            return_value={"445302": 2},
+            "hqzcsj.dao.wcnr_10lv_dao._fetch_province_minor_jq_raw_rows",
+            return_value=[
+                {"areaNo": "445302", "caseNo": "P1"},
+                {"areaNo": "445302", "caseNo": "P2"},
+            ],
+        ), patch(
+            "hqzcsj.dao.wcnr_10lv_dao.wcnr_case_list_dao.build_minor_case_detail_rows",
+            return_value=(
+                [{"\u5730\u533a": "445302", "\u5904\u8b66\u60c5\u51b5": "KTV"}],
+                False,
+            ),
         ), patch(
             "hqzcsj.dao.wcnr_10lv_dao.zfba_wcnr_jqaj_dao.count_zhuanan_by_diqu",
             return_value={"445302": 1},
         ), patch(
             "hqzcsj.dao.wcnr_10lv_dao._load_detail_rows",
-            side_effect=[[{"\u5730\u533a\u4ee3\u7801": "445302"}], [{"\u5730\u533a\u4ee3\u7801": "445303"}]],
+            return_value=[{"\u5730\u533a\u4ee3\u7801": "445303"}],
         ), patch(
             "hqzcsj.dao.wcnr_10lv_dao._fetch_wfzf_people_rows",
             return_value=[],
