@@ -30,14 +30,16 @@ from http.cookiejar import CookieJar
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
-DEFAULT_ORIGIN = "http://68.29.179.170"
-DEFAULT_LOGIN_URL = f"{DEFAULT_ORIGIN}/dsjfxxb/login"
+from gonggong.config.upstream_province_jingqing import UPSTREAM_PROVINCE_JINGQING_CONFIG
+
+# 从公共配置模块读取省厅警情系统地址
+DEFAULT_ORIGIN = UPSTREAM_PROVINCE_JINGQING_CONFIG.get("base_url", "http://68.29.179.170")
+DEFAULT_LOGIN_URL = f"{DEFAULT_ORIGIN}{UPSTREAM_PROVINCE_JINGQING_CONFIG.get('login_path', '/dsjfxxb/login')}"
 DEFAULT_SRR_URL = f"{DEFAULT_ORIGIN}/dsjfxxb/srr/list"
 DEFAULT_CASE_URL = f"{DEFAULT_ORIGIN}/dsjfxxb/case/list"
 
-DEFAULT_USERNAME = "270378"
-# 登录页显示的 password 参数是加密后的字符串（不是明文密码）
-DEFAULT_PASSWORD = "jpx8hLPMyV7EDVX1p9d89Q=="
+DEFAULT_USERNAME = UPSTREAM_PROVINCE_JINGQING_CONFIG.get("username", "270378")
+DEFAULT_PASSWORD = UPSTREAM_PROVINCE_JINGQING_CONFIG.get("password", "jpx8hLPMyV7EDVX1p9d89Q==")
 
 DEFAULT_LLM_BASE_URL = "http://localhost:8080/v1"
 DEFAULT_LLM_MODEL = "police-qwen3-8b"
