@@ -1,0 +1,257 @@
+body.tygj-body {
+  max-width: none;
+  margin: 0;
+  padding: 20px;
+  background: #f7f5ef;
+  color: #17202a;
+  font-family: "Microsoft YaHei", Arial, sans-serif;
+}
+
+.tygj-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tygj-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tygj-page-head h1 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.tygj-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: #ebe3d4;
+  color: #2f2a23;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tygj-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tygj-tab {
+  height: 36px;
+  border: 1px solid #d5cab8;
+  border-radius: 999px;
+  background: #fffdf8;
+  color: #423322;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tygj-tab.active {
+  background: #17624a;
+  border-color: #17624a;
+  color: #fff;
+}
+
+.tygj-tab-panel {
+  display: none;
+}
+
+.tygj-tab-panel.active {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tygj-card {
+  background: #fffdf8;
+  border: 1px solid #e5dece;
+  border-radius: 16px;
+  box-shadow: 0 10px 26px rgba(77, 58, 24, 0.08);
+  padding: 16px;
+}
+
+.tygj-head,
+.tygj-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tygj-head h2,
+.tygj-section-head h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.tygj-muted {
+  color: #6c6253;
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.tygj-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.tygj-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tygj-field input,
+.tygj-field select {
+  height: 36px;
+  box-sizing: border-box;
+  border: 1px solid #d5cab8;
+  border-radius: 10px;
+  padding: 0 10px;
+  background: #fff;
+  color: #17202a;
+}
+
+.tygj-field input[type="file"] {
+  padding: 7px 10px;
+}
+
+.tygj-btn {
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: #17624a;
+  color: #fff;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tygj-btn.secondary {
+  background: #8d5e27;
+}
+
+.tygj-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tygj-status {
+  min-height: 20px;
+  margin-top: 10px;
+  color: #6c6253;
+  white-space: pre-wrap;
+}
+
+.tygj-status.error {
+  color: #b42318;
+}
+
+.tygj-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.tygj-stat {
+  border: 1px solid #e5dece;
+  border-radius: 12px;
+  background: #fffaf0;
+  padding: 10px 12px;
+}
+
+.tygj-stat-value {
+  font-size: 22px;
+  font-weight: 900;
+  color: #17624a;
+}
+
+.tygj-stat-label {
+  margin-top: 2px;
+  color: #6c6253;
+  font-size: 12px;
+}
+
+.tygj-table-wrap {
+  overflow: auto;
+  border: 1px solid #e5dece;
+  border-radius: 14px;
+  background: #fff;
+  margin-top: 12px;
+}
+
+.tygj-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 780px;
+}
+
+.tygj-table th,
+.tygj-table td {
+  border-bottom: 1px solid #eee7dc;
+  padding: 9px 10px;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.tygj-table th {
+  position: sticky;
+  top: 0;
+  background: #fbf6e9;
+  z-index: 2;
+  color: #423322;
+}
+
+.tygj-table tbody tr:nth-child(even) td {
+  background: #fffaf0;
+}
+
+.tygj-empty {
+  padding: 18px;
+  text-align: center;
+  color: #7d7466;
+}
+
+.tygj-detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tygj-detail-block h4 {
+  margin: 12px 0 0;
+  color: #423322;
+}
+
+@media (max-width: 760px) {
+  body.tygj-body {
+    padding: 12px;
+  }
+
+  .tygj-field,
+  .tygj-toolbar .tygj-btn {
+    width: 100%;
+  }
+}

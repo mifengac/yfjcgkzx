@@ -35,10 +35,35 @@ class CqtjQuery:
     level: str  # remind | warn
     risk_types: List[str]
     branches: List[str]
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
 
 
 def _norm(s: Any) -> str:
     return ("" if s is None else str(s)).strip()
+
+
+def _parse_datetime_filter(value: Any, field_name: str, *, end_of_day: bool = False) -> Optional[datetime]:
+    text = _norm(value).replace("T", " ")
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(text, fmt)
+            if fmt == "%Y-%m-%d" and end_of_day:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt
+        except ValueError:
+            pass
+    raise ValueError(f"{field_name}格式错误，应为 YYYY-MM-DD HH:MM:SS")
+
+
+def _parse_work_time_range(start_time: Any = None, end_time: Any = None) -> Tuple[Optional[datetime], Optional[datetime]]:
+    start_dt = _parse_datetime_filter(start_time, "工作日志开始时间")
+    end_dt = _parse_datetime_filter(end_time, "工作日志结束时间", end_of_day=True)
+    if start_dt and end_dt and start_dt > end_dt:
+        raise ValueError("工作日志开始时间不能大于结束时间")
+    return start_dt, end_dt
 
 
 def _required_columns(df: pd.DataFrame) -> Dict[str, str]:
@@ -128,6 +153,10 @@ def _filter_by_query(df: pd.DataFrame, cols: Dict[str, str], q: CqtjQuery, now: 
     work = df.copy()
     c_work = cols["work"]
     work["__work_dt"] = pd.to_datetime(work[c_work], errors="coerce")
+    if q.start_time:
+        work = work[work["__work_dt"] >= q.start_time].copy()
+    if q.end_time:
+        work = work[work["__work_dt"] <= q.end_time].copy()
 
     # 分组取最近一条（按开展工作时间倒序）
     group_keys = [cols["name"], cols["id"], cols["risk"], cols["branch"], cols["station"], cols["sort"]]
@@ -188,15 +217,20 @@ def query_cqtj(
     level: str = "remind",
     risk_types: Optional[List[str]] = None,
     branches: Optional[List[str]] = None,
+    start_time: Any = None,
+    end_time: Any = None,
 ) -> Tuple[datetime, List[Dict[str, Any]]]:
+    start_dt, end_dt = _parse_work_time_range(start_time, end_time)
     q = CqtjQuery(
         mode=(mode or "detail").strip(),
         level=(level or "remind").strip(),
         risk_types=risk_types or [],
         branches=branches or [],
+        start_time=start_dt,
+        end_time=end_dt,
     )
     now = datetime.now()
-    df = load_zdrygzrzs()
+    df = load_zdrygzrzs(start_time=start_dt, end_time=end_dt)
     if df is None or df.empty:
         return now, []
     cols = _required_columns(df)
@@ -265,8 +299,17 @@ def export_cqtj(
     level: str,
     risk_types: Optional[List[str]] = None,
     branches: Optional[List[str]] = None,
+    start_time: Any = None,
+    end_time: Any = None,
 ) -> Tuple[bytes, str, str]:
-    now, records = query_cqtj(mode=mode, level=level, risk_types=risk_types, branches=branches)
+    now, records = query_cqtj(
+        mode=mode,
+        level=level,
+        risk_types=risk_types,
+        branches=branches,
+        start_time=start_time,
+        end_time=end_time,
+    )
     ts = now.strftime("%Y%m%d_%H%M%S")
     fmt = (fmt or "xlsx").lower()
     filename = f"矛盾纠纷风险人员工作日志超期统计_{ts}.{fmt}"

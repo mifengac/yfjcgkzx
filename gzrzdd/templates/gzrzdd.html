@@ -11,7 +11,7 @@
         .card { background: #fff; padding: 16px; border-radius: 10px; margin-bottom: 16px; box-shadow: 0 6px 22px rgba(18,38,63,.06); border: 1px solid #e6e8ef; }
         .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
         .row label { font-size: 14px; color:#333; }
-        input[type="number"], input[type="text"] { height: 34px; border: 1px solid #d7dbe7; border-radius: 8px; padding: 0 10px; font-size: 14px; }
+        input[type="number"], input[type="text"], input[type="datetime-local"] { height: 34px; border: 1px solid #d7dbe7; border-radius: 8px; padding: 0 10px; font-size: 14px; }
         textarea { width: 100%; min-height: 160px; border: 1px solid #d7dbe7; border-radius: 10px; padding: 10px; font-size: 13px; }
         .btn { height: 34px; border: 0; border-radius: 8px; background: #1976d2; color:#fff; padding: 0 14px; font-weight: 600; cursor: pointer; }
         .btn:disabled { opacity: .6; cursor: not-allowed; }
@@ -39,6 +39,7 @@
         .multi-select-dropdown { display:none; position:absolute; top: 38px; left: 0; right: 0; background:#fff; border:1px solid #e6e8ef; border-radius:10px; box-shadow:0 8px 18px rgba(18,38,63,.12); z-index: 30; padding: 6px 8px; max-height: 220px; overflow:auto; }
         .multi-select-dropdown.open { display:block; }
         .multi-select-option { display:flex; align-items:center; gap:6px; padding:6px 4px; font-size: 13px; }
+        .filter-title { font-size: 14px; color:#333; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -65,6 +66,13 @@
             <div class="row">
                 <label>统计近 <input id="count" type="number" min="1" value="5" style="width:80px;"> 次工作日志</label>
                 <label>重复度 <input id="chongfudu" type="number" min="0" max="100" value="80" style="width:80px;"> %</label>
+                <span class="filter-title">工作日志时间</span>
+                <label>开始时间
+                    <input id="workStartTime" type="datetime-local" step="1" style="width:200px;">
+                </label>
+                <label>结束时间
+                    <input id="workEndTime" type="datetime-local" step="1" style="width:200px;">
+                </label>
                 <button class="btn" id="btn">统计</button>
             </div>
             <div id="err" class="err"></div>
@@ -158,6 +166,13 @@
                             </div>
                         </div>
                     </label>
+                    <span class="filter-title">工作日志时间</span>
+                    <label>开始时间
+                        <input id="cqtjStartTime" type="datetime-local" step="1" style="width:200px;">
+                    </label>
+                    <label>结束时间
+                        <input id="cqtjEndTime" type="datetime-local" step="1" style="width:200px;">
+                    </label>
                     <button class="btn" id="cqtjQueryBtn">查询</button>
                 </div>
                 <div class="dropdown" id="cqtjDd">
@@ -189,8 +204,8 @@
     </div>
 </main>
 
-<script src="{{ url_for('static', filename='js/gzrzdd.js') }}"></script>
-<script src="{{ url_for('gzrzdd.static', filename='gzrzdd_cqtj.js') }}"></script>
+<script src="{{ url_for('static', filename='js/gzrzdd.js', v='20260430_worktime') }}"></script>
+<script src="{{ url_for('gzrzdd.static', filename='gzrzdd_cqtj.js', v='20260430_worktime') }}"></script>
 <script src="{{ url_for('gzrzdd.static', filename='gzrygzrz_main.js') }}"></script>
 </body>
 </html>

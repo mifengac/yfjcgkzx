@@ -42,6 +42,32 @@ function cqtjGetBranches() {
   return checked;
 }
 
+function cqtjNormalizeDateTimeValue(value) {
+  const raw = (value || "").trim();
+  if (!raw) return "";
+  const text = raw.replace("T", " ");
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text)) {
+    return `${text}:00`;
+  }
+  return text;
+}
+
+function cqtjGetTimeRange() {
+  return {
+    startTime: cqtjNormalizeDateTimeValue((cqtj$("cqtjStartTime") || {}).value || ""),
+    endTime: cqtjNormalizeDateTimeValue((cqtj$("cqtjEndTime") || {}).value || ""),
+  };
+}
+
+function cqtjValidateTimeRange(startTime, endTime) {
+  if (!startTime || !endTime) return;
+  const startMs = Date.parse(startTime.replace(" ", "T"));
+  const endMs = Date.parse(endTime.replace(" ", "T"));
+  if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && startMs > endMs) {
+    throw new Error("工作日志开始时间不能晚于结束时间");
+  }
+}
+
 function cqtjRender(records, mode) {
   const tbl = cqtj$("cqtjTbl");
   if (!tbl) return;
@@ -88,20 +114,33 @@ async function cqtjQuery(levelOverride) {
   const level = levelOverride || (cqtj$("cqtjWarnBtn") && cqtj$("cqtjWarnBtn").dataset.level) || "remind";
   const riskTypes = cqtjGetRiskTypes();
   const branches = cqtjGetBranches();
+  const timeRange = cqtjGetTimeRange();
 
   cqtjSetErr("");
   cqtjSetStatus("加载中...");
   try {
+    cqtjValidateTimeRange(timeRange.startTime, timeRange.endTime);
     const resp = await fetch("/gzrzdd/api/cqtj/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: mode, level: level, risk_types: riskTypes, branches: branches }),
+      body: JSON.stringify({
+        mode: mode,
+        level: level,
+        risk_types: riskTypes,
+        branches: branches,
+        start_time: timeRange.startTime,
+        end_time: timeRange.endTime,
+      }),
     });
     const js = await resp.json();
     if (!resp.ok || !js.success) throw new Error((js && js.message) || "查询失败");
 
     cqtjRender(js.records || [], mode);
-    cqtjSetStatus(`记录数：${js.count || 0}（${js.now || ""}）`);
+    const timeText =
+      timeRange.startTime || timeRange.endTime
+        ? `，工作日志时间=${timeRange.startTime || "不限"} 至 ${timeRange.endTime || "不限"}`
+        : "";
+    cqtjSetStatus(`记录数：${js.count || 0}（${js.now || ""}）${timeText}`);
     const warnBtn = cqtj$("cqtjWarnBtn");
     if (warnBtn) warnBtn.dataset.level = level;
   } catch (e) {
@@ -112,19 +151,28 @@ async function cqtjQuery(levelOverride) {
 }
 
 function cqtjExport(fmt) {
-  const mode = cqtjGetMode();
-  const warnBtn = cqtj$("cqtjWarnBtn");
-  const level = (warnBtn && warnBtn.dataset.level) || "remind";
-  const riskTypes = cqtjGetRiskTypes();
-  const branches = cqtjGetBranches();
-  const qs = new URLSearchParams({
-    format: fmt,
-    mode: mode,
-    level: level,
-    risk_types: riskTypes.join(","),
-    branches: branches.join(","),
-  });
-  window.location.href = "/gzrzdd/download/cqtj?" + qs.toString();
+  try {
+    cqtjSetErr("");
+    const mode = cqtjGetMode();
+    const warnBtn = cqtj$("cqtjWarnBtn");
+    const level = (warnBtn && warnBtn.dataset.level) || "remind";
+    const riskTypes = cqtjGetRiskTypes();
+    const branches = cqtjGetBranches();
+    const timeRange = cqtjGetTimeRange();
+    cqtjValidateTimeRange(timeRange.startTime, timeRange.endTime);
+    const qs = new URLSearchParams({
+      format: fmt,
+      mode: mode,
+      level: level,
+      risk_types: riskTypes.join(","),
+      branches: branches.join(","),
+      start_time: timeRange.startTime,
+      end_time: timeRange.endTime,
+    });
+    window.location.href = "/gzrzdd/download/cqtj?" + qs.toString();
+  } catch (e) {
+    cqtjSetErr(String(e));
+  }
 }
 
 function gzrzddInitTabs() {

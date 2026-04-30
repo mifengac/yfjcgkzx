@@ -50,6 +50,7 @@ from mdjfxsyj.routes.mdjfxsyj_mdj_xsyj_routes import mdjfxsyj_bp  # noqa: E402
 from mdjfxsyj.routes.mdjfxsyj_cfbj_routes import mdjfxsyj_cfbj_bp  # noqa: E402
 from mdjfxsyj.routes.mdjfxsyj_mdjfjqfx_routes import mdjfxsyj_mdjfjqfx_bp  # noqa: E402
 from mdjfxsyj.routes.mdjfxsyj_yyjdjc_routes import mdjfxsyj_yyjdjc_bp  # noqa: E402
+from tongyonggongju.routes.tongyonggongju_routes import tongyonggongju_bp  # noqa: E402
 from hqzcsj.routes.hqzcsj_zongcha_routes import hqzcsj_bp  # noqa: E402
 from hqzcsj.routes.zfba_jq_aj_routes import zfba_jq_aj_bp  # noqa: E402
 from hqzcsj.routes.pcsjqajtj_routes import pcsjqajtj_bp  # noqa: E402
@@ -88,6 +89,7 @@ MODULE_DEFINITIONS: List[Dict[str, str]] = [
     {"key": "jingqing_fenxi", "label": "警情分析", "endpoint": "jingqing_fenxi.index"},
     {"key": "jingqing_anjian_fenxi", "label": "警情案件分析", "endpoint": "jingqing_anjian_fenxi.index"},
     {"key": "xxffmk", "label": "学校赋分模块", "endpoint": "xxffmk.index"},
+    {"key": "tongyonggongju", "label": "通用工具", "endpoint": "tongyonggongju.index"},
 ]
 
 
@@ -186,6 +188,7 @@ def main():
                 "警情分析": {"endpoint": "jingqing_fenxi.index", "label": "警情分析"},
                 "警情案件分析": {"endpoint": "jingqing_anjian_fenxi.index", "label": "警情案件分析"},
                 "学校赋分模块": {"endpoint": "xxffmk.index", "label": "学校赋分模块"},
+                "通用工具": {"endpoint": "tongyonggongju.index", "label": "通用工具"},
             }
             if wcnr_djdo_bp is not None:
                 conf_map["未成年人(打架斗殴)"] = {"endpoint": "wcnr_djdo.index", "label": "未成年人(打架斗殴)"}
@@ -339,6 +342,7 @@ app.register_blueprint(mdjfxsyj_bp, url_prefix="/mdjfxsyj")
 app.register_blueprint(mdjfxsyj_cfbj_bp, url_prefix="/mdjfxsyj/cfbj")
 app.register_blueprint(mdjfxsyj_mdjfjqfx_bp, url_prefix="/mdjfxsyj/mdjfjqfx")
 app.register_blueprint(mdjfxsyj_yyjdjc_bp, url_prefix="/mdjfxsyj/yyjdjc")
+app.register_blueprint(tongyonggongju_bp, url_prefix="/tongyonggongju")
 app.register_blueprint(hqzcsj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(zfba_jq_aj_bp, url_prefix="/hqzcsj")
 app.register_blueprint(pcsjqajtj_bp, url_prefix="/hqzcsj")

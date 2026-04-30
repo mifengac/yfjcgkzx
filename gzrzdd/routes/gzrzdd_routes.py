@@ -62,11 +62,28 @@ def api_stats() -> Response:
     payload: Dict[str, Any] = request.json or {}
     count = int(payload.get("count") or 5)
     chongfudu = payload.get("chongfudu", 80)
+    start_time = str(payload.get("start_time") or "").strip()
+    end_time = str(payload.get("end_time") or "").strip()
     if count <= 0 or count > 100:
         return jsonify({"success": False, "message": "count 取值范围建议 1~100"}), 400
 
-    result_id, pivot = compute_stats(count=count, threshold_percent=chongfudu)
-    return jsonify({"success": True, "result_id": result_id, "count": count, "threshold_percent": chongfudu, "pivot": pivot})
+    result_id, pivot = compute_stats(
+        count=count,
+        threshold_percent=chongfudu,
+        start_time=start_time,
+        end_time=end_time,
+    )
+    return jsonify(
+        {
+            "success": True,
+            "result_id": result_id,
+            "count": count,
+            "threshold_percent": chongfudu,
+            "start_time": start_time,
+            "end_time": end_time,
+            "pivot": pivot,
+        }
+    )
 
 
 @gzrzdd_bp.route("/api/detail")
