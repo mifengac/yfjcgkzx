@@ -48,8 +48,8 @@ def inspect_and_store_workbook(file_bytes: bytes, filename: str | None) -> Dict[
     }
 
 
-def run_background_check(token: str, id_column_index: Any) -> Dict[str, Any]:
-    extracted = extract_id_numbers(token, id_column_index)
+def run_background_check(token: str, id_column_index: Any, name_column_index: Any = None) -> Dict[str, Any]:
+    extracted = extract_id_numbers(token, id_column_index, name_column_index)
     ids = [person["id_number"] for person in extracted["people"]]
     if not ids:
         raise ValueError("所选列中未识别到有效身份证号")
@@ -60,8 +60,9 @@ def run_background_check(token: str, id_column_index: Any) -> Dict[str, Any]:
     dispute_rows = _serialize_rows(query_dispute_rows(ids))
     mental_rows = _serialize_rows(query_mental_health_rows(ids))
     overview = _build_overview(extracted["people"], prior_rows, dispute_rows, mental_rows)
+    hit_overview = [row for row in overview if row["命中类型"] != "未命中"]
 
-    hit_people_count = sum(1 for row in overview if row["命中类型"] != "未命中")
+    hit_people_count = len(hit_overview)
     return {
         "stats": {
             "有效身份证行数": extracted["valid_count"],
@@ -77,7 +78,7 @@ def run_background_check(token: str, id_column_index: Any) -> Dict[str, Any]:
             "精神障碍记录数": len(mental_rows),
         },
         "invalid_samples": extracted["invalid_samples"],
-        "overview": overview,
+        "overview": hit_overview,
         "details": {
             "prior_case": prior_rows,
             "dispute": dispute_rows,
@@ -86,12 +87,20 @@ def run_background_check(token: str, id_column_index: Any) -> Dict[str, Any]:
     }
 
 
-def extract_id_numbers(token: str, id_column_index: Any) -> Dict[str, Any]:
-    column_index = _parse_column_index(id_column_index)
+def extract_id_numbers(token: str, id_column_index: Any, name_column_index: Any = None) -> Dict[str, Any]:
+    column_index = _parse_column_index(id_column_index, "身份证号")
+    parsed_name_column_index = (
+        _parse_column_index(name_column_index, "姓名") if name_column_index is not None else None
+    )
+    if parsed_name_column_index == column_index:
+        raise ValueError("姓名列和身份证号列不能相同")
+
     workbook = _load_workbook(_upload_path(token).read_bytes())
     worksheet = workbook.active
     if column_index > worksheet.max_column:
         raise ValueError("身份证列不存在，请重新选择")
+    if parsed_name_column_index and parsed_name_column_index > worksheet.max_column:
+        raise ValueError("姓名列不存在，请重新选择")
 
     unique_people: List[Dict[str, Any]] = []
     seen = set()
@@ -99,16 +108,22 @@ def extract_id_numbers(token: str, id_column_index: Any) -> Dict[str, Any]:
     valid_count = 0
     invalid_count = 0
 
+    min_col = min(column_index, parsed_name_column_index or column_index)
+    max_col = max(column_index, parsed_name_column_index or column_index)
+    id_offset = column_index - min_col
+    name_offset = parsed_name_column_index - min_col if parsed_name_column_index else None
+
     for row_number, row in enumerate(
         worksheet.iter_rows(
             min_row=2,
-            min_col=column_index,
-            max_col=column_index,
+            min_col=min_col,
+            max_col=max_col,
             values_only=True,
         ),
         start=2,
     ):
-        raw_value = row[0] if row else None
+        raw_value = row[id_offset] if row and len(row) > id_offset else None
+        raw_name = row[name_offset] if name_offset is not None and row and len(row) > name_offset else None
         normalized = normalize_id_number(raw_value)
         if not normalized:
             continue
@@ -124,6 +139,7 @@ def extract_id_numbers(token: str, id_column_index: Any) -> Dict[str, Any]:
         unique_people.append(
             {
                 "row_number": row_number,
+                "name": normalize_person_name(raw_name),
                 "id_number": normalized,
                 "source_value": _cell_to_text(raw_value),
             }
@@ -153,6 +169,13 @@ def normalize_id_number(value: Any) -> str:
     if re.fullmatch(r"\d+\.0", text):
         text = text[:-2]
     return text
+
+
+def normalize_person_name(value: Any) -> str:
+    if value is None or isinstance(value, bool):
+        return ""
+    text = _cell_to_text(value).strip().replace("　", "")
+    return re.sub(r"\s+", "", text)
 
 
 def _validate_upload(file_bytes: bytes, filename: str | None) -> None:
@@ -219,13 +242,13 @@ def _cleanup_uploads() -> None:
             continue
 
 
-def _parse_column_index(value: Any) -> int:
+def _parse_column_index(value: Any, label: str) -> int:
     try:
         index = int(value)
     except (TypeError, ValueError):
-        raise ValueError("请选择身份证号所在列") from None
+        raise ValueError(f"请选择{label}所在列") from None
     if index < 1:
-        raise ValueError("请选择身份证号所在列")
+        raise ValueError(f"请选择{label}所在列")
     return index
 
 
@@ -304,6 +327,7 @@ def _build_overview(
         overview.append(
             {
                 "Excel行号": person.get("row_number"),
+                "姓名": person.get("name") or "",
                 "身份证号": id_number,
                 "前科记录数": prior_count,
                 "矛盾纠纷状态": _status_for(dispute_grouped.get(id_number, [])),

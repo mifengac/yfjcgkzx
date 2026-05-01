@@ -3,6 +3,7 @@
 
   var endpoints = window.__TYGJ_BACKGROUND_ENDPOINTS__ || {};
   var uploadToken = '';
+  var lastResult = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -25,7 +26,34 @@
 
   function setBusy(isBusy) {
     $('loadColumnsBtn').disabled = isBusy;
-    $('checkBtn').disabled = isBusy || !uploadToken || !$('idColumnSelect').value;
+    $('checkBtn').disabled = isBusy || !canCheck();
+    updateExportState(isBusy);
+  }
+
+  function canCheck() {
+    return Boolean(
+      uploadToken &&
+      $('nameColumnSelect').value &&
+      $('idColumnSelect').value &&
+      $('nameColumnSelect').value !== $('idColumnSelect').value
+    );
+  }
+
+  function hasExportableRows(data) {
+    var details = (data && data.details) || {};
+    return Boolean(
+      (data && data.overview && data.overview.length) ||
+      (details.prior_case && details.prior_case.length) ||
+      (details.dispute && details.dispute.length) ||
+      (details.mental_health && details.mental_health.length)
+    );
+  }
+
+  function updateExportState(isBusy) {
+    var btn = $('exportBtn');
+    var hasRows = hasExportableRows(lastResult);
+    btn.hidden = !lastResult;
+    btn.disabled = Boolean(isBusy) || !hasRows;
   }
 
   function show(el, visible) {
@@ -33,6 +61,8 @@
   }
 
   function resetResults() {
+    lastResult = null;
+    updateExportState(false);
     ['statsCard', 'overviewCard', 'invalidCard', 'detailCard'].forEach(function (id) {
       show($(id), false);
     });
@@ -78,15 +108,33 @@
     show($('statsCard'), true);
   }
 
-  function populateColumns(data) {
-    var select = $('idColumnSelect');
-    select.innerHTML = '<option value="">请选择身份证列</option>' +
-      (data.columns || []).map(function (col) {
+  function columnOptions(columns) {
+    return '<option value="">请选择列</option>' +
+      (columns || []).map(function (col) {
         return '<option value="' + esc(col.index) + '">' + esc(col.display) + '</option>';
       }).join('');
-    select.disabled = false;
+  }
+
+  function pickColumn(columns, patterns) {
+    var matched = (columns || []).find(function (col) {
+      var text = String((col.label || '') + ' ' + (col.display || ''));
+      return patterns.some(function (pattern) { return pattern.test(text); });
+    });
+    return matched ? String(matched.index) : '';
+  }
+
+  function populateColumns(data) {
+    var columns = data.columns || [];
+    var nameSelect = $('nameColumnSelect');
+    var idSelect = $('idColumnSelect');
+    nameSelect.innerHTML = columnOptions(columns);
+    idSelect.innerHTML = columnOptions(columns);
+    nameSelect.disabled = false;
+    idSelect.disabled = false;
+    nameSelect.value = pickColumn(columns, [/姓名/, /名字/]);
+    idSelect.value = pickColumn(columns, [/身份证/, /公民身份号码/, /证件号码/, /证号/]);
     uploadToken = data.token || '';
-    $('checkBtn').disabled = !uploadToken;
+    $('checkBtn').disabled = !canCheck();
     setStatus('已加载：' + (data.filename || '') + ' / ' + (data.sheet_name || ''), false);
   }
 
@@ -99,6 +147,8 @@
     }
     resetResults();
     uploadToken = '';
+    $('nameColumnSelect').disabled = true;
+    $('nameColumnSelect').innerHTML = '<option value="">请先加载列</option>';
     $('idColumnSelect').disabled = true;
     $('idColumnSelect').innerHTML = '<option value="">请先加载列</option>';
     setBusy(true);
@@ -123,8 +173,12 @@
   }
 
   function runCheck() {
-    if (!uploadToken || !$('idColumnSelect').value) {
-      setStatus('请选择身份证列', true);
+    if (!uploadToken || !$('nameColumnSelect').value || !$('idColumnSelect').value) {
+      setStatus('请选择姓名列和身份证列', true);
+      return;
+    }
+    if ($('nameColumnSelect').value === $('idColumnSelect').value) {
+      setStatus('姓名列和身份证列不能相同', true);
       return;
     }
     resetResults();
@@ -136,6 +190,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: uploadToken,
+        name_column_index: $('nameColumnSelect').value,
         id_column_index: $('idColumnSelect').value
       })
     })
@@ -156,6 +211,7 @@
 
   function renderResult(data) {
     var details = data.details || {};
+    lastResult = data;
     renderStats(data.stats || {});
     renderTable('overviewTable', data.overview || []);
     renderTable('invalidTable', data.invalid_samples || []);
@@ -165,7 +221,76 @@
     show($('overviewCard'), true);
     show($('invalidCard'), Boolean((data.invalid_samples || []).length));
     show($('detailCard'), true);
-    setStatus('审查完成', false);
+    updateExportState(false);
+    setStatus((data.overview || []).length ? '审查完成，已隐藏未命中人员' : '审查完成，暂无命中人员', false);
+  }
+
+  function formatTimestamp(date) {
+    function pad(value) {
+      return String(value).padStart(2, '0');
+    }
+    return String(date.getFullYear()) +
+      pad(date.getMonth() + 1) +
+      pad(date.getDate()) +
+      pad(date.getHours()) +
+      pad(date.getMinutes()) +
+      pad(date.getSeconds());
+  }
+
+  function exportTableHtml(title, rows) {
+    if (!rows || !rows.length) {
+      return '';
+    }
+    var cols = Object.keys(rows[0]);
+    var html = '<h2>' + esc(title) + '</h2><table><thead><tr>' +
+      cols.map(function (col) { return '<th>' + esc(col) + '</th>'; }).join('') +
+      '</tr></thead><tbody>';
+    rows.forEach(function (row) {
+      html += '<tr>' + cols.map(function (col) {
+        return '<td>' + esc(row[col]) + '</td>';
+      }).join('') + '</tr>';
+    });
+    return html + '</tbody></table>';
+  }
+
+  function statsRows(stats) {
+    return Object.keys(stats || {}).map(function (key) {
+      return { 指标: key, 数值: stats[key] };
+    });
+  }
+
+  function buildExportHtml(data) {
+    var details = data.details || {};
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8" />' +
+      '<style>body{font-family:Microsoft YaHei,Arial,sans-serif;}table{border-collapse:collapse;margin-bottom:18px;}' +
+      'th,td{border:1px solid #999;padding:6px 8px;mso-number-format:"\\@";}th{background:#e9f3ef;font-weight:bold;}' +
+      'h1{font-size:20px;}h2{font-size:16px;margin-top:18px;}</style></head><body>' +
+      '<h1>审查结果</h1>' +
+      exportTableHtml('审查概览', statsRows(data.stats || {})) +
+      exportTableHtml('人员命中情况', data.overview || []) +
+      exportTableHtml('前科', details.prior_case || []) +
+      exportTableHtml('矛盾纠纷', details.dispute || []) +
+      exportTableHtml('精神障碍', details.mental_health || []) +
+      '</body></html>';
+  }
+
+  function exportResult() {
+    if (!hasExportableRows(lastResult)) {
+      setStatus('暂无命中结果可导出', true);
+      return;
+    }
+    var blob = new Blob(['\ufeff', buildExportHtml(lastResult)], {
+      type: 'application/vnd.ms-excel;charset=utf-8'
+    });
+    var link = document.createElement('a');
+    var url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = '审查结果' + formatTimestamp(new Date()) + '.xls';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setStatus('导出完成', false);
   }
 
   function initTabs() {
@@ -183,12 +308,18 @@
     initTabs();
     $('loadColumnsBtn').addEventListener('click', loadColumns);
     $('checkBtn').addEventListener('click', runCheck);
+    $('exportBtn').addEventListener('click', exportResult);
+    $('nameColumnSelect').addEventListener('change', function () {
+      $('checkBtn').disabled = !canCheck();
+    });
     $('idColumnSelect').addEventListener('change', function () {
-      $('checkBtn').disabled = !uploadToken || !$('idColumnSelect').value;
+      $('checkBtn').disabled = !canCheck();
     });
     $('bgFile').addEventListener('change', function () {
       uploadToken = '';
       $('checkBtn').disabled = true;
+      $('nameColumnSelect').disabled = true;
+      $('nameColumnSelect').innerHTML = '<option value="">请先加载列</option>';
       $('idColumnSelect').disabled = true;
       $('idColumnSelect').innerHTML = '<option value="">请先加载列</option>';
       resetResults();

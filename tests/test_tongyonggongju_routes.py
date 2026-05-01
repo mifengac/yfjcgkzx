@@ -112,12 +112,26 @@ class TestTongyonggongjuRoutes(unittest.TestCase):
         ):
             response = self.client.post(
                 "/tongyonggongju/api/background/check",
-                json={"token": "abc123456789012345", "id_column_index": 2},
+                json={"token": "abc123456789012345", "name_column_index": 1, "id_column_index": 2},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.get_json()["success"])
-        self.assertEqual(mock_check.call_args.args, ("abc123456789012345", 2))
+        self.assertEqual(mock_check.call_args.args, ("abc123456789012345", 2, 1))
+
+    def test_check_requires_name_column(self) -> None:
+        self._login()
+        with self.client.session_transaction() as sess:
+            sess["tygj_background_token"] = "abc123456789012345"
+
+        with patch("tongyonggongju.routes.tongyonggongju_routes.get_database_connection", return_value=_Connection()):
+            response = self.client.post(
+                "/tongyonggongju/api/background/check",
+                json={"token": "abc123456789012345", "id_column_index": 2},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("请选择姓名所在列", response.get_json()["message"])
 
 
 if __name__ == "__main__":

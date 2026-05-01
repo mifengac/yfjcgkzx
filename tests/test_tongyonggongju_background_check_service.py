@@ -44,21 +44,23 @@ class TestBackgroundCheckService(unittest.TestCase):
         )
 
         payload = service.inspect_and_store_workbook(file_bytes, "名单.xlsx")
-        extracted = service.extract_id_numbers(payload["token"], 2)
+        extracted = service.extract_id_numbers(payload["token"], 2, 1)
 
         self.assertEqual(payload["columns"][1]["display"], "B - 身份证号")
         self.assertEqual(extracted["valid_count"], 2)
         self.assertEqual(extracted["unique_count"], 1)
         self.assertEqual(extracted["duplicate_count"], 1)
         self.assertEqual(extracted["invalid_count"], 1)
+        self.assertEqual(extracted["people"][0]["name"], "张三")
         self.assertEqual(extracted["people"][0]["id_number"], "441111199001011234")
 
-    def test_run_background_check_builds_overview(self) -> None:
+    def test_run_background_check_builds_hit_only_overview(self) -> None:
         file_bytes = _xlsx_bytes(
-            ["身份证号"],
+            ["姓名", "身份证号"],
             [
-                ["441111199001011234"],
-                ["442222199002022345"],
+                ["张三", "441111199001011234"],
+                ["李四", "442222199002022345"],
+                ["王五", "443333199003033456"],
             ],
         )
         payload = service.inspect_and_store_workbook(file_bytes, "名单.xlsx")
@@ -89,12 +91,15 @@ class TestBackgroundCheckService(unittest.TestCase):
                 return_value=[{"身份证号": "441111199001011234", "姓名": "张三", "管理状态": "在管"}],
             ),
         ):
-            result = service.run_background_check(payload["token"], 1)
+            result = service.run_background_check(payload["token"], 2, 1)
 
-        self.assertEqual(result["stats"]["去重后人数"], 2)
+        self.assertEqual(result["stats"]["去重后人数"], 3)
         self.assertEqual(result["stats"]["命中人数"], 2)
+        self.assertEqual(len(result["overview"]), 2)
+        self.assertEqual(result["overview"][0]["姓名"], "张三")
         self.assertEqual(result["overview"][0]["命中类型"], "前科、精神障碍")
         self.assertEqual(result["overview"][1]["矛盾纠纷状态"], "撤管")
+        self.assertNotIn("443333199003033456", {row["身份证号"] for row in result["overview"]})
 
 
 if __name__ == "__main__":

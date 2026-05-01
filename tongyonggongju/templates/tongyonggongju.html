@@ -34,12 +34,19 @@
             </label>
             <button class="tygj-btn secondary" type="button" id="loadColumnsBtn">加载列</button>
             <label class="tygj-field">
+              姓名列
+              <select id="nameColumnSelect" disabled>
+                <option value="">请先加载列</option>
+              </select>
+            </label>
+            <label class="tygj-field">
               身份证列
               <select id="idColumnSelect" disabled>
                 <option value="">请先加载列</option>
               </select>
             </label>
             <button class="tygj-btn" type="button" id="checkBtn" disabled>审查</button>
+            <button class="tygj-btn secondary" type="button" id="exportBtn" disabled hidden>导出结果</button>
           </div>
           <div class="tygj-status" id="bgStatus"></div>
         </section>

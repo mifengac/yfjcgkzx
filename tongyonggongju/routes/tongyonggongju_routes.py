@@ -76,9 +76,11 @@ def api_background_check():
     token = str(payload.get("token") or "").strip()
     if not token or token != session.get("tygj_background_token"):
         return jsonify({"success": False, "message": "上传文件已失效，请重新上传"}), 400
+    if not payload.get("name_column_index"):
+        return jsonify({"success": False, "message": "请选择姓名所在列"}), 400
 
     try:
-        data = run_background_check(token, payload.get("id_column_index"))
+        data = run_background_check(token, payload.get("id_column_index"), payload.get("name_column_index"))
         return jsonify({"success": True, "data": data})
     except ValueError as exc:
         return jsonify({"success": False, "message": str(exc)}), 400
